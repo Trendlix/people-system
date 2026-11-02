@@ -1,7 +1,7 @@
 'use server';
 
 // Attendance corrections (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check out")"):
-// asking for one (the employee's own), HR correcting a day directly (approved at once), cancelling one while it is being
+// asking for one (the employee's own), a Super Admin correcting a day directly (approved at once), cancelling one while it is being
 // decided, and each approver's decision (approve, or reject with a comment). Each forwards to the API, which checks the
 // day, the month's payroll, who decides each stage and that nobody decides their own, so calling these directly can't
 // bypass that. Once sent, the correction's page opens: the site's, or the phone pages' for a form sent from them (owner,
@@ -36,7 +36,7 @@ export async function askCorrection(_prev: FormState, fd: FormData): Promise<For
   redirect(afterAction(fd, made?.id ? correctionDoneHref(made.id, 'sent') : '/my-attendance'));
 }
 
-/** HR corrects a person's day directly (POST /attendance/corrections, with the employee): approved at once. */
+/** A Super Admin corrects a person's day directly (POST /attendance/corrections, with the employee): approved at once. */
 export async function recordCorrection(_prev: FormState, fd: FormData): Promise<FormState> {
   const values = typedCorrectionValues(fd);
   const employeeId = String(fd.get('employeeId') ?? '').trim();
@@ -90,7 +90,7 @@ export async function decideCorrection(id: string, stage: LeaveStage, _prev: For
 }
 
 /**
- * HR cancels an approved correction, saying why (POST /attendance/corrections/:id/hr-cancel; owner, 2 November 2026: "i
+ * A Super Admin cancels an approved correction, saying why (POST /attendance/corrections/:id/hr-cancel; owner, 2 November 2026: "i
  * want to cancel this"): the day goes back to the one it corrected.
  */
 export async function cancelCorrectionByHr(id: string, _prev: FormState, fd: FormData): Promise<FormState> {

@@ -22,11 +22,11 @@ import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
+  correctsAttendance,
   decidedOnBehalfOf,
   decidesStage,
   hiddenRequest,
   isConfidentialRequest,
-  isHr,
   isRequestManager,
   isRequester,
   othersWhere,
@@ -34,7 +34,6 @@ import {
   standInRefusal,
   waitingWhere,
   type Caller,
-  hrMayCancel,
 } from '../leave/access.js';
 import { standInViewOf } from '../leave/stand-ins.js';
 import type { DecideLeaveDto } from '../leave/leave.dto.js';
@@ -55,6 +54,9 @@ type Db = PrismaService | Prisma.TransactionClient;
 type Where = Prisma.AttendanceCorrectionWhereInput;
 
 const NOT_FOUND = 'Attendance correction not found.';
+// owner, 2 November 2026: "HR Cannot Correct Attendance Record", "only super admin" (correctsAttendance)
+const ONLY_SUPER_ADMIN_CORRECTS = 'Only a Super Admin corrects a day directly.';
+const ONLY_SUPER_ADMIN_CANCELS = 'Only a Super Admin cancels an approved correction.';
 const DAY_ENTITY = 'attendance_day';
 
 /** A status as a message says it: "with HR", "approved". */
@@ -90,8 +92,8 @@ export interface MonthCorrectable {
 // cancels theirs while it is being decided. Approved at its last stage, the day is changed (CorrectionDaysService: kept as
 // source 'correction' over the day it corrects, which stays as it was, its hours counted again), the month's draft payroll
 // line refilled (AttendanceFillService); never while the month's payroll is with the CEO (it would miss it), approved or
-// paid. HR corrects a day directly, with a reason, approved at once (never their own; a C-level person's only HR with
-// Super Admin). Each step is logged on the correction and in the audit log, the day's change too. A time not yet come
+// paid. A Super Admin corrects a day directly, with a reason, approved at once (never their own; owner, 2 November 2026:
+// "only super admin", HR did until then). Each step is logged on the correction and in the audit log, the day's change too. A time not yet come
 // (reported 25 October 2026: asked at 00:30 to set that day's check-in to 08:55; owner, 26 October 2026: "yes", refuse
 // it) is refused by now in Cairo when asked and when HR corrects directly (correctionProblems), and again at each
 // approval, the manager's and HR's, so one asked for earlier isn't approved before its time.
@@ -143,19 +145,19 @@ export class AttendanceCorrectionsService {
   }
 
   /**
-   * HR cancels an approved correction, saying why (owner, 2 November 2026: "i want to cancel this"): the day made again
-   * without it (back to what it was, or to the corrections still approved), the month's attendance filled again, the
-   * employee told. Never HR's own; a C-level person's only HR who sees them; refused once the month's payroll is with
+   * A Super Admin cancels an approved correction, saying why (owner, 2 November 2026: "i want to cancel this"; "only
+   * super admin"): the day made again without it (back to what it was, or to the corrections still approved), the
+   * month's attendance filled again, the employee told. Never their own day; refused once the month's payroll is with
    * the CEO, approved or paid.
    */
   async hrCancel(id: string, dto: HrCancelCorrectionDto, user: SessionUser): Promise<AttendanceCorrectionView> {
     const caller = await this.caller(user);
     const before = await this.visible(id, caller);
     const parties = correctionParties(before);
-    if (!isHr(user)) throw new ForbiddenException('Only HR cancels an approved correction.');
-    if (isRequester(parties, caller) || caller.employeeId === before.employeeId) throw new ForbiddenException('Someone else in HR has to cancel a correction of your own day.');
-    if (!hrMayCancel({ ...parties, status: before.status }, caller)) {
-      throw new ConflictException(`This correction is ${statusWords(before.status)}: HR cancels approved corrections only.${isOpenLeave(before.status) ? ' Reject it instead.' : ''}`);
+    if (!correctsAttendance(user)) throw new ForbiddenException(ONLY_SUPER_ADMIN_CANCELS);
+    if (isRequester(parties, caller) || caller.employeeId === before.employeeId) throw new ForbiddenException('Another Super Admin has to cancel a correction of your own day.');
+    if (before.status !== 'approved') {
+      throw new ConflictException(`This correction is ${statusWords(before.status)}: only approved corrections are cancelled here.${isOpenLeave(before.status) ? ' Reject it instead.' : ''}`);
     }
     const date = fromDateOnly(before.date);
     const refusal = correctionCancelRefusal(date, await this.runStatus(date));
@@ -186,13 +188,16 @@ export class AttendanceCorrectionsService {
     return this.one(id, user);
   }
 
-  // ---------- HR directly ----------
+  // ---------- a Super Admin directly ----------
 
-  /** HR corrects a day directly, with a reason: approved at once, the day changed. Never HR's own. */
+  /**
+   * A Super Admin corrects a day directly, with a reason: approved at once, the day changed. Never their own (owner,
+   * 2 November 2026: "HR Cannot Correct Attendance Record", "only super admin"; HR did until then).
+   */
   async record(dto: RecordCorrectionDto, user: SessionUser): Promise<AttendanceCorrectionView> {
     const caller = await this.caller(user);
-    if (!isHr(user)) throw new ForbiddenException('Only HR corrects a day directly.');
-    if (caller.employeeId === dto.employeeId) throw new ForbiddenException('Someone else in HR has to correct your own day, or ask for a correction from My Attendance.');
+    if (!correctsAttendance(user)) throw new ForbiddenException(ONLY_SUPER_ADMIN_CORRECTS);
+    if (caller.employeeId === dto.employeeId) throw new ForbiddenException('Another Super Admin has to correct your own day, or ask for a correction from My Attendance.');
     const person = await this.prisma.employee.findUnique({ where: { id: dto.employeeId }, select: { id: true } });
     if (!person || caller.confidential?.hidden.has(dto.employeeId)) throw new NotFoundException('Employee not found.');
     const id = await this.submit(dto.employeeId, dto, caller, true);
@@ -451,7 +456,9 @@ export class AttendanceCorrectionsService {
   /** A correction the caller may see; otherwise it isn't there. */
   private async visible(id: string, caller: Caller): Promise<CorrectionRow> {
     const row = await this.prisma.attendanceCorrection.findUnique({ where: { id }, include: CORRECTION_INCLUDE });
-    if (!row || !seesRequest(correctionParties(row), caller)) throw new NotFoundException(NOT_FOUND);
+    // a Super Admin sees the ones they may correct or cancel (all but those hidden from them)
+    const parties = row && correctionParties(row);
+    if (!row || !parties || !(seesRequest(parties, caller) || (correctsAttendance(caller.user) && !hiddenRequest(parties, caller)))) throw new NotFoundException(NOT_FOUND);
     return row;
   }
 

@@ -31,7 +31,8 @@ import { cairoTime } from '../../payroll/[id]/attendance/attendance';
 // to check out")"): an employee asks to correct a day from My Attendance → the day → Ask for a correction (what was
 // wrong, the right times in 12-hour time, why), decided as leave is (the direct manager, else the team lead, else the
 // department's head, then HR; a C-level person's HR stage by the CEO), cancelled while it is being decided; approved,
-// the day is changed, shown "corrected from …". HR corrects a day directly from the person's month, approved at once.
+// the day is changed, shown "corrected from …". A Super Admin corrects a day directly from the person's month, approved
+// at once (HR until 2 November 2026: "only super admin").
 // Listed under Attendance → Corrections for HR and the CEO, on My Team for a manager, on My Requests for the employee.
 // The rules are @trendlix/shared's (attendance-corrections.ts), which the API enforces; these helpers word what it sent,
 // read the form and show the same checks live. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
@@ -61,7 +62,7 @@ export const correctionDoneHref = (id: string, done: CorrectionDone) => `${corre
 export const ASK_CORRECTION_PATH = '/my-attendance/correct';
 export const askCorrectionHref = (date?: string | null) => (date && DATE.test(date) ? `${ASK_CORRECTION_PATH}?date=${date}` : ASK_CORRECTION_PATH);
 
-/** HR's form to correct a person's day directly: "/attendance/<employeeId>/correct?date=2026-10-12". */
+/** A Super Admin's form to correct a person's day directly: "/attendance/<employeeId>/correct?date=2026-10-12". */
 export const hrCorrectionHref = (employeeId: string, date?: string | null) =>
   `/attendance/${encodeURIComponent(employeeId)}/correct${date && DATE.test(date) ? `?date=${date}` : ''}`;
 
@@ -71,8 +72,8 @@ export const MY_CORRECTIONS_HREF = `${MY_REQUESTS}#my-corrections`;
 /** Who sees everyone's corrections (Attendance → Corrections): HR and the CEO, who decide their HR stage. */
 export const seesCorrections = (user: WithRoles) => hasRole(user, 'hr', 'ceo');
 
-/** Who corrects a day directly: HR. */
-export const correctsDays = (user: WithRoles) => hasRole(user, 'hr');
+/** Who corrects a day directly: a Super Admin (owner, 2 November 2026: "HR Cannot Correct Attendance Record", "only super admin"). */
+export const correctsDays = (user: WithRoles) => hasRole(user, 'super_admin');
 
 /** Where a correction's page goes back to: Corrections for HR and the CEO, My Requests for its employee, else My Team. */
 export function correctionBack(user: WithRoles & { employeeId?: string | null }, r: Pick<AttendanceCorrectionView, 'employee'>): { href: string; label: string } {
@@ -198,10 +199,13 @@ export function correctionDoneText(
   return { text: correctionDecidedText(decision as LeaveDecision, stage as LeaveStage, confidential), tone: 'ok' };
 }
 
-/** A step as its timeline shows it: as a leave request's, HR's own correction and a cancelling in their words. */
+/**
+ * A step as its timeline shows it: as a leave request's, a direct correction and a cancelling in their words; who took
+ * it is said under it (the employee while it is decided, a Super Admin once approved; HR's before 2 November 2026).
+ */
 export function correctionStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
-  if (s.kind === 'recorded_by_hr') return 'Corrected by HR directly, approved at once';
-  if (s.kind === 'cancelled') return 'Cancelled by the employee';
+  if (s.kind === 'recorded_by_hr') return 'Corrected directly, approved at once';
+  if (s.kind === 'cancelled') return 'Cancelled';
   return leaveStepText(s, manager, confidential);
 }
 
@@ -213,12 +217,12 @@ export function correctionDecisionButton(decision: LeaveDecision | '', stage: Le
 
 // ---------- a day's correction, on the attendance pages ----------
 
-/** What a day's row offers: ask (or correct, for HR), the correction open on it, or nothing. */
+/** What a day's row offers: ask (or correct, for a Super Admin), the correction open on it, or nothing. */
 export type DayCorrection = { kind: 'ask'; href: string } | { kind: 'open'; id: string; status: LeaveStatus } | null;
 
 /**
  * What a day of a person's month offers (owner's brief, 19 October 2026: "My Attendance → the day → Ask for a
- * correction"): a correction of it being decided (to open), else a way to ask (or, for HR, to correct it) on a day gone
+ * correction"): a correction of it being decided (to open), else a way to ask (or, for a Super Admin, to correct it) on a day gone
  * by or today, not of leave, in a month whose payroll isn't approved; else nothing.
  */
 export function dayCorrection(

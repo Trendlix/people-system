@@ -72,6 +72,7 @@ describe('Attendance corrections (e2e)', () => {
   let ceo: string;
   let finance: string;
   let hrSuper: string;
+  let superAdmin: string; // corrects a day directly and cancels a correction (owner, 2 November 2026: "only super admin")
   let hrUserId: string;
   let hrEmployeeId: string;
   let emailDomainBefore: string | null;
@@ -88,7 +89,7 @@ describe('Attendance corrections (e2e)', () => {
   const at = (date: string, time: string) => new Date(zonedMoment(date, time)).toISOString();
 
   /** A profile with a sign-in account, employed from a year before PAST, under a signed contract when `signed`. */
-  async function person(key: string, who: string, employment: Record<string, unknown> = {}, opts: { signed?: boolean; roles?: ('employee' | 'manager')[]; session?: () => string } = {}) {
+  async function person(key: string, who: string, employment: Record<string, unknown> = {}, opts: { signed?: boolean; roles?: ('employee' | 'manager' | 'super_admin')[]; session?: () => string } = {}) {
     const email = await createUser(prisma, opts.roles ?? ['employee']);
     const session = opts.session ?? (() => hr);
     const res = await api().post('/api/employees').set('Cookie', hr).send({ fullNameEn: `${who} ${RUN}`, fullNameAr: 'موظف تجريبي', workEmail: email }).expect(201);
@@ -139,6 +140,7 @@ describe('Attendance corrections (e2e)', () => {
     ceo = await signIn(app, await createUser(prisma, ['ceo']));
     finance = await signIn(app, await createUser(prisma, ['finance']));
     hrSuper = await signIn(app, await createUser(prisma, ['hr', 'super_admin']));
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     emailDomainBefore = (await api().get('/api/company').set('Cookie', hr).expect(200)).body.emailDomain;
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: '' }).expect(200);
     // HR's own profile, for "never their own"
@@ -165,6 +167,7 @@ describe('Attendance corrections (e2e)', () => {
     await person('fay', 'Fay Freelance', { employmentType: 'freelance', managerId: ids.mona });
     const g9 = ((await api().get('/api/grades').set('Cookie', hr).expect(200)).body as { id: string; code: string }[]).find((g) => g.code === 'G9')!;
     await person('cleo', 'Cleo Chief', { managerId: ids.mona, gradeId: g9.id }, { session: () => hrSuper });
+    await person('sam', 'Sam Super', {}, { roles: ['employee', 'super_admin'] });
 
     const holidays = new Set((await prisma.holiday.findMany({ select: { date: true } })).map((h) => fromDateOnly(h.date)));
     for (const m of [PAST, LOCKED, WITH_CEO, CURRENT]) {
@@ -347,18 +350,17 @@ describe('Attendance corrections (e2e)', () => {
     });
   });
 
-  describe('HR correcting a day directly', () => {
+  describe('a Super Admin correcting a day directly', () => {
+    const direct = (session: string, body: Record<string, unknown>) => api().post('/api/attendance/corrections').set('Cookie', session).send(body);
+
     it('is approved at once, the day changed and the line refilled from attendance', async () => {
-      await api().post('/api/attendance/corrections').set('Cookie', finance).send({ employeeId: ids.zed, date: work[PAST][0], kind: 'forgot_check_in', checkIn: '09:00', checkOut: '17:00', reason: 'Seen at the office' }).expect(403);
+      const body = { employeeId: ids.zed, date: work[PAST][0], kind: 'forgot_check_in', checkIn: '09:00', checkOut: '17:00', reason: 'Seen at the office' };
+      await direct(finance, body).expect(403);
+      // owner, 2 November 2026: "HR Cannot Correct Attendance Record", "only super admin"
+      await direct(hr, body).expect(403);
       expect((await lineOf(pastRun, 'zed')).attendanceImport).toBeNull();
-      const res = (
-        await api()
-          .post('/api/attendance/corrections')
-          .set('Cookie', hr)
-          .send({ employeeId: ids.zed, date: work[PAST][0], kind: 'forgot_check_in', checkIn: '09:00', checkOut: '17:00', reason: 'Seen at the office by HR' })
-          .expect(201)
-      ).body as Correction;
-      expect(res).toMatchObject({ status: 'approved', recordedByHr: true });
+      const res = (await direct(superAdmin, { ...body, reason: 'Seen at the office by the Super Admin' }).expect(201)).body as Correction;
+      expect(res).toMatchObject({ status: 'approved', recordedByHr: true, hrCanCancel: true });
       expect(res.steps.map((s) => s.kind)).toEqual(['recorded_by_hr']);
       // Zed's day was Zoho's (absent): corrected, and his line now from attendance
       const day = (await personMonth('zed', PAST)).person.days.find((d) => d.date === work[PAST][0])!;
@@ -366,17 +368,20 @@ describe('Attendance corrections (e2e)', () => {
       const line = await lineOf(pastRun, 'zed');
       expect(line.attendanceImport?.source).toBe('attendance');
       expect(line.inputs).toMatchObject({ workedHours: 8, noShowDays: 0 });
-      // the person page says HR corrects
-      expect((await personMonth('zed', PAST)).canCorrect).toBe(true);
+      // the person page offers Correct to the Super Admin, not to HR
+      expect((await personMonth('zed', PAST, superAdmin)).canCorrect).toBe(true);
+      expect((await personMonth('zed', PAST)).canCorrect).toBe(false);
+      expect((await api().get(`/api/attendance/corrections/${res.id}`).set('Cookie', hr).expect(200)).body.hrCanCancel).toBe(false);
     });
 
-    // owner, 2 November 2026: "i want to cancel this"
-    it('HR cancels an approved correction with a reason: the day goes back to the one it corrected, the employee told', async () => {
+    // owner, 2 November 2026: "i want to cancel this"; "only super admin"
+    it('a Super Admin cancels an approved correction with a reason: the day goes back to the one it corrected, the employee told', async () => {
       const { id } = await prisma.attendanceCorrection.findFirstOrThrow({ where: { employeeId: ids.zed, date: toDateOnly(work[PAST][0]), status: 'approved' }, select: { id: true } });
       const cancel = (session: string, comment: string) => api().post(`/api/attendance/corrections/${id}/hr-cancel`).set('Cookie', session).send({ comment });
       await cancel(finance, 'Entered by mistake').expect(403);
-      expect(said(await cancel(hr, '  ').expect(400))).toEqual(['Write why the correction is cancelled.']);
-      const res = (await cancel(hr, 'Entered by mistake').expect(200)).body as Correction;
+      await cancel(hr, 'Entered by mistake').expect(403);
+      expect(said(await cancel(superAdmin, '  ').expect(400))).toEqual(['Write why the correction is cancelled.']);
+      const res = (await cancel(superAdmin, 'Entered by mistake').expect(200)).body as Correction;
       expect(res.status).toBe('cancelled');
       expect(res.steps.map((s) => s.kind)).toEqual(['recorded_by_hr', 'cancelled']);
       // the day is Zoho's again (absent), with no correction over it
@@ -391,14 +396,15 @@ describe('Attendance corrections (e2e)', () => {
         diff: { status: { from: 'approved', to: 'cancelled' }, comment: 'Entered by mistake', dayNow: 'as before the correction' },
       });
       // once only
-      expect(said(await cancel(hr, 'Again').expect(409))[0]).toContain('HR cancels approved corrections only');
+      expect(said(await cancel(superAdmin, 'Again').expect(409))[0]).toContain('only approved corrections are cancelled here');
     });
 
-    it('never HR’s own, a C-level person’s only HR with Super Admin', async () => {
+    it('never their own day; a C-level person’s too', async () => {
       const body = { date: work[PAST][4], kind: 'forgot_check_in', checkIn: '09:00', checkOut: '17:00', reason: 'Fixing' };
-      expect(said(await api().post('/api/attendance/corrections').set('Cookie', hr).send({ ...body, employeeId: hrEmployeeId }).expect(403))[0]).toContain('Someone else in HR');
-      await api().post('/api/attendance/corrections').set('Cookie', hr).send({ ...body, employeeId: ids.cleo }).expect(404);
-      await api().post('/api/attendance/corrections').set('Cookie', hrSuper).send({ ...body, employeeId: ids.cleo }).expect(201);
+      expect(said(await direct(sessions.sam, { ...body, employeeId: ids.sam }).expect(403))[0]).toContain('Another Super Admin');
+      await direct(hr, { ...body, employeeId: hrEmployeeId }).expect(403);
+      await direct(hrSuper, { ...body, employeeId: ids.cleo }).expect(201);
+      await direct(superAdmin, { ...body, date: work[PAST][5], employeeId: ids.cleo }).expect(201);
     });
   });
 
@@ -463,7 +469,7 @@ describe('Attendance corrections (e2e)', () => {
 
     // reported 25 October 2026: asked at 00:30 to set that day's check-in to 08:55, it was taken (owner, 26 October 2026:
     // "yes", refuse a time not yet come): asked, corrected by HR directly, and at each approval again
-    it('refuses a time not yet come today, asked or corrected by HR; takes one that has passed', async () => {
+    it('refuses a time not yet come today, asked or corrected directly; takes one that has passed', async () => {
       const day = addDays(TODAY, -3);
       const notYet = "Choose a time that has passed: 8:55 AM today hasn't come yet.";
       await withClockAt(day, '00:30', async () => {
@@ -472,7 +478,7 @@ describe('Attendance corrections (e2e)', () => {
           said(
             await api()
               .post('/api/attendance/corrections')
-              .set('Cookie', hr)
+              .set('Cookie', superAdmin)
               .send({ employeeId: ids.zed, date: day, kind: 'forgot_check_in', checkIn: '08:55', checkOut: '17:00', reason: 'Seen at the office by HR' })
               .expect(400),
           ),
@@ -485,7 +491,7 @@ describe('Attendance corrections (e2e)', () => {
       await withClockAt(day, '09:00', async () => {
         const res = (await ask('rami', { date: day, kind: 'forgot_check_in', checkIn: '08:55', reason: 'Forgot this morning' }).expect(201)).body as Correction;
         expect(res).toMatchObject({ status: 'with_manager', checkIn: at(day, '08:55') });
-        const hrs = (await api().post('/api/attendance/corrections').set('Cookie', hr).send({ employeeId: ids.zed, date: day, kind: 'forgot_check_in', checkIn: '08:55', reason: 'Seen at the office by HR' }).expect(201))
+        const hrs = (await api().post('/api/attendance/corrections').set('Cookie', superAdmin).send({ employeeId: ids.zed, date: day, kind: 'forgot_check_in', checkIn: '08:55', reason: 'Seen at the office by HR' }).expect(201))
           .body as Correction;
         expect(hrs).toMatchObject({ status: 'approved', checkIn: at(day, '08:55') });
       });

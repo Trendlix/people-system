@@ -4,8 +4,9 @@ import { useActionState, useState } from 'react';
 import { FormErrors, useFieldIds } from '@/components/form';
 import type { FormState } from '@/lib/types';
 
-// HR's Cancel of an approved correction (owner, 2 November 2026: "i want to cancel this"), with why: the day goes back to
-// the one it corrected. Asks first; the API checks the role, the payroll and the reason again.
+// A Super Admin's Cancel of an approved correction (owner, 2 November 2026: "i want to cancel this"; "only super
+// admin"), with why: the day goes back to the one it corrected. Asks first; the API checks the role, the payroll and the
+// reason again.
 
 export function HrCancelCorrectionForm({ action, what }: { action: (prev: FormState, fd: FormData) => Promise<FormState>; what: string }) {
   const [state, formAction, pending] = useActionState(action, {});

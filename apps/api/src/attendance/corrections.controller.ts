@@ -53,8 +53,8 @@ export class AttendanceCorrectionsController {
     return this.corrections.counts(user);
   }
 
-  /** HR corrects a day directly, approved at once: as the employee's request, with employeeId. */
-  @Roles('hr')
+  /** A Super Admin corrects a day directly, approved at once: as the employee's request, with employeeId. */
+  @Roles('super_admin')
   @Post()
   @ConfidentialOf('employee', { body: 'employeeId' })
   record(@Body() dto: RecordCorrectionDto, @CurrentUser() user: SessionUser) {
@@ -67,8 +67,8 @@ export class AttendanceCorrectionsController {
     return this.corrections.one(id, user);
   }
 
-  /** HR cancels an approved correction: { comment } (owner, 2 November 2026: "i want to cancel this"). */
-  @Roles('hr')
+  /** A Super Admin cancels an approved correction: { comment } (owner, 2 November 2026: "i want to cancel this"). */
+  @Roles('super_admin')
   @Post(':id/hr-cancel')
   @HttpCode(200)
   hrCancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: HrCancelCorrectionDto, @CurrentUser() user: SessionUser) {

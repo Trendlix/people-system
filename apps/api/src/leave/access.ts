@@ -68,6 +68,13 @@ export const isHr = (user: SessionUser) => actsAs(user.roles, ['hr']);
  */
 export const mayEditLeave = (user: SessionUser) => !user.developer && isSuperAdmin(user) && !user.viewAs;
 
+/**
+ * Whether the caller corrects attendance (owner, 2 November 2026: "HR Cannot Correct Attendance Record", "only super
+ * admin"): a day corrected directly, and an approved correction cancelled; a Super Admin in their own session, as leave
+ * is edited (mayEditLeave), never HR. An employee's own request is still decided by its manager, then HR.
+ */
+export const correctsAttendance = (user: SessionUser) => mayEditLeave(user);
+
 /** The employee whose leave it is. */
 export const isRequester = (r: RequestParties, caller: Caller) => caller.employeeId !== null && r.employeeId === caller.employeeId;
 

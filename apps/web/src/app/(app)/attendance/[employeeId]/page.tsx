@@ -27,7 +27,7 @@ import { rateTiles } from '../../my-attendance/my-days';
 // web with the office location check, or a device) to replace Zoho") and Zoho People's imports, with the month before
 // and after a click away, and where the days came from. HR, the CEO and Finance; a C-level person's only the CEO and the
 // Super Admin (the API answers 404 for the rest, as for anyone not there). Attendance corrections (owner, 19 October
-// 2026: "Attendance corrections with approval"): HR's Correct on each day (never their own), a correction being decided
+// 2026: "Attendance corrections with approval"): a Super Admin's Correct on each day (never their own; HR's until 2 November), a correction being decided
 // on its day, a corrected day "corrected from …", and every press of the day under it. Exempt from check-in (owner, 25
 // October 2026: "trat them as if they achived their full working hours"): the month's periods said at its top.
 
@@ -45,7 +45,7 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
   const view = loaded.value as typeof loaded.value & MonthCorrectionsPart & { punches?: PunchRow[]; rates?: AttendanceRates | null };
   const { person: p, sources, run } = view;
   const today = todayInCairo();
-  // attendance corrections (19 October 2026): HR corrects a day directly; anyone here sees a correction being decided
+  // attendance corrections (19 October 2026): a Super Admin corrects a day directly; anyone here sees one being decided
   const corrections = view.corrections;
   const way = importWay(user, month, run);
   // a developer's code, job title and department are hidden: left out (23 October 2026)

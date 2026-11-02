@@ -81,8 +81,8 @@ describe('a correction, in words', () => {
     expect(correctionDoneText({ done: 'hr_approve' }, 'approved')?.text).toContain('the day is corrected');
     expect(correctionDoneText({ done: 'moved' }, 'with_hr')?.tone).toBe('warn');
     expect(correctionDoneText({ done: 'nonsense' }, 'with_hr')).toBeNull();
-    expect(correctionStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Corrected by HR directly, approved at once');
-    expect(correctionStepText({ kind: 'cancelled', decision: null, comment: null })).toBe('Cancelled by the employee');
+    expect(correctionStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Corrected directly, approved at once');
+    expect(correctionStepText({ kind: 'cancelled', decision: null, comment: null })).toBe('Cancelled');
     expect(correctionDecisionButton('approve', 'hr').label).toBe('Approve the correction');
     expect(correctionDecisionButton('approve', 'manager').label).toBe('Approve and send to HR');
   });

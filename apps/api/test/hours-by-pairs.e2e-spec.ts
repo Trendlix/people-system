@@ -62,6 +62,7 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let hr: string;
+  let superAdmin: string; // corrects a day directly (owner, 2 November 2026: "only super admin")
   let hrUserId: string;
   let deptId: string;
   let emailDomainBefore: string | null;
@@ -133,6 +134,7 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
     ({ app, prisma } = await createApp());
     const hrEmail = await createUser(prisma, ['hr']);
     hr = await signIn(app, hrEmail);
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     hrUserId = (await prisma.user.findUniqueOrThrow({ where: { email: hrEmail } })).id;
     emailDomainBefore = (await api().get('/api/company').set('Cookie', hr).expect(200)).body.emailDomain;
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: '' }).expect(200);
@@ -199,7 +201,7 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
     await prisma.attendanceDay.create({
       data: { employeeId: ids.pia, date: toDateOnly(d5), status: 'worked', checkIn: at(d5, '09:00'), checkOut: at(d5, '13:00'), place: 'office', hoursCounted: 4, source: 'system', importedById: hrUserId, ...pairsKept(d5, [['in', '09:00'], ['out', '13:00'], ['in', '14:00']]) },
     });
-    await api().post('/api/attendance/corrections').set('Cookie', hr).send({ employeeId: ids.pia, date: d5, kind: 'forgot_check_out', checkOut: '18:00', reason: 'Left with the crew, seen by HR' }).expect(201);
+    await api().post('/api/attendance/corrections').set('Cookie', superAdmin).send({ employeeId: ids.pia, date: d5, kind: 'forgot_check_out', checkOut: '18:00', reason: 'Left with the crew, seen by HR' }).expect(201);
     await prisma.attendanceDay.update({ where: { employeeId_date_source: { employeeId: ids.pia, date: toDateOnly(d5), source: 'correction' } }, data: { hoursCounted: 8 } });
     // counting until 8:00 PM: 9:00 to 8:00 PM, 11 hours, 2 of extra time (kept by the 25 October rule as 3:00 + 7:30)
     await pressed('mako', d0, [['in', '09:00'], ['out', '12:00'], ['in', '12:30'], ['out', '20:30']], { hours: 10.5, byPairs: true });
@@ -364,10 +366,10 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
     it('is the check-out forgotten: it closes the open check-in, the day counted from its first check-in to the last', async () => {
       const day = work[DRAFT][1];
       const body = { employeeId: ids.pia, date: day, kind: 'forgot_check_out', reason: 'Left for the client, seen by HR' };
-      expect(said(await api().post('/api/attendance/corrections').set('Cookie', hr).send({ ...body, checkOut: '18:15' }).expect(400))).toEqual([
+      expect(said(await api().post('/api/attendance/corrections').set('Cookie', superAdmin).send({ ...body, checkOut: '18:15' }).expect(400))).toEqual([
         'The check-out (6:15 PM) must be after the last check-in (6:30 PM), the one without a check-out.',
       ]);
-      await api().post('/api/attendance/corrections').set('Cookie', hr).send({ ...body, checkOut: '19:00' }).expect(201);
+      await api().post('/api/attendance/corrections').set('Cookie', superAdmin).send({ ...body, checkOut: '19:00' }).expect(201);
       // 9:00–13:00, 14:00–18:00 and 18:30–19:00: 9:00 to 7:00 PM with its breaks, at most the shift's 9
       const d = await dayOf('pia', DRAFT, day);
       expect(d).toMatchObject({ source: 'correction', hoursCounted: 9, shortHours: 0, missingCheckOut: false, openAt: null, checkOut: at(day, '19:00').toISOString() });
@@ -380,7 +382,7 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
   describe('open check-ins on Send to the CEO (owner, 27 October 2026: "Half the shift (4.5 h) until corrected")', () => {
     it('a correction closing one takes it off the line’s hours, its warning and its mark', async () => {
       const [d0, d1] = work[DRAFT];
-      await api().post('/api/attendance/corrections').set('Cookie', hr).send({ employeeId: ids.ola, date: d0, kind: 'forgot_check_out', reason: 'Left with the crew, seen by HR', checkOut: '18:00' }).expect(201);
+      await api().post('/api/attendance/corrections').set('Cookie', superAdmin).send({ employeeId: ids.ola, date: d0, kind: 'forgot_check_out', reason: 'Left with the crew, seen by HR', checkOut: '18:00' }).expect(201);
       // 9:00–18:00 by its pair: 9 hours; the other open day still half
       expect(await dayOf('ola', DRAFT, d0)).toMatchObject({ source: 'correction', hoursCounted: 9, missingCheckOut: false, openHalfDay: false });
       const line = await lineOf(DRAFT, 'ola');

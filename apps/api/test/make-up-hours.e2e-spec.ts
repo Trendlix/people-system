@@ -56,6 +56,7 @@ describe('Make-up hours (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let hr: string;
+  let superAdmin: string; // corrects a day directly (owner, 2 November 2026: "only super admin")
   let admin: string;
   let finance: string;
   let employee: string;
@@ -93,6 +94,7 @@ describe('Make-up hours (e2e)', () => {
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
     hr = await signIn(app, await createUser(prisma, ['hr']));
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     admin = await signIn(app, await createUser(prisma, ['admin']));
     finance = await signIn(app, await createUser(prisma, ['finance']));
     employee = await signIn(app, await createUser(prisma, ['employee']));
@@ -262,7 +264,7 @@ describe('Make-up hours (e2e)', () => {
       // a short day (7 hours) corrected to 9:00 AM to 10:00 PM: 11 hours counted, the check-out kept at 10:00 PM
       const res = await api()
         .post('/api/attendance/corrections')
-        .set('Cookie', hr)
+        .set('Cookie', superAdmin)
         .send({ employeeId: ids.maya, date: work[0], kind: 'wrong_time', checkIn: '09:00', checkOut: '22:00', reason: 'Stayed for the launch' })
         .expect(201);
       expect(res.body.status).toBe('approved');

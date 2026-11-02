@@ -20,7 +20,7 @@ import { leaveStepsAhead } from '@/lib/steps-ahead';
 
 // An attendance correction (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check out")"),
 // for the employee, the one who decides it first (their direct manager, else their team lead, else their department's
-// head), HR and the CEO; anyone else gets the 404 page, as the API says it isn't there. Its day, what was wrong, what was
+// head), HR, the CEO and a Super Admin; anyone else gets the 404 page, as the API says it isn't there. Its day, what was wrong, what was
 // on record when it was asked, the right times, why, where it stands and who decides it, and its log of every step.
 // While it waits for the user, their decision (Approve, or Reject with a comment); the employee's Cancel while it is
 // being decided. Approved, the day is corrected: the person's month shows it "corrected from" what it was. What was
@@ -124,7 +124,7 @@ export async function CorrectionDetail({
               </Fact>
               <Fact label={r.manager ? approverLabel(r.manager) : 'Direct manager'}>
                 {r.recordedByHr ? (
-                  <span className="text-muted">Corrected by HR directly</span>
+                  <span className="text-muted">Corrected directly</span>
                 ) : r.manager ? (
                   r.manager.fullNameEn
                 ) : (
@@ -152,7 +152,7 @@ export async function CorrectionDetail({
               <CancelLeaveForm action={cancelMyCorrection.bind(null, r.id)} what={what} kind="correction" />
             </Section>
           )}
-          {/* HR cancels an approved one (owner, 2 November 2026: "i want to cancel this") */}
+          {/* a Super Admin cancels an approved one (owner, 2 November 2026: "i want to cancel this"; "only super admin") */}
           {!r.canCancel && r.hrCanCancel && (
             <Section title="Cancel the Correction">
               <HrCancelCorrectionForm action={cancelCorrectionByHr.bind(null, r.id)} what={what} />

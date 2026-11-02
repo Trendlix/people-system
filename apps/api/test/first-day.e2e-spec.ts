@@ -56,6 +56,7 @@ describe('A new employee’s first day, counted from the shift’s start (e2e)',
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let hr: string;
+  let superAdmin: string; // corrects a day directly (owner, 2 November 2026: "only super admin")
   let hrUserId: string;
   let deptId: string;
   let emailDomainBefore: string | null;
@@ -124,6 +125,7 @@ describe('A new employee’s first day, counted from the shift’s start (e2e)',
     ({ app, prisma } = await createApp());
     const hrEmail = await createUser(prisma, ['hr']);
     hr = await signIn(app, hrEmail);
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     hrUserId = (await prisma.user.findUniqueOrThrow({ where: { email: hrEmail } })).id;
     emailDomainBefore = (await api().get('/api/company').set('Cookie', hr).expect(200)).body.emailDomain;
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: '' }).expect(200);
@@ -218,7 +220,7 @@ describe('A new employee’s first day, counted from the shift’s start (e2e)',
     });
 
     it('a correction over the first day keeps the rule: the check-out moved, the pair still from the shift’s start, the press still the check-in', async () => {
-      await api().post('/api/attendance/corrections').set('Cookie', hr).send({ employeeId: ids.rami, date: first, kind: 'wrong_time', checkOut: '17:00', reason: 'Left at 5, seen by HR' }).expect(201);
+      await api().post('/api/attendance/corrections').set('Cookie', superAdmin).send({ employeeId: ids.rami, date: first, kind: 'wrong_time', checkOut: '17:00', reason: 'Left at 5, seen by HR' }).expect(201);
       const d = await dayOf('rami', first);
       // 8:00 to 17:00: 9 hours still, not 6:20
       expect(d).toMatchObject({ source: 'correction', hoursCounted: 9, shortHours: 0, checkIn: iso(first, '10:40'), checkOut: iso(first, '17:00') });

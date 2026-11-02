@@ -34,7 +34,7 @@ import { ConfidentialService, type ConfidentialView } from '../employees/confide
 import { employedIn, placeName, userNames } from '../payroll/adjustments/people.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { actsAs } from '../auth/roles.js';
+import { correctsAttendance } from '../leave/access.js';
 import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
 import { approvedWfhDays } from '../wfh/wfh-days.js';
 import { AttendanceDaysService, DAY_SELECT, shiftTimesOf, type DayRow } from './attendance-days.service.js';
@@ -446,8 +446,8 @@ export class AttendanceService {
     ]);
     // the spot for HR, the CEO, the Super Admin and themself; a C-level person's never HR's (20 October 2026)
     const sees = seesPunchPoints(user, { self, confidential: confidential.all.has(employeeId) });
-    // HR corrects a day directly (never their own; a C-level person's only HR who sees them, as they see the page)
-    const canCorrect = actsAs(user.roles, ['hr']) && !self;
+    // a Super Admin corrects a day directly, never their own (owner, 2 November 2026: "only super admin")
+    const canCorrect = correctsAttendance(user) && !self;
     return {
       month,
       person,

@@ -29,6 +29,7 @@ describe('Recount past days (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let hr: string;
+  let superAdmin: string; // corrects a day directly (owner, 2 November 2026: "only super admin")
   let hrUserId: string;
   let deptId: string;
   let shiftId: string;
@@ -88,6 +89,7 @@ describe('Recount past days (e2e)', () => {
     ({ app, prisma } = await createApp());
     const hrEmail = await createUser(prisma, ['hr']);
     hr = await signIn(app, hrEmail);
+    superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
     hrUserId = (await prisma.user.findUniqueOrThrow({ where: { email: hrEmail } })).id;
     emailDomainBefore = (await api().get('/api/company').set('Cookie', hr).expect(200)).body.emailDomain;
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: '' }).expect(200);
@@ -113,7 +115,7 @@ describe('Recount past days (e2e)', () => {
     await sysDay('oth', a, [['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '21:00']], 9);
     // a day with a check-out forgotten, corrected to 9:00 PM
     await sysDay('sys', b, [['in', '09:00'], ['out', '13:00'], ['in', '14:00']], 4);
-    await api().post('/api/attendance/corrections').set('Cookie', hr).send({ employeeId: ids.sys, date: b, kind: 'forgot_check_out', reason: 'Seen by HR', checkOut: '21:00' }).expect((r) => { if (r.status !== 201) throw new Error(JSON.stringify(r.body)); });
+    await api().post('/api/attendance/corrections').set('Cookie', superAdmin).send({ employeeId: ids.sys, date: b, kind: 'forgot_check_out', reason: 'Seen by HR', checkOut: '21:00' }).expect((r) => { if (r.status !== 201) throw new Error(JSON.stringify(r.body)); });
     // the approved month: left as it is
     await zohoDay('zp', day(APPROVED, 3), pairsOf(day(APPROVED, 3)), 9);
 

@@ -15,7 +15,7 @@ import {
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
-import { isConfidentialRequest, isRequester, standingInFor, waitsFor, type Caller , hrMayCancel } from '../leave/access.js';
+import { correctsAttendance, hiddenRequest, isConfidentialRequest, isRequester, standingInFor, waitsFor, type Caller } from '../leave/access.js';
 import { placeOf } from '../leave/views.js';
 
 // Attendance corrections as the API sends them (owner, 19 October 2026: "Attendance corrections with approval ("I forgot
@@ -84,8 +84,9 @@ export function correctionView(r: CorrectionRow, caller: Caller, names: Readonly
     confidential: isConfidentialRequest(parties, caller),
     // the employee cancels theirs while it is being decided; an approved one stays (its day changed: HR corrects it again)
     canCancel: isRequester(parties, caller) && isOpenLeave(status),
-    // HR cancels an approved one, not of their own day (owner, 2 November 2026: "i want to cancel this")
-    hrCanCancel: hrMayCancel({ ...parties, status }, caller) && caller.employeeId !== r.employeeId,
+    // a Super Admin cancels an approved one, not of their own day (owner, 2 November 2026: "i want to cancel this";
+    // "only super admin")
+    hrCanCancel: status === 'approved' && correctsAttendance(caller.user) && !isRequester(parties, caller) && caller.employeeId !== r.employeeId && !hiddenRequest(parties, caller),
     manager: r.manager && { id: r.manager.id, fullNameEn: r.manager.fullNameEn, role: (r.approverRole as ApproverRole | null) ?? 'direct_manager' },
     rejectedStage: r.rejectedStage as LeaveStage | null,
     rejectReason: r.rejectReason,

@@ -15,17 +15,18 @@ import { BackLink, Empty, Loading, UUID } from '../../../organization/ui';
 import { StaffOnly } from '../../../staff-only';
 import { joinShown } from '@/lib/hidden';
 
-// HR corrects a day directly (owner's brief, 19 October 2026: "HR may also correct a day directly (with a reason,
-// audited)"), from the person's month → the day: what is on record, what was wrong, the right times and why; approved at
-// once, the day corrected keeping what it was, the month's draft payroll line refilled. Never HR's own day (someone else
-// in HR corrects it), and a C-level person's only HR with Super Admin (the API's rules).
+// A Super Admin corrects a day directly (owner's brief, 19 October 2026: "HR may also correct a day directly (with a
+// reason, audited)"; owner, 2 November 2026: "HR Cannot Correct Attendance Record", "only super admin"), from the
+// person's month → the day: what is on record, what was wrong, the right times and why; approved at once, the day
+// corrected keeping what it was, the month's draft payroll line refilled. Never their own day (another Super Admin
+// corrects it, or they ask for a correction).
 
 export const metadata: Metadata = { title: 'Correct a Day · People System' };
 
 async function Correct({ params, searchParams }: { params: PageProps<'/attendance/[employeeId]/correct'>['params']; searchParams: PageProps<'/attendance/[employeeId]/correct'>['searchParams'] }) {
   const [{ employeeId }, query, user] = await Promise.all([params, searchParams, getCurrentUser()]);
   if (!UUID.test(employeeId)) notFound();
-  if (!correctsDays(user)) return <Empty>Only HR corrects a day directly.</Empty>;
+  if (!correctsDays(user)) return <Empty>Only a Super Admin corrects a day directly.</Empty>;
   const today = todayInCairo();
   const date = askedDate(query);
   const month = (date ?? today).slice(0, 7);
@@ -33,7 +34,7 @@ async function Correct({ params, searchParams }: { params: PageProps<'/attendanc
   if (loaded.kind === 'unavailable') notFound();
   if (loaded.kind !== 'ok') return <Empty>{notLoaded(loaded, 'attendance')}</Empty>;
   const view = loaded.value as PersonAttendanceView & MonthCorrectionsPart;
-  if (view.self) return <Empty>Someone else in HR corrects your own day, or ask for a correction from My Attendance.</Empty>;
+  if (view.self) return <Empty>Another Super Admin corrects your own day, or ask for a correction from My Attendance.</Empty>;
   const data = correctionMonthOf(month, view);
   if (!data) return <Empty>Not available yet: the server does not have attendance corrections yet.</Empty>;
   const name = view.person.employee.fullNameEn;
