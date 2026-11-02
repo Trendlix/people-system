@@ -6,6 +6,8 @@ const LOOK = {
   section: 'bg-line-soft py-3 text-base text-ink',
   department: 'bg-canvas py-2.5 text-sm text-ink',
   team: 'bg-card py-2 text-sm font-medium text-muted',
+  // a job title under its team (owner, 2 November 2026: "KPI's Per Job Title under the team")
+  jobTitle: 'bg-card py-1.5 text-sm font-semibold text-ink',
 } as const;
 
 /**
@@ -16,7 +18,7 @@ export function GroupHeading({ level, name, count, span, note }: { level: keyof 
   return (
     <tr>
       <th colSpan={span} scope="colgroup" className={`text-left tracking-normal normal-case ${LOOK[level]}`}>
-        <span className={`sticky left-4 inline-flex flex-wrap items-baseline gap-x-2 ${level === 'team' ? 'pl-4' : ''}`}>
+        <span className={`sticky left-4 inline-flex flex-wrap items-baseline gap-x-2 ${level === 'team' ? 'pl-4' : level === 'jobTitle' ? 'pl-8' : ''}`}>
           {/* a developer isn't shown where people work (owner, 22 October 2026: "Hide per-person details") */}
           {name === null ? 'No Department' : isHidden(name) ? 'Hidden' : titleCase(name)}
           <span className="text-xs font-normal text-muted">

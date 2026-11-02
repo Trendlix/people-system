@@ -1,8 +1,11 @@
 import Link from 'next/link';
+import { Fragment } from 'react';
 import { KPI_LEVEL_LABELS, KPI_PRACTICE_BADGE, KPI_PRACTICE_BANNER, type KpiHeatmap, type KpiLevel, type KpiScorecardSummary, type KpiStatus, type KpiScorer } from '@trendlix/shared';
 import { CLevelBadge } from '@/components/c-level-badge';
+import { GroupHeading } from '@/components/group-heading';
 import { formatDate } from '@/lib/format';
 import { KPI_PATHS } from '@/lib/kpi-paths';
+import { byJobTitle, jobTitleNote } from './by-job-title';
 import { heatCell, latestOf, levelRows, levelsLabel, monthShort } from './heatmap';
 import { actionButton, actionText, LEVEL_BADGE, LEVEL_BAR, percentText, STATUS_BADGE, statusText } from './scorecard';
 import { joinShown, shownCode } from '@/lib/hidden';
@@ -192,67 +195,112 @@ export function Heatmap({ heatmap, label }: { heatmap: KpiHeatmap; label: string
  * the final % and level, HR's changes, the signatures, and the way in: the caller's action (Score, Calibrate, Sign) or
  * Open.
  */
+/** One scorecard's row: who, the step, the final %, calibration, signatures and its link. `place`: their job title and team shown. */
+function ScorecardRow({ s, showMonth, place = true }: { s: KpiScorecardSummary; showMonth: boolean; place?: boolean }) {
+  const todo = actionText(s);
+  return (
+    <tr className="align-top">
+      <td className="min-w-48">
+        <Link href={KPI_PATHS.scorecard(s.id)} className="font-semibold">
+          {s.employee.fullNameEn}
+        </Link>
+        {s.confidential && <CLevelBadge className="ml-1.5" title="A C-level person: the CEO scores their KPI, and HR doesn't see it." />}
+        {s.practice && <PracticeBadge className="ml-1.5" />}
+        <span className="block text-xs text-muted">{(place && joinShown([s.jobTitle, s.department])) || shownCode(s.employee.employeeCode)}</span>
+      </td>
+      {showMonth && <td className="whitespace-nowrap">{monthShort(s.month)}</td>}
+      <td className="min-w-40">
+        <StatusBadge status={s.status} scorer={s.scorer.kind} />
+        {todo ? (
+          <span className="mt-1 block text-xs font-medium tabular-nums">{todo}</span>
+        ) : (
+          s.deadline && <span className="mt-1 block text-xs text-muted tabular-nums">Due {formatDate(s.deadline)}</span>
+        )}
+        {s.selfMissed && <span className="block text-xs text-warn">Self-rating missed</span>}
+      </td>
+      <td className="min-w-40">
+        <PercentCell percent={s.finalPercent} level={s.level} pending={s.status === 'final' ? null : 'Not scored yet'} />
+      </td>
+      <td className="text-right tabular-nums">{s.calibrated ? s.calibrated : dash}</td>
+      <td className="min-w-32 text-xs">
+        <span className={`block ${s.signed.employee ? 'text-ok' : 'text-muted'}`}>{s.signed.employee ? '✓' : '○'} Employee</span>
+        <span className={`block ${s.signed.manager ? 'text-ok' : 'text-muted'}`}>{s.signed.manager ? '✓' : '○'} Manager</span>
+        {s.unsigned && <span className="block text-warn">Final unsigned</span>}
+      </td>
+      <td className="text-right">
+        <Link href={KPI_PATHS.scorecard(s.id)} className={s.action ? 'btn btn-primary min-h-9 px-3 whitespace-nowrap' : 'text-sm font-semibold'}>
+          {actionButton(s)}
+          <span className="sr-only"> the KPI scorecard of {s.employee.fullNameEn}</span>
+        </Link>
+      </td>
+    </tr>
+  );
+}
+
+/** The scorecards table's head. */
+function ScorecardsHead({ showMonth }: { showMonth: boolean }) {
+  return (
+    <thead>
+      <tr>
+        <th scope="col">Employee</th>
+        {showMonth && <th scope="col">Month</th>}
+        <th scope="col">Step</th>
+        <th scope="col">Final %</th>
+        <th scope="col" className="text-right">
+          Calibrated
+        </th>
+        <th scope="col">Signed</th>
+        <th scope="col">
+          <span className="sr-only">Actions</span>
+        </th>
+      </tr>
+    </thead>
+  );
+}
+
 export function ScorecardsTable({ scorecards, showMonth = false }: { scorecards: KpiScorecardSummary[]; showMonth?: boolean }) {
   return (
     <div className="overflow-x-auto">
       <table className="table">
-        <thead>
-          <tr>
-            <th scope="col">Employee</th>
-            {showMonth && <th scope="col">Month</th>}
-            <th scope="col">Step</th>
-            <th scope="col">Final %</th>
-            <th scope="col" className="text-right">
-              Calibrated
-            </th>
-            <th scope="col">Signed</th>
-            <th scope="col">
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
+        <ScorecardsHead showMonth={showMonth} />
         <tbody>
-          {scorecards.map((s) => {
-            const todo = actionText(s);
-            return (
-              <tr key={s.id} className="align-top">
-                <td className="min-w-48">
-                  <Link href={KPI_PATHS.scorecard(s.id)} className="font-semibold">
-                    {s.employee.fullNameEn}
-                  </Link>
-                  {s.confidential && <CLevelBadge className="ml-1.5" title="A C-level person: the CEO scores their KPI, and HR doesn't see it." />}
-                  {s.practice && <PracticeBadge className="ml-1.5" />}
-                  <span className="block text-xs text-muted">{joinShown([s.jobTitle, s.department]) || shownCode(s.employee.employeeCode)}</span>
-                </td>
-                {showMonth && <td className="whitespace-nowrap">{monthShort(s.month)}</td>}
-                <td className="min-w-40">
-                  <StatusBadge status={s.status} scorer={s.scorer.kind} />
-                  {todo ? (
-                    <span className="mt-1 block text-xs font-medium tabular-nums">{todo}</span>
-                  ) : (
-                    s.deadline && <span className="mt-1 block text-xs text-muted tabular-nums">Due {formatDate(s.deadline)}</span>
-                  )}
-                  {s.selfMissed && <span className="block text-xs text-warn">Self-rating missed</span>}
-                </td>
-                <td className="min-w-40">
-                  <PercentCell percent={s.finalPercent} level={s.level} pending={s.status === 'final' ? null : 'Not scored yet'} />
-                </td>
-                <td className="text-right tabular-nums">{s.calibrated ? s.calibrated : dash}</td>
-                <td className="min-w-32 text-xs">
-                  <span className={`block ${s.signed.employee ? 'text-ok' : 'text-muted'}`}>{s.signed.employee ? '✓' : '○'} Employee</span>
-                  <span className={`block ${s.signed.manager ? 'text-ok' : 'text-muted'}`}>{s.signed.manager ? '✓' : '○'} Manager</span>
-                  {s.unsigned && <span className="block text-warn">Final unsigned</span>}
-                </td>
-                <td className="text-right">
-                  <Link href={KPI_PATHS.scorecard(s.id)} className={s.action ? 'btn btn-primary min-h-9 px-3 whitespace-nowrap' : 'text-sm font-semibold'}>
-                    {actionButton(s)}
-                    <span className="sr-only"> the KPI scorecard of {s.employee.fullNameEn}</span>
-                  </Link>
-                </td>
-              </tr>
-            );
-          })}
+          {scorecards.map((s) => (
+            <ScorecardRow key={s.id} s={s} showMonth={showMonth} />
+          ))}
         </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * All KPIs' scorecards by department, team and job title (owner, 2 November 2026: "i want KPI's Per Job Title under the
+ * team"), each job title with how many are scored and their average final %.
+ */
+export function ScorecardsByJobTitle({ scorecards }: { scorecards: KpiScorecardSummary[] }) {
+  const span = 6;
+  return (
+    <div className="overflow-x-auto">
+      <table className="table">
+        <ScorecardsHead showMonth={false} />
+        {byJobTitle(scorecards).map((d) => (
+          <tbody key={d.department ?? ''}>
+            <GroupHeading level="department" name={d.department} count={d.count} span={span} />
+            {d.teams.map((t) => (
+              <Fragment key={t.team ?? ''}>
+                {t.team !== null && <GroupHeading level="team" name={t.team} count={t.count} span={span} />}
+                {t.jobTitles.map((j) => (
+                  <Fragment key={j.jobTitle ?? ''}>
+                    <GroupHeading level="jobTitle" name={j.jobTitle ?? 'No job title'} count={j.scorecards.length} span={span} note={jobTitleNote(j)} />
+                    {j.scorecards.map((s) => (
+                      <ScorecardRow key={s.id} s={s} showMonth={false} place={false} />
+                    ))}
+                  </Fragment>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        ))}
       </table>
     </div>
   );

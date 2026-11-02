@@ -25,7 +25,7 @@ import {
   scorecardsLabel,
   seesAllKpis,
 } from '../scorecard';
-import { AllKpisTabs, Heatmap, LevelDistribution, ScorecardsTable } from '../ui';
+import { AllKpisTabs, Heatmap, LevelDistribution, ScorecardsByJobTitle } from '../ui';
 import { OpenScorecardsForm } from './open-form';
 
 // All KPIs (owner's brief, 21 October 2026: "All KPIs (HR, the CEO, Super Admin): every scorecard by month with its
@@ -261,7 +261,7 @@ async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['sea
       {o.total > 0 && (
         <section aria-labelledby="all-scorecards" className="card">
           <h2 id="all-scorecards" className="px-5 pt-5 font-semibold">
-            {titleCase(`scorecards of ${monthName}`)}
+            {titleCase(`scorecards by job title · ${monthName}`)}
             {(status || department) && <span className="font-normal text-muted"> · filtered</span>}
           </h2>
           <div className="mt-3">
@@ -273,7 +273,8 @@ async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['sea
               </p>
             ) : (
               <>
-                <ScorecardsTable scorecards={scorecards.value} />
+                {/* by department, team and job title (owner, 2 November 2026: "i want KPI's Per Job Title under the team") */}
+                <ScorecardsByJobTitle scorecards={scorecards.value} />
                 <p className="border-t border-line px-5 py-3 text-sm text-muted">{scorecardsLabel(scorecards.value.length)}.</p>
               </>
             )}
