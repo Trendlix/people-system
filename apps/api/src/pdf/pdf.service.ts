@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { ConflictException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { stampSerial } from './serial-stamp.js';
 import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFRawStream, PDFStream, PDFString, type PDFObject, type PDFRef } from '@cantoo/pdf-lib';
 import { isPdf } from './pdf-file.js';
 
@@ -134,11 +135,12 @@ export class PdfService {
    * A filled .docx as a protected PDF (see protectPdf); null without a converter. A document filled in from a PDF
    * template is protected as it is. Refused (503) when either step fails.
    */
-  async protectedFromDocx(docx: Uint8Array, fileName = 'document.docx'): Promise<Buffer | null> {
+  async protectedFromDocx(docx: Uint8Array, fileName = 'document.docx', serial: string | null = null): Promise<Buffer | null> {
     const pdf = await this.asPdf(docx, fileName);
     if (!pdf) return null;
     try {
-      return await protectPdf(pdf);
+      // a generated document's serial on every page (2 November 2026), before it is protected
+      return await protectPdf(serial ? await stampSerial(pdf, serial) : pdf);
     } catch (err) {
       this.logger.warn(`The PDF of ${fileName} could not be protected: ${(err as Error).message}`);
       throw new ServiceUnavailableException("The document's PDF could not be protected. Please try again in a minute.");
@@ -163,8 +165,8 @@ export class PdfService {
    * A filled document (generated documents, job offers, a template previewed with data) as it leaves the system: a
    * protected PDF named like it. Refused (409) without a converter: there is no Word file instead.
    */
-  async protectedFile(file: { data: Buffer; fileName: string }): Promise<{ data: Buffer; type: string; fileName: string }> {
-    const pdf = await this.protectedFromDocx(file.data, file.fileName);
+  async protectedFile(file: { data: Buffer; fileName: string; serial?: string | null }): Promise<{ data: Buffer; type: string; fileName: string }> {
+    const pdf = await this.protectedFromDocx(file.data, file.fileName, file.serial ?? null);
     if (!pdf) throw new ConflictException(PDF_NOT_SET_UP);
     return { data: pdf, type: 'application/pdf', fileName: pdfName(file.fileName) };
   }
@@ -174,9 +176,11 @@ export class PdfService {
    * refuses a protected PDF because it adds the signature fields itself (owner, 15 October 2026). The service locks the
    * signed PDF itself; the signed copy comes back to the document. Refused (409) without a converter.
    */
-  async forESignature(file: { data: Buffer; fileName: string }): Promise<{ data: Buffer; type: string; fileName: string }> {
-    const pdf = await this.asPdf(file.data, file.fileName);
-    if (!pdf) throw new ConflictException(PDF_NOT_SET_UP);
+  async forESignature(file: { data: Buffer; fileName: string; serial?: string | null }): Promise<{ data: Buffer; type: string; fileName: string }> {
+    const plain = await this.asPdf(file.data, file.fileName);
+    if (!plain) throw new ConflictException(PDF_NOT_SET_UP);
+    // a generated document's serial on every page (2 November 2026)
+    const pdf = file.serial ? await stampSerial(plain, file.serial) : plain;
     return { data: pdf, type: 'application/pdf', fileName: pdfName(file.fileName).replace(/\.pdf$/i, ' (for e-signature).pdf') };
   }
 

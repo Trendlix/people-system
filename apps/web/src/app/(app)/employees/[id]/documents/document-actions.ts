@@ -9,7 +9,7 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch, apiSend, apiUpload, messagesOf } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
 import { deleteRefusal } from '@/lib/session';
-import type { DocumentCheck, FormState } from '@/lib/types';
+import type { DocumentCheck, FormState, GeneratedDocument } from '@/lib/types';
 import { PAPERWORK_MAX_BYTES, TOO_LARGE } from '../../paperwork';
 import { isMissingRoute, missingLinks, NO_TEMPLATE, NOT_AVAILABLE_ACTION, type CheckResult, type GenerateResult } from './wording';
 
@@ -25,15 +25,16 @@ function messagesFor(err: ApiError): string[] {
 }
 
 /** Sends the request and shows the change in place (the profile is rendered again); `message` closes a small form. */
-async function act(request: () => Promise<unknown>, message: string): Promise<FormState> {
+async function act<T>(request: () => Promise<T>, message: string | ((answer: T) => string)): Promise<FormState> {
+  let answer: T;
   try {
-    await request();
+    answer = await request();
   } catch (err) {
     if (err instanceof ApiError) return { errors: messagesFor(err) };
     throw err;
   }
   refresh();
-  return { message };
+  return { message: typeof message === 'string' ? message : message(answer) };
 }
 
 /**
@@ -119,7 +120,11 @@ export async function uploadSignedCopy(documentId: string, _prev: FormState, fd:
   if (file.size > PAPERWORK_MAX_BYTES) return { errors: [TOO_LARGE] };
   const form = new FormData();
   form.append('file', file, file.name);
-  return act(() => apiUpload('POST', `/documents/${documentId}/signed`, form), 'Signed copy uploaded.');
+  // verified at once when its scan shows the document's serial (owner, 2 November 2026)
+  return act(
+    () => apiUpload<GeneratedDocument>('POST', `/documents/${documentId}/signed`, form),
+    (d) => (d?.status === 'verified' ? 'Signed copy uploaded and verified: its serial matches.' : d?.serialCheck === 'mismatch' ? 'Signed copy uploaded: its serial is another document’s.' : 'Signed copy uploaded.'),
+  );
 }
 
 /** HR checked the signed copy: complete, and signed by whoever signs it. */

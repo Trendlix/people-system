@@ -8,6 +8,7 @@ import { ASK_SUPER_ADMIN } from '../../../organization/templates/wording';
 import { contractHref, Loading, ProfileSection, todayInCairo } from '../../ui';
 import { ActionButton } from '../contracts/contract-buttons';
 import { loadDocuments } from './data';
+import { SERIAL_CHECK_LABELS, serialMismatchMessage } from '@trendlix/shared';
 import { checkDocument, deleteDocument, generateDocument, markPrinted, uploadSignedCopy, verifyDocument } from './document-actions';
 import { GenerateDocument, UploadSignedCopy } from './document-forms';
 import {
@@ -96,7 +97,19 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
           {/* the PDF it is given out as; the size of the Word file it is kept as would not be the PDF's */}
           <bdi>{pdfFileName(d.fileName)}</bdi> · template v{d.templateVersion}
         </span>
+        {/* its serial, printed on every page (owner, 2 November 2026) */}
+        {d.serial && <span className="font-mono text-xs font-semibold tabular-nums">{d.serial}</span>}
+        {d.serialCheck && d.serialCheck !== 'unchecked' && (
+          <span className={`badge ${d.serialCheck === 'match' ? 'bg-ok-soft text-ok' : d.serialCheck === 'mismatch' ? 'bg-danger-soft text-danger' : 'bg-warn-soft text-warn'}`}>
+            {SERIAL_CHECK_LABELS[d.serialCheck]}
+          </span>
+        )}
       </div>
+      {d.serialCheck === 'mismatch' && d.status === 'signed' && d.serial && (
+        <p role="alert" className="text-sm text-danger">
+          {serialMismatchMessage(d.serial, d.serialsFound ?? [])}
+        </p>
+      )}
       {typed && <p className="text-sm break-words">{typed}</p>}
       <Progress document={d} />
       {d.note && <p className="text-sm text-muted">{d.note}</p>}
@@ -144,7 +157,9 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
             action={verifyDocument.bind(null, d.id)}
             pendingText="Verifying…"
             variant="primary"
-            confirmText={`Verify the signed copy of ${what}?`}
+            confirmText={
+              d.serial && d.serialCheck !== 'match' ? `The serial ${d.serial} wasn’t read on the scan. Verify the signed copy of ${what} anyway?` : `Verify the signed copy of ${what}?`
+            }
           >
             Verify<span className="sr-only"> ({what})</span>
           </ActionButton>

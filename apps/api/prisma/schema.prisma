@@ -1839,6 +1839,13 @@ model GeneratedDocument {
   signedSize         Int?              @map("signed_size")
   signedData         Bytes?            @map("signed_data")
   note               String?
+  // its serial, printed on every page (owner, 2 November 2026: "print like a serial number on each document generated";
+  // packages/shared document-serials.ts); none on those generated before then
+  serial             String?           @unique
+  // the signed copy's scan read for it (OCR): match, mismatch, not_found, unchecked (SERIAL_CHECKS); the serials read
+  serialCheck        String?           @map("serial_check")
+  serialsFound       String[]          @default([]) @map("serials_found")
+  serialCheckedAt    DateTime?         @map("serial_checked_at") @db.Timestamptz
 
   @@index([employeeId, slotKey])
   @@map("generated_documents")

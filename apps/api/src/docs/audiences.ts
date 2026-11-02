@@ -123,6 +123,9 @@ export const APP_ENDPOINTS: readonly string[] = [
   // KPIs
   'GET /api/kpis/settings',
   'GET /api/kpis/counts',
+  // KPI Scoring Pending (2 November 2026)
+  'GET /api/kpis/reminder',
+  'POST /api/kpis/reminder/postpone',
   'GET /api/kpis/heatmap',
   'GET /api/kpis/scorecards',
   'GET /api/kpis/scorecards/mine',

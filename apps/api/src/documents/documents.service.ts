@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { advanceBalance, COMMISSION_SLOTS, LABELS, slotName, type AdjustmentStatus, type EmploymentType, type TemplateLanguage, type TemplateSlot } from '@trendlix/shared';
+import { advanceBalance, COMMISSION_SLOTS, LABELS, slotName, type AdjustmentStatus, type EmploymentType, type TemplateLanguage, type TemplateSlot, documentSerial, serialCheckOf, serialMismatchMessage, serialsIn, type SerialCheck } from '@trendlix/shared';
 import { ALLOWANCE_ORDER } from '../allowances/rows.js';
 import { AuditService } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
@@ -20,6 +20,7 @@ import { LeaveSettlementService } from '../leave/leave-settlement.service.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { detectPaperworkType, extensionOf, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, safeFileName, type PaperworkType } from '../paperwork/paperwork-file.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
+import { OcrClient } from '../paperwork/ocr.client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { isPdf } from '../pdf/pdf-file.js';
 import { DOCX_MIME } from '../templates/docx-tags.js';
@@ -230,6 +231,7 @@ export class DocumentsService {
     private readonly lawRates: LawRatesService,
     private readonly confidential: ConfidentialService,
     private readonly leave: LeaveSettlementService,
+    private readonly ocr: OcrClient,
   ) {}
 
   /** The Employment tab: the documents offered for the current employment (else the latest), in sections. */
@@ -346,6 +348,9 @@ export class DocumentsService {
     const data = await fillVersion(template, values);
     const fileName = filledFileName(documentStem(slot.name, ctx.employee.employeeCode, ctx.employee.fullNameEn), template.format);
     const hasRestricted = restricted.length > 0;
+    // its serial, printed on every page (owner, 2 November 2026: "print like a serial number on each document generated")
+    const [{ seq }] = await this.prisma.$queryRaw<{ seq: bigint }[]>`SELECT nextval('generated_document_serial_seq') AS seq`;
+    const serial = documentSerial(Number(todayInCairo().slice(0, 4)), Number(seq));
     const row = await this.prisma.generatedDocument.create({
       data: {
         employeeId,
@@ -363,6 +368,7 @@ export class DocumentsService {
         status: 'generated',
         generatedById: user.id,
         note: dto.note ?? null,
+        serial,
       },
       select: DOCUMENT,
     });
@@ -378,6 +384,7 @@ export class DocumentsService {
         contract: ctx.contract?.number ?? null,
         documentDate,
         fileName,
+        serial,
         sizeBytes: data.length,
         ...(typed.length && { inputs: row.inputs }),
       },
@@ -390,24 +397,24 @@ export class DocumentsService {
    * The filled .docx, or the PDF of a PDF form (given out only as a protected PDF: DocumentsController). A view of one
    * that prints restricted data is written to the audit log.
    */
-  async file(id: string, user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string }> {
+  async file(id: string, user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string; serial: string | null }> {
     const d = await this.prisma.generatedDocument.findUnique({
       where: { id },
-      select: { employeeId: true, slotKey: true, fileName: true, data: true, hasRestricted: true, templateVersion: { select: { tags: true } } },
+      select: { employeeId: true, slotKey: true, fileName: true, data: true, hasRestricted: true, serial: true, templateVersion: { select: { tags: true } } },
     });
     if (!d) throw new NotFoundException('Document not found.');
     if (d.hasRestricted) await this.viewed(id, d.employeeId, d.slotKey, this.restrictedOf(d.slotKey, d.templateVersion.tags), 'file', user);
-    return { data: Buffer.from(d.data), type: isPdf(d.data) ? 'application/pdf' : DOCX_MIME, fileName: d.fileName };
+    return { data: Buffer.from(d.data), type: isPdf(d.data) ? 'application/pdf' : DOCX_MIME, fileName: d.fileName, serial: d.serial };
   }
 
   /**
    * The filled .docx for an unprotected PDF to send for e-signature (HR only): every download is recorded, whatever the
    * document prints (owner, 15 October 2026: Adobe Sign refuses the protected PDF).
    */
-  async eSignatureFile(id: string, user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string }> {
+  async eSignatureFile(id: string, user: SessionUser): Promise<{ data: Buffer; type: string; fileName: string; serial: string | null }> {
     const d = await this.prisma.generatedDocument.findUnique({
       where: { id },
-      select: { employeeId: true, slotKey: true, fileName: true, data: true, templateVersion: { select: { tags: true } } },
+      select: { employeeId: true, slotKey: true, fileName: true, data: true, serial: true, templateVersion: { select: { tags: true } } },
     });
     if (!d) throw new NotFoundException('Document not found.');
     await this.audit.record({
@@ -417,7 +424,7 @@ export class DocumentsService {
       entityId: id,
       diff: { employeeId: d.employeeId, slot: d.slotKey, purpose: 'e-signature', fields: this.restrictedOf(d.slotKey, d.templateVersion.tags) },
     });
-    return { data: Buffer.from(d.data), type: isPdf(d.data) ? 'application/pdf' : DOCX_MIME, fileName: d.fileName };
+    return { data: Buffer.from(d.data), type: isPdf(d.data) ? 'application/pdf' : DOCX_MIME, fileName: d.fileName, serial: d.serial };
   }
 
   /** Generated → printed. */
@@ -442,10 +449,17 @@ export class DocumentsService {
     const { data, type } = checkedScan(file);
     const stem = before.fileName.replace(/\.(docx|pdf)$/i, '');
     const signedFileName = safeFileName(`${stem} (signed).${extensionOf(type)}`, type);
+    // the scan read for its serial (owner, 2 November 2026: "when uploaded verify the document from the OCR and the
+    // Serial Printed"): this document's, verified at once; another's, or none read, it waits for HR
+    const check = before.serial ? await this.serialOnScan(before.serial, data, type) : null;
+    const matched = check?.check === 'match';
+    const now = new Date();
     const { count } = await this.prisma.generatedDocument.updateMany({
       where: { id, status: { in: ['generated', 'printed', 'signed'] } },
       data: {
-        status: 'signed',
+        status: matched ? 'verified' : 'signed',
+        ...(matched && { verifiedById: user.id, verifiedAt: now }),
+        ...(check && { serialCheck: check.check, serialsFound: check.found, serialCheckedAt: now }),
         signedFileName,
         signedMime: type,
         signedSize: data.length,
@@ -468,9 +482,28 @@ export class DocumentsService {
         ...(before.status === 'signed' && { replaced: before.signedFileName }),
         signedFileName,
         signedSize: data.length,
+        ...(check && { serialCheck: check.check, ...(check.found.length && { serialsFound: check.found }) }),
       },
     });
+    // verified by its serial on the scan
+    if (matched) {
+      await this.audit.record({
+        userId: user.id,
+        action: 'verify',
+        entityType: ENTITY,
+        entityId: id,
+        diff: { employeeId: row.employeeId, slot: row.slotKey, status: { from: 'signed', to: 'verified' }, serial: before.serial, by: 'serial on the scan' },
+      });
+    }
     return documentView(row);
+  }
+
+  /** The serials the OCR reads on a scan, against the document's; unchecked when the OCR can't be had. */
+  private async serialOnScan(serial: string, data: Buffer, type: PaperworkType): Promise<{ check: SerialCheck; found: string[] }> {
+    const read = await this.ocr.read(data, type, 'en');
+    if (read.status !== 'done') return { check: 'unchecked', found: [] };
+    const found = serialsIn(read.text);
+    return { check: serialCheckOf(serial, found), found };
   }
 
   /** The scan of the signed copy. A view of one that prints restricted data is written to the audit log. */
@@ -495,6 +528,11 @@ export class DocumentsService {
 
   /** Signed → verified: HR checked the signed scan. */
   async verify(id: string, user: SessionUser) {
+    // the scan showed another document's serial (2 November 2026): never verified
+    const pending = await this.prisma.generatedDocument.findUnique({ where: { id }, select: { serial: true, serialCheck: true, serialsFound: true, status: true } });
+    if (pending?.status === 'signed' && pending.serial && pending.serialCheck === 'mismatch') {
+      throw new ConflictException(serialMismatchMessage(pending.serial, pending.serialsFound));
+    }
     const { count } = await this.prisma.generatedDocument.updateMany({
       where: { id, status: 'signed' },
       data: { status: 'verified', verifiedById: user.id, verifiedAt: new Date() },

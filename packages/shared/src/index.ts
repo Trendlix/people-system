@@ -694,3 +694,4 @@ export * from './attendance-records.js';
 export * from './audit-log.js';
 export * from './employee-bulk.js';
 export * from './location-pings.js';
+export * from './document-serials.js';

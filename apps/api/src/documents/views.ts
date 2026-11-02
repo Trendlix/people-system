@@ -1,3 +1,4 @@
+import type { SerialCheck } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 
@@ -35,6 +36,10 @@ export const DOCUMENT = {
   signedMime: true,
   signedSize: true,
   note: true,
+  serial: true,
+  serialCheck: true,
+  serialsFound: true,
+  serialCheckedAt: true,
 } satisfies Prisma.GeneratedDocumentSelect;
 
 export type DocumentRow = Prisma.GeneratedDocumentGetPayload<{ select: typeof DOCUMENT }>;
@@ -64,6 +69,11 @@ export function documentView(d: DocumentRow) {
     signedMime: d.signedMime,
     signedSize: d.signedSize,
     note: d.note,
+    // its serial, printed on every page, and what the signed copy's scan showed (2 November 2026); none before then
+    serial: d.serial,
+    serialCheck: (d.serialCheck as SerialCheck | null) ?? null,
+    serialsFound: d.serialsFound,
+    serialCheckedAt: d.serialCheckedAt,
   };
 }
 

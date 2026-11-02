@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { OffersModule } from '../offers/offers.module.js';
 import { DocumentsController, EmployeeDocumentsController } from './documents.controller.js';
 import { DocumentsService } from './documents.service.js';
+import { OcrClient } from '../paperwork/ocr.client.js';
 import { TemplatePreviewController } from './template-preview.controller.js';
 import { TemplatePreviewService } from './template-preview.service.js';
 
@@ -13,7 +14,8 @@ import { TemplatePreviewService } from './template-preview.service.js';
 @Module({
   imports: [OffersModule],
   controllers: [EmployeeDocumentsController, DocumentsController, TemplatePreviewController],
-  providers: [DocumentsService, TemplatePreviewService],
+  // the OCR service reads a signed copy's serial (2 November 2026)
+  providers: [DocumentsService, TemplatePreviewService, OcrClient],
   // a resignation request's letter, filled in by DocumentsService (owner, 31 October 2026)
   exports: [DocumentsService],
 })

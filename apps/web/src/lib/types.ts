@@ -1,5 +1,6 @@
 import type {
   AccessStanding,
+  SerialCheck,
   AccessState,
   AllowanceBasis,
   ApproverRole,
@@ -1536,6 +1537,11 @@ export interface GeneratedDocument {
   /** It holds restricted data (national ID, salary, bank). */
   hasRestricted?: boolean;
   note: string | null;
+  /** Its serial, printed on every page (2 November 2026); none on those generated before, and from an older API. */
+  serial?: string | null;
+  /** What the signed copy's scan showed: this document's serial, another's, none read, or not read (no OCR). */
+  serialCheck?: SerialCheck | null;
+  serialsFound?: string[];
 }
 
 /**

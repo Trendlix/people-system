@@ -1,6 +1,6 @@
 import { PDFDocument } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
-import { arabicNumberText, toArabicDigits } from '@trendlix/shared';
+import { arabicNumberText, serialMismatchMessage, toArabicDigits, validSerial } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import type { MockInstance } from 'vitest';
@@ -9,6 +9,7 @@ import { arabicAmountInWords } from '../src/documents/engine/index.js';
 import { printedMoney } from '../src/documents/format.js';
 import { MASK } from '../src/documents/preview.js';
 import { printedDayCount } from '../src/documents/settlement-values.js';
+import { OcrClient } from '../src/paperwork/ocr.client.js';
 import { PdfService } from '../src/pdf/pdf.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { paragraphTexts, readDocx, textParts } from '../src/templates/docx-tags.js';
@@ -457,6 +458,49 @@ describe('Documents (e2e)', () => {
       ]);
       // the signed copy prints the national ID and the salary: viewing it is a restricted view
       expect(audit.filter((a) => a.action === 'view_restricted').map((a) => (a.diff as { seen: string }).seen)).toEqual(['generated', 'file', 'signed copy']);
+    });
+
+    // owner, 2 November 2026: "print like a serial number on each document generated (Contract - NDA - etc..) and when
+    // uploaded verify the document from the OCR and the Serial Printed"
+    it('gives each document a serial, prints it on the PDF, and verifies a signed copy by the serial its scan shows', async () => {
+      const a = (await generate(ft.id, { slotKey: 'hr_letter_en', inputs: { letter_to: 'QNB', letter_purpose: 'a loan' } }).expect(201)).body;
+      const b = (await generate(ft.id, { slotKey: 'hr_letter_en', inputs: { letter_to: 'HSBC', letter_purpose: 'an account' } }).expect(201)).body;
+      expect(validSerial(a.serial)).toBe(true);
+      expect(validSerial(b.serial)).toBe(true);
+      expect(b.serial).not.toBe(a.serial);
+      expect(a).toMatchObject({ serialCheck: null, serialsFound: [] });
+
+      // printed on the PDF it leaves as
+      const protect = vi.spyOn(app.get(PdfService), 'protectedFile');
+      await fileOf(a.id).expect(200);
+      expect(protect).toHaveBeenLastCalledWith(expect.objectContaining({ serial: a.serial }));
+      protect.mockRestore();
+
+      const read = vi.spyOn(OcrClient.prototype, 'read');
+      const scanSays = (text: string) => read.mockResolvedValueOnce({ status: 'done', text, lines: text.split('\n'), pages: [] });
+      try {
+        // another document's serial: signed, and verifying refused
+        scanSays(`To QNB\n${b.serial}   ·   1/1`);
+        expect((await sign(a.id, PDF, 'scan.pdf').expect(200)).body).toMatchObject({ status: 'signed', serialCheck: 'mismatch', serialsFound: [b.serial] });
+        expect((await step(a.id, 'verify').expect(409)).body.message).toBe(serialMismatchMessage(a.serial, [b.serial]));
+
+        // none read: HR verifies by eye, as before
+        scanSays('To HSBC, for an account');
+        expect((await sign(b.id, PDF, 'scan.pdf').expect(200)).body).toMatchObject({ status: 'signed', serialCheck: 'not_found', serialsFound: [] });
+        await step(b.id, 'verify').expect(200);
+
+        // this document's, as OCR misreads it a little: verified at once, by the one who uploaded it
+        scanSays(`${a.serial.replace('DOC', 'D0C').replace(/-/g, ' - ')}   ·   1/1`);
+        expect((await sign(a.id, PNG, 'photo.png').expect(200)).body).toMatchObject({
+          status: 'verified',
+          serialCheck: 'match',
+          serialsFound: [a.serial],
+          verifiedBy: { email: hrEmail },
+        });
+        expect((await auditOf(a.id)).at(-1)).toMatchObject({ action: 'verify', diff: { status: { from: 'signed', to: 'verified' }, serial: a.serial, by: 'serial on the scan' } });
+      } finally {
+        read.mockRestore();
+      }
     });
 
     it('a signed copy may be uploaded straight after generating; the signed file is not found before it', async () => {
