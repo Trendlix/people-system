@@ -337,7 +337,8 @@ describe('Payroll (e2e)', () => {
         paidDays: 30,
         statutory: true,
         insured: true,
-        insuredWage: 13000, // the gross and the allowances, as the Social Insurance tab shows it
+        insuredWage: 13000, // the salary: the gross and the allowances, within the limits (2 November 2026)
+        registeredInsuredWage: 13000, // the Social Insurance tab's, for the Payroll vs Social Insurance report only
         hoursPerDay: 9, // the shift's 09:00 to 18:00: what a no-show day takes out of the expected hours
         // the shift's working days in the month, no holidays: the expected hours, never typed (Payroll Setup; 20 October 2026)
         expectedHours: SHIFT_A_HOURS,

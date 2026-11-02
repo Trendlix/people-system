@@ -86,10 +86,12 @@ describe('a month after a raise', () => {
     expect(lineOf('2027-01', n).terms.insuredWage).toBe(insured(14500, '2027-01'));
   });
 
-  it('the employee’s own comprehensive wage (Social Insurance tab) stands, raise or not', () => {
-    const own = employment([before, amendment], 11000);
-    expect(lineOf('2026-11', own).terms).toMatchObject({ insuredWage: insured(11000, '2026-11') });
-    expect(lineOf('2026-11', own).terms.insuredWageAsBefore).toBeUndefined();
+  // owner, 2 November 2026: "in the payroll dont use this section", the Social Insurance tab's wages
+  it('the Social Insurance tab’s comprehensive wage is never payroll’s: the salary’s rule stands', () => {
+    const own = lineOf('2026-11', employment([before, amendment], 11000)).terms;
+    const plain = lineOf('2026-11', employment([before, amendment])).terms;
+    expect({ insuredWage: own.insuredWage, asBefore: own.insuredWageAsBefore }).toEqual({ insuredWage: plain.insuredWage, asBefore: plain.insuredWageAsBefore });
+    expect(own.insuredWageAsBefore).toBe('2027-01-01');
   });
 
   it('a raise from 1 January is insured at once', () => {

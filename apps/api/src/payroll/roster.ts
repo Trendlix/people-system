@@ -382,9 +382,13 @@ export function roster(
         // system dont connect them togeather"): the Social Insurance tab and its forms still say who is registered
         insured: p.socialInsured || (insuresEveryone(rules) && underLabourLaw(e.employmentType)),
         ...(!p.socialInsured && insuresEveryone(rules) && underLabourLaw(e.employmentType) && { notRegistered: true }),
-        // as the Social Insurance tab shows it, for the run's year (its rates set by law)
-        insuredWage: insuredWageOfEmployee(p.insuranceComprehensiveWage, contractTotal, law)!.amount,
-        ...(insuredOn !== contract && p.insuranceComprehensiveWage === null && { insuredWageAsBefore: contract.insuredWageFrom }),
+        // from the salary only (owner, 2 November 2026: "in the payroll dont use this section", the Social Insurance tab's
+        // wages; "only use this section", the Salary): the contract's gross and allowances within the run's year's
+        // insurable limits; the tab's registered wages are the Social Insurance report's, apart from payroll
+        insuredWage: insuredWageOfEmployee(null, contractTotal, law)!.amount,
+        // the Social Insurance tab's, for the Payroll vs Social Insurance report only
+        registeredInsuredWage: insuredWageOfEmployee(p.insuranceComprehensiveWage, contractTotal, law)!.amount,
+        ...(insuredOn !== contract && { insuredWageAsBefore: contract.insuredWageFrom }),
         hoursPerDay,
         ...shiftExpected(month, e, parts, contract.payBasis, hoursPerDay, holidays),
         ...(leavingOn && { leavingOn }),

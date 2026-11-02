@@ -224,17 +224,22 @@ describe('Payroll vs Social Insurance report (e2e)', () => {
       expect(row).toMatchObject({ standing: 'registered', department: `Insurance Report ${RUN} › Field`, payBasis: 'monthly', onHold: false });
       const employeeSi = piasters(REGISTERED_WAGE * employeeRate);
       const employerSi = piasters(REGISTERED_WAGE * employerRate);
+      // payroll insures the salary (owner, 2 November 2026: "in the payroll dont use this section"), within the limits
+      const law = r.runs[0].law;
+      const salaryWage = Math.min(Math.max(GROSS + ALLOWANCE, law.insurableWageMin), law.insurableWageMax);
+      const paidEmployeeSi = piasters(salaryWage * employeeRate);
+      const paidEmployerSi = piasters(salaryWage * employerRate);
       expect(row.actual).toMatchObject({
         gross: GROSS,
         earned: GROSS,
         allowances: ALLOWANCE,
-        insuredWage: REGISTERED_WAGE,
-        employeeInsurance: employeeSi,
-        employerInsurance: employerSi,
-        monthlyTaxable: GROSS + ALLOWANCE - employeeSi,
+        insuredWage: salaryWage,
+        employeeInsurance: paidEmployeeSi,
+        employerInsurance: paidEmployerSi,
+        monthlyTaxable: GROSS + ALLOWANCE - paidEmployeeSi,
         paidDays: 30,
       });
-      expect(row.actual.companyCost).toBe(GROSS + ALLOWANCE + employerSi);
+      expect(row.actual.companyCost).toBe(GROSS + ALLOWANCE + paidEmployerSi);
       expect(row.insurance).toMatchObject({
         gross: REGISTERED_WAGE,
         earned: REGISTERED_WAGE,
@@ -248,12 +253,12 @@ describe('Payroll vs Social Insurance report (e2e)', () => {
       expect(row.insurance!.companyCost).toBe(REGISTERED_WAGE + employerSi);
       expect(row.insurance!.monthlyTax).toBeLessThan(row.actual.monthlyTax);
       expect(row.difference).toEqual({
-        employeeInsurance: 0,
-        employerInsurance: 0,
+        employeeInsurance: piasters(employeeSi - paidEmployeeSi),
+        employerInsurance: piasters(employerSi - paidEmployerSi),
         monthlyTax: piasters(row.insurance!.monthlyTax - row.actual.monthlyTax),
         martyrsFund: piasters(row.insurance!.martyrsFund - row.actual.martyrsFund),
         net: piasters(row.insurance!.net - row.actual.net),
-        companyCost: -(GROSS + ALLOWANCE - REGISTERED_WAGE),
+        companyCost: piasters(REGISTERED_WAGE + employerSi - (GROSS + ALLOWANCE + paidEmployerSi)),
       });
       expect(row.difference!.monthlyTax).toBeLessThan(0);
       expect(row.difference!.net).toBeLessThan(0);
@@ -334,7 +339,7 @@ describe('Payroll vs Social Insurance report (e2e)', () => {
       expect(ranaRow.slice(2, 7)).toEqual([`Insurance Report ${RUN}`, 'Field', expect.any(String), 'Paid', 'Registered']);
       expect(ranaRow[7]).toBe(GROSS);
       expect(ranaRow[19]).toBe(REGISTERED_WAGE);
-      expect(ranaRow[36]).toBe(-(GROSS + ALLOWANCE - REGISTERED_WAGE));
+      expect(ranaRow[36]).toBe(rowOf(json, rana)!.difference!.companyCost);
       const nourRow = rows.find((r) => r[0] === nour.employeeCode)!;
       expect(nourRow[6]).toBe('Counted as insured (not registered)');
       expect(nourRow[19]).toBeUndefined();

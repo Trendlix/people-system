@@ -273,8 +273,18 @@ export interface PayrollTerms {
   insured: boolean;
   /** Counted as insured though not registered yet (owner, 26 October 2026): set only when the rules insure everyone. */
   notRegistered?: boolean;
-  /** The insured wage, as the Social Insurance tab and Form 1 show it. */
+  /**
+   * The insured wage payroll deducts on: the salary's (the contract's gross and allowances) within the year's insurable
+   * limits (owner, 2 November 2026: "in the payroll dont use this section", the Social Insurance tab's wages; "only use
+   * this section", the Salary). On lines made before then, the Social Insurance tab's, as they were.
+   */
   insuredWage: number;
+  /**
+   * The insured wage registered on the Social Insurance tab (its comprehensive wage, else the contract's, within the
+   * limits), for the Payroll vs Social Insurance report's SI cycle only, never deducted on ("dedicated from the payroll",
+   * 2 November 2026). Missing on lines made before then: their insuredWage is it.
+   */
+  registeredInsuredWage?: number;
   /**
    * After a raise (owner's decision, 16 October 2026: "From the next January unless amended in Form 2"): the insured
    * wage is the one before the raise until this date (YYYY-MM-DD: the next 1 January, or the Form 2 date), so it says

@@ -7,7 +7,8 @@
 //   the net and the company cost), read from the run's stored result, never worked out again;
 // - B, the social insurance cycle: the same month worked out by the SAME engine (payroll.ts payrollLine, with the run's
 //   own copied rules and rates set by law) with the gross = the social insurance gross: the registered insured wage the
-//   run took from the Social Insurance tab (PayrollTerms.insuredWage), the same basic percent, no allowances, the same
+//   run took from the Social Insurance tab (PayrollTerms.registeredInsuredWage; on older lines insuredWage, which was
+//   it), the same basic percent, no allowances, the same
 //   days paid, the same attendance, no-show and leave inputs, the same days-based additions and deductions (bonus and
 //   penalty days) and the same deductions, and NO amount-based additions;
 // - the differences, B − A, for the employee's and the company's insurance, the tax, the Fund, the net and the company cost.
@@ -144,7 +145,8 @@ export function vsInsuranceStanding(terms: Pick<PayrollTerms, 'statutory' | 'ins
  * pay of the registered wage and are left out. Client accounts held without an allowance are no longer a warning.
  */
 export function vsInsuranceTerms(terms: PayrollTerms): PayrollTerms {
-  const wage = terms.insuredWage;
+  // the wage registered on the Social Insurance tab, kept apart from payroll's since 2 November 2026; before, the same
+  const wage = terms.registeredInsuredWage ?? terms.insuredWage;
   const segment = (s: PayrollSegment): PayrollSegment => ({ ...s, payBasis: 'monthly', gross: wage, hourlyRate: null, allowances: [] });
   const rest: PayrollTerms = { ...terms };
   delete rest.notRegistered;
@@ -350,7 +352,7 @@ const byName = (a: string, b: string) => a.localeCompare(b, 'en', { sensitivity:
 export function vsInsuranceRow(run: Pick<VsInsuranceSourceRun, 'id' | 'month' | 'status' | 'rules' | 'law'>, line: VsInsuranceSourceLine): VsInsuranceRow {
   const standing = vsInsuranceStanding(line.terms);
   const actual = vsInsuranceCycleOf(line.result, line.terms, line.terms.gross);
-  const insurance = standing === 'registered' ? vsInsuranceCycleOf(vsInsuranceCycle(line, run.rules, run.law), line.terms, line.terms.insuredWage) : null;
+  const insurance = standing === 'registered' ? vsInsuranceCycleOf(vsInsuranceCycle(line, run.rules, run.law), line.terms, line.terms.registeredInsuredWage ?? line.terms.insuredWage) : null;
   return {
     lineId: line.id,
     runId: run.id,

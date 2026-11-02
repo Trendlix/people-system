@@ -70,6 +70,8 @@ describe('roster', () => {
           insured: true,
           // the comprehensive wage (gross and allowances) within 2026's limits
           insuredWage: 13000,
+          // the Social Insurance tab's, for the Payroll vs Social Insurance report only (2 November 2026)
+          registeredInsuredWage: 13000,
           // the shift's 09:00 to 18:00
           hoursPerDay: 9,
           // September 2026 has 22 Sundays to Thursdays, no holidays given: 22 days of 9 hours
@@ -96,12 +98,17 @@ describe('roster', () => {
     ]);
   });
 
-  it('uses the employee’s own comprehensive wage, capped at the year’s maximum; freelancers are not statutory', () => {
+  // owner, 2 November 2026: "in the payroll dont use this section" (the Social Insurance tab's wages), "only use this
+  // section" (the Salary)
+  it('takes the insured wage from the salary only, capped at the year’s maximum, never the Social Insurance tab’s; freelancers are not statutory', () => {
     const own = employment({}, { insuranceComprehensiveWage: 30000, socialInsured: false });
+    const plain = employment({}, { fullNameEn: 'B Person' });
+    const high = employment({ contracts: [contract({ grossSalary: 25500 })] }, { fullNameEn: 'C Person' });
     const freelance = employment({ employmentType: 'freelance' });
-    const { lines } = roster('2026-09', [own, freelance], rules);
+    const { lines } = roster('2026-09', [own, plain, high, freelance], rules);
     const terms = (id: string) => lines.find((l) => l.employeeId === id)!.terms;
-    expect(terms(own.employee.id)).toMatchObject({ insuredWage: 16700, insured: false, statutory: true });
+    expect(terms(own.employee.id)).toMatchObject({ insuredWage: terms(plain.employee.id).insuredWage, insured: false, statutory: true });
+    expect(terms(high.employee.id).insuredWage).toBe(16700);
     expect(terms(freelance.employee.id)).toMatchObject({ statutory: false });
   });
 
