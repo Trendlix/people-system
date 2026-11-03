@@ -81,7 +81,7 @@ export const trendByQuarter = (range: { from: string; to: string }): boolean => 
 // ---------- a day ----------
 
 /** What a day was, as the log shows it (the brief: "Office / WFH / OD / Leave / Absent / Holiday"). */
-export const HISTORY_MODES = ['office', 'remote', 'wfh', 'od', 'exempt', 'compensatory', 'leave', 'absent', 'holiday', 'rest', 'no_check_in', 'zoho_leave'] as const;
+export const HISTORY_MODES = ['office', 'remote', 'wfh', 'od', 'exempt', 'compensatory', 'leave', 'absent', 'holiday', 'rest', 'day_off', 'not_counted', 'no_check_in', 'zoho_leave'] as const;
 export type HistoryMode = (typeof HISTORY_MODES)[number];
 
 export const HISTORY_MODE_LABELS: Record<HistoryMode, string> = {
@@ -95,6 +95,9 @@ export const HISTORY_MODE_LABELS: Record<HistoryMode, string> = {
   absent: 'Absent',
   holiday: 'Holiday',
   rest: 'Rest day',
+  // as the person's month says them (owner, 3 November 2026: "still showing rest days on all day per week")
+  day_off: 'Day off (any days a week)',
+  not_counted: 'Not counted (freelance)',
   no_check_in: 'Present, no check-in',
   zoho_leave: 'Leave in Zoho only',
 };
@@ -112,7 +115,7 @@ export const isHistoryFilter = (v: unknown): v is HistoryFilter => (HISTORY_FILT
 
 /** A day as the history reads it: the attendance's day, and what the API knows of it besides. */
 export type HistoryDayInput = Pick<AttendanceDayView, 'date' | 'status' | 'checkIn' | 'checkOut' | 'place' | 'hoursCounted' | 'extraHours' | 'od' | 'correctionId'> &
-  Partial<Pick<AttendanceDayView, 'pairs' | 'openAt' | 'breakMinutes' | 'exempt' | 'compensatory' | 'wfhDay' | 'permissionHours'>> & {
+  Partial<Pick<AttendanceDayView, 'pairs' | 'openAt' | 'breakMinutes' | 'exempt' | 'compensatory' | 'wfhDay' | 'permissionHours' | 'flexOff' | 'notCounted'>> & {
   source: AttendanceSource;
   /** A work from home day approved for them (wfh.ts). */
   wfh: boolean;
@@ -189,7 +192,9 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
   const firstDay = worked && countedFromShiftStart(d);
   let mode: HistoryMode;
   if (worked) mode = d.od ? 'od' : exempt && d.compensatory ? 'compensatory' : exempt ? 'exempt' : d.wfh || d.wfhDay || d.place === 'home' ? 'wfh' : d.place === 'remote' ? 'remote' : 'office';
-  else mode = d.status as HistoryMode;
+  // a day a flexible days shift's week didn't need, and a freelancer's day not counted, as the month says them: never
+  // "Rest day" on a shift that works every day (owner, 3 November 2026: "still showing rest days on all day per week")
+  else mode = d.status === 'rest' && d.flexOff ? 'day_off' : d.status === 'rest' && d.notCounted ? 'not_counted' : (d.status as HistoryMode);
   const midnight = zonedMoment(d.date, '00:00');
   // an exempt day's presses are for reference only (25 October 2026): not in the check-in times; nor a first day's
   // check-in (27 October 2026), the day counted from the shift's start

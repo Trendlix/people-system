@@ -3,6 +3,7 @@ import {
   weekStartOf,
   checkInBins,
   clockText,
+  HISTORY_MODE_LABELS,
   HISTORY_SOURCE_LABELS,
   historyDay,
   historyFigures,
@@ -121,6 +122,16 @@ describe('a day of the history', () => {
     expect(under('leave')).toEqual(['2026-11-08', '2026-11-12']);
     expect(under('absent')).toEqual(['2026-11-05']);
     expect(under(null)).toHaveLength(12);
+  });
+});
+
+// owner, 3 November 2026: "still showing rest days on all day per week"
+describe('a day a flexible week didn’t need, and a freelancer’s day not counted', () => {
+  it('says them as the person’s month does, never “Rest day”', () => {
+    expect(historyDay(input('2026-11-06', { status: 'rest', place: null, flexOff: true }))).toMatchObject({ mode: 'day_off', expected: false });
+    expect(historyDay(input('2026-11-06', { status: 'rest', place: null, notCounted: true }))).toMatchObject({ mode: 'not_counted', expected: false });
+    expect(historyDay(input('2026-11-06', { status: 'rest', place: null }))).toMatchObject({ mode: 'rest' });
+    expect([HISTORY_MODE_LABELS.day_off, HISTORY_MODE_LABELS.not_counted]).toEqual(['Day off (any days a week)', 'Not counted (freelance)']);
   });
 });
 
