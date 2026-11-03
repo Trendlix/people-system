@@ -48,6 +48,17 @@ export function hoursToWorkFrom(typed: string): number | null {
   return hours !== null && hours >= 0.5 && hours <= 24 && Number.isInteger(hours * 2) ? hours : NaN;
 }
 
+/**
+ * A freelancer's long day hours as typed (owner, 3 November 2026: "if more than N Hours Count as Y Hours"): "10", "10:30"
+ * or "10.5", in half hours up to 48 (what they count as may pass a day); empty: null; anything else: NaN.
+ */
+export function longDayHoursFrom(typed: string): number | null {
+  const latin = typed.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/٫/g, '.').trim();
+  if (latin === '') return null;
+  const hours = parseHours(latin);
+  return hours !== null && hours >= 0.5 && hours <= 48 && Number.isInteger(hours * 2) ? hours : NaN;
+}
+
 /** What the shift form's hint says about a shift as typed. */
 export interface ShiftHint {
   /** True when the hours to work are more than the window, or hours count until a time before the end: what the API will refuse. */

@@ -408,6 +408,29 @@ describe('Attendance corrections (e2e)', () => {
     });
   });
 
+  // owner, 3 November 2026: "if more than N Hours Count as Y Hours", "Freelancers only", switched on or off per shift
+  describe('a freelancer’s long day', () => {
+    it('counts as the shift says while it is on, marked; off, as it was counted', async () => {
+      const date = work[PAST][10];
+      await prisma.attendanceDay.create({ data: kept('fay', date, 'zoho', 'worked', { in: '08:00', out: '20:30', hours: 12 }) });
+      const fayDay = async () => (await personMonth('fay', PAST)).person.days.find((d) => d.date === date) as PersonView['person']['days'][number] & { longDay?: boolean };
+      try {
+        await prisma.shift.update({ where: { id: shiftId }, data: { longDayOn: true, longDayOverHours: 10, longDayCountsAs: 14 } });
+        expect(await fayDay()).toMatchObject({ hoursCounted: 14, longDay: true });
+        // an employee on the same shift: as counted
+        await prisma.attendanceDay.create({ data: kept('zed', date, 'zoho', 'worked', { in: '08:00', out: '20:30', hours: 12 }) });
+        const zed = (await personMonth('zed', PAST)).person.days.find((d) => d.date === date) as { hoursCounted: number; longDay?: boolean };
+        expect(zed.hoursCounted).toBe(12);
+        expect(zed.longDay).toBeUndefined();
+        await prisma.shift.update({ where: { id: shiftId }, data: { longDayOn: false } });
+        expect(await fayDay()).toMatchObject({ hoursCounted: 12 });
+      } finally {
+        await prisma.shift.update({ where: { id: shiftId }, data: { longDayOn: false, longDayOverHours: null, longDayCountsAs: null } });
+        await prisma.attendanceDay.deleteMany({ where: { employeeId: { in: [ids.fay, ids.zed] }, date: toDateOnly(date) } });
+      }
+    });
+  });
+
   describe('the month’s payroll', () => {
     it('can be asked for while the month’s payroll is with the CEO, never applied then', async () => {
       const res = (await ask('zed', { date: work[WITH_CEO][0], kind: 'forgot_check_in', checkIn: '09:00', checkOut: '17:00', reason: 'Forgot' }).expect(201)).body as Correction;

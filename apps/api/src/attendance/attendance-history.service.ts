@@ -13,6 +13,7 @@ import {
   flexibleWeeks,
   flexWeekStart,
   freelanceDays,
+  type LongDayRule,
   HISTORY_FIGURE_DEFINITIONS,
   HISTORY_MODE_LABELS,
   HISTORY_PERIOD_LABELS,
@@ -58,7 +59,7 @@ import { exemptionsOf } from './exemption-days.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { approvedWfhDays } from '../wfh/wfh-days.js';
-import { DAY_SELECT, EMPLOYMENT_SELECT, monthDayOf, shiftTimesOf } from './attendance-days.service.js';
+import { DAY_SELECT, EMPLOYMENT_SELECT, longDayOfShift, monthDayOf, shiftTimesOf } from './attendance-days.service.js';
 import type { AttendanceHistoryQueryDto } from './attendance-history.dto.js';
 import { cairoTime } from './attendance-workbook.js';
 import { dayChoicesOf } from './record-removals.js';
@@ -266,6 +267,8 @@ export class AttendanceHistoryService {
         employedFrom: string;
         employedTo: string | null;
         freelance: boolean;
+        /** A freelancer's long day on the shift (3 November 2026). */
+        longDay: LongDayRule | null;
         days: SourcedDay[];
       }
     >();
@@ -308,7 +311,7 @@ export class AttendanceHistoryService {
         const days = comp
           ? compensatoryDays(exempt, { month, today, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, hoursOff: comp.hoursOff, daysWorked: comp.daysWorked })
           : exempt;
-        const part = made.get(e.id) ?? { shift, workingDays, hoursADay, employedFrom, employedTo, freelance: e.employmentType === 'freelance', days: [] };
+        const part = made.get(e.id) ?? { shift, workingDays, hoursADay, employedFrom, employedTo, freelance: e.employmentType === 'freelance', longDay: longDayOfShift(e.shift), days: [] };
         part.days.push(...days);
         made.set(e.id, part);
       }
@@ -317,7 +320,7 @@ export class AttendanceHistoryService {
       // a flexible days shift's absent days its weeks didn't need are days off (31 October 2026)
       // and a freelancer's are never absent (31 October 2026)
       const days = m.freelance
-        ? freelanceDays(m.days)
+        ? freelanceDays(m.days, m.longDay)
         : m.shift && isFlexibleDays(m.shift)
           ? flexibleWeeks(m.days, { shift: m.shift, holidays: holidayDays, employedFrom: m.employedFrom, employedTo: m.employedTo, today })
           : m.days;

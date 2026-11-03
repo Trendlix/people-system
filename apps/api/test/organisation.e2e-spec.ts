@@ -8,6 +8,7 @@ import { createApp, createUser, signIn } from './helpers.js';
 const NOT_A_TEAM = '00000000-0000-4000-8000-000000000000'; // neither a department nor a team
 const RUN = Date.now().toString(36).toUpperCase();
 const name = (base: string) => `${base} ${RUN}`;
+const said = (res: { body: { message: string | string[] } }) => ([] as string[]).concat(res.body.message);
 
 describe('Organisation (e2e)', () => {
   let app: INestApplication<App>;
@@ -755,6 +756,29 @@ describe('Organisation (e2e)', () => {
       expect(audit.slice(1).map((a) => a.diff)).toEqual([{ workingDays: { from: [0, 1, 2, 3, 4], to: [0, 2, 4] }, daysPerWeek: { from: 3, to: 2 } }, { daysPerWeek: { from: 2, to: null } }]);
       // the database keeps them fewer than the working days too
       await expect(prisma.$executeRaw`UPDATE shifts SET days_per_week = 3 WHERE id = ${created.id}::uuid`).rejects.toThrow(/shifts_days_per_week_check/);
+      await prisma.shift.delete({ where: { id: created.id } });
+    });
+
+    // owner, 3 November 2026: "if more than N Hours Count as Y Hours", "this rule may be enables or disabled in a specific shift"
+    it('takes a freelancers’ long day, switched on or off, its hours kept while off, audited', async () => {
+      const code = `L${RUN.slice(-6)}`;
+      const post = (body: object) => api().post('/api/shifts').set('Cookie', session).send({ code, startTime: '08:00', endTime: '20:00', hoursPerDay: 9, ...body });
+      expect(said(await post({ longDayOn: true }).expect(400))).toEqual(['Freelancers’ long day: give the hours and what they count as, or switch it off.']);
+      expect(said(await post({ longDayOn: true, longDayOverHours: 10, longDayCountsAs: 9 }).expect(400))).toEqual(['Freelancers’ long day: it must count as more hours than it takes.']);
+      const created = (await post({}).expect(201)).body as { id: string };
+      expect(created).toMatchObject({ longDayOn: false, longDayOverHours: null, longDayCountsAs: null });
+      const patch = (body: object) => api().patch(`/api/shifts/${created.id}`).set('Cookie', session).send(body);
+      expect((await patch({ longDayOn: true, longDayOverHours: 10, longDayCountsAs: 14 }).expect(200)).body).toMatchObject({ longDayOn: true, longDayOverHours: 10, longDayCountsAs: 14 });
+      // switched off: its hours kept, to switch it on again
+      expect((await patch({ longDayOn: false }).expect(200)).body).toMatchObject({ longDayOn: false, longDayOverHours: 10, longDayCountsAs: 14 });
+      expect(said(await patch({ longDayOn: true, longDayOverHours: null }).expect(400))).toEqual(['Freelancers’ long day: give both the hours and what they count as, or leave both empty.']);
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'shift', entityId: created.id }, orderBy: { id: 'asc' } });
+      expect(audit.slice(1).map((a) => a.diff)).toEqual([
+        { longDayOn: { from: false, to: true }, longDayOverHours: { from: null, to: 10 }, longDayCountsAs: { from: null, to: 14 } },
+        { longDayOn: { from: true, to: false } },
+      ]);
+      // the database keeps them together, counting as more
+      await expect(prisma.$executeRaw`UPDATE shifts SET long_day_counts_as = 8 WHERE id = ${created.id}::uuid`).rejects.toThrow(/shifts_long_day_check/);
       await prisma.shift.delete({ where: { id: created.id } });
     });
 

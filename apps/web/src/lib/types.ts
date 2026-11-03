@@ -250,6 +250,13 @@ export interface Shift {
   workingDays: number[];
   /** Flexible days (owner, 31 October 2026): any this many of the working days a week; null or missing: every one. */
   daysPerWeek?: number | null;
+  /**
+   * A freelancer's long day (owner, 3 November 2026: "if more than N Hours Count as Y Hours", switched on or off per
+   * shift): more than `longDayOverHours` counted counts as `longDayCountsAs`. Missing from an API before it.
+   */
+  longDayOn?: boolean;
+  longDayOverHours?: number | null;
+  longDayCountsAs?: number | null;
 }
 
 export interface Company {

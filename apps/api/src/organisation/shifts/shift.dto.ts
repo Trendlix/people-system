@@ -1,6 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { Transform } from 'class-transformer';
-import { ArrayMinSize, ArrayUnique, IsArray, IsInt, IsNumber, IsOptional, Matches, Max, Min, ValidateBy } from 'class-validator';
+import { ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, Matches, Max, Min, ValidateBy } from 'class-validator';
 import { TIME_OF_DAY } from '../../common/time-of-day.js';
 
 const Code = () => Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value));
@@ -36,6 +36,14 @@ const HoursToWork = () =>
     Max(24, { message: HOURS_MESSAGE }),
     ValidateBy({ name: 'halfHours', validator: { validate: (v: unknown) => typeof v === 'number' && Number.isInteger(v * 2), defaultMessage: () => HOURS_MESSAGE } }),
   );
+
+/**
+ * A freelancer's long day (owner, 3 November 2026: "if more than N Hours Count as Y Hours", "this rule may be enables or
+ * disabled in a specific shift"): the switch, and the two hours (null clears them). Checked together by the service
+ * (packages/shared longDayProblems), as they will be.
+ */
+const LongDayHours = () => applyDecorators(IsOptional(), IsNumber({ allowNaN: false, allowInfinity: false }, { message: 'Freelancers’ long day: give the hours as a number, e.g. 10.' }));
+const LongDayOn = () => applyDecorators(IsOptional(), IsBoolean({ message: 'Freelancers’ long day: say whether it is on.' }));
 
 export class CreateShiftDto {
   @Code()
@@ -75,6 +83,18 @@ export class CreateShiftDto {
   /** Any this many of the working days a week (31 October 2026); null or not sent: every working day. */
   @DaysAWeek()
   daysPerWeek?: number | null;
+
+  /** A freelancer's long day switched on (3 November 2026); not sent: off, or as it is. */
+  @LongDayOn()
+  longDayOn?: boolean;
+
+  /** More than these hours a day … (null clears them). */
+  @LongDayHours()
+  longDayOverHours?: number | null;
+
+  /** … count as these (null clears them). */
+  @LongDayHours()
+  longDayCountsAs?: number | null;
 }
 
 export class UpdateShiftDto {
@@ -117,4 +137,16 @@ export class UpdateShiftDto {
   /** Any this many of the working days a week (31 October 2026); null or not sent: every working day. */
   @DaysAWeek()
   daysPerWeek?: number | null;
+
+  /** A freelancer's long day switched on (3 November 2026); not sent: off, or as it is. */
+  @LongDayOn()
+  longDayOn?: boolean;
+
+  /** More than these hours a day … (null clears them). */
+  @LongDayHours()
+  longDayOverHours?: number | null;
+
+  /** … count as these (null clears them). */
+  @LongDayHours()
+  longDayCountsAs?: number | null;
 }

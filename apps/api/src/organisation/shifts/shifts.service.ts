@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { countUntilProblems, flexibleDaysProblem, formatHours, shiftHours } from '@trendlix/shared';
+import { countUntilProblems, flexibleDaysProblem, formatHours, longDayProblems, shiftHours } from '@trendlix/shared';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { assertDeletes } from '../../auth/roles.js';
 import type { SessionUser } from '../../auth/session-user.js';
@@ -21,8 +21,10 @@ const ENTITY = 'shift';
 // hours to work, so a long day fills the month's short hours; at or after the end and the same day (packages/shared
 // countUntilProblems), checked here with the times as they will be, and by the database. Days a week (owner, 31 October
 // 2026: flexible days): set, the shift is worked on any that many of its working days a week, fewer than them (packages/
-// shared flexibleDaysProblem), checked here with the working days as they will be, and by the database. Every change is
-// audited.
+// shared flexibleDaysProblem), checked here with the working days as they will be, and by the database. A freelancer's
+// long day (owner, 3 November 2026: "if more than N Hours Count as Y Hours", "this rule may be enables or disabled in a
+// specific shift"; packages/shared long-days.ts): switched on or off, its two hours kept while off, checked as they will
+// be and by the database. Every change is audited.
 
 export interface ShiftView {
   id: string;
@@ -37,6 +39,10 @@ export interface ShiftView {
   workingDays: number[];
   /** Any this many of the working days a week (flexible days, 31 October 2026); null: every working day. */
   daysPerWeek: number | null;
+  /** A freelancer's long day (3 November 2026): on or off, and more than `longDayOverHours` a day counts as `longDayCountsAs`. */
+  longDayOn: boolean;
+  longDayOverHours: number | null;
+  longDayCountsAs: number | null;
 }
 
 function view(s: Shift): ShiftView {
@@ -50,7 +56,16 @@ function view(s: Shift): ShiftView {
     graceMinutes: s.graceMinutes,
     workingDays: [...s.workingDays].sort((a, b) => a - b),
     daysPerWeek: s.daysPerWeek ?? null,
+    longDayOn: s.longDayOn,
+    longDayOverHours: s.longDayOverHours?.toNumber() ?? null,
+    longDayCountsAs: s.longDayCountsAs?.toNumber() ?? null,
   };
+}
+
+/** A freelancer's long day as it will be (longDayProblems). */
+function assertLongDay(on: unknown, over: unknown, countsAs: unknown) {
+  const problems = longDayProblems(on, over, countsAs);
+  if (problems.length) throw new BadRequestException(problems);
 }
 
 /** The days a week fewer than the working days (flexibleDaysProblem): `days` null or missing, nothing to check. */
@@ -99,6 +114,7 @@ export class ShiftsService {
     assertHoursFit(dto.startTime, dto.endTime, dto.hoursPerDay);
     assertCountUntil(dto.startTime, dto.endTime, dto.countUntil);
     assertDaysAWeek(dto.daysPerWeek, dto.workingDays ?? [0, 1, 2, 3, 4]);
+    assertLongDay(dto.longDayOn ?? false, dto.longDayOverHours ?? null, dto.longDayCountsAs ?? null);
     const shift = await this.prisma.shift.create({
       data: {
         code: dto.code,
@@ -109,6 +125,9 @@ export class ShiftsService {
         graceMinutes: dto.graceMinutes,
         workingDays: dto.workingDays,
         daysPerWeek: dto.daysPerWeek ?? null,
+        longDayOn: dto.longDayOn ?? false,
+        longDayOverHours: dto.longDayOverHours ?? null,
+        longDayCountsAs: dto.longDayCountsAs ?? null,
       },
     });
     const result = view(shift);
@@ -126,6 +145,12 @@ export class ShiftsService {
     assertCountUntil(start, end, dto.countUntil === undefined ? before.countUntil : dto.countUntil);
     // the days a week as they will be (sent, or kept) fewer than the working days as they will be
     assertDaysAWeek(dto.daysPerWeek === undefined ? before.daysPerWeek : dto.daysPerWeek, dto.workingDays ?? before.workingDays);
+    // the long day as it will be (sent, or kept)
+    assertLongDay(
+      dto.longDayOn ?? before.longDayOn,
+      dto.longDayOverHours === undefined ? before.longDayOverHours : dto.longDayOverHours,
+      dto.longDayCountsAs === undefined ? before.longDayCountsAs : dto.longDayCountsAs,
+    );
     const shift = await this.prisma.shift.update({
       where: { id },
       data: {
@@ -137,11 +162,17 @@ export class ShiftsService {
         graceMinutes: dto.graceMinutes,
         workingDays: dto.workingDays,
         daysPerWeek: dto.daysPerWeek,
+        longDayOn: dto.longDayOn,
+        longDayOverHours: dto.longDayOverHours,
+        longDayCountsAs: dto.longDayCountsAs,
       },
     });
     const result = view(shift);
-    const { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes, daysPerWeek } = dto;
-    const diff = changes({ ...before }, { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes, workingDays: dto.workingDays && result.workingDays, daysPerWeek });
+    const { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes, daysPerWeek, longDayOn, longDayOverHours, longDayCountsAs } = dto;
+    const diff = changes(
+      { ...before },
+      { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes, workingDays: dto.workingDays && result.workingDays, daysPerWeek, longDayOn, longDayOverHours, longDayCountsAs },
+    );
     if (Object.keys(diff).length) await this.audit.record({ userId, action: 'update', entityType: ENTITY, entityId: id, diff });
     return result;
   }

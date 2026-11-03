@@ -32,7 +32,7 @@ import { json, savedInputs, worked } from '../payroll/line-work.js';
 import { firstDay, lastDay, monthName } from '../payroll/months.js';
 import { runLawRates } from '../payroll/views.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { AttendanceDaysService } from './attendance-days.service.js';
+import { AttendanceDaysService, longDayOfShift } from './attendance-days.service.js';
 import { AttendanceFillService } from './attendance-fill.service.js';
 import type { AttendancePersonDto } from './attendance-imports.dto.js';
 import { CorrectionDaysService } from './correction-days.service.js';
@@ -798,7 +798,20 @@ export class AttendanceImportsService {
           employeeId: true,
           joinDate: true,
           endDate: true,
-          shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true } },
+          employmentType: true,
+          shift: {
+            select: {
+              startTime: true,
+              endTime: true,
+              hoursPerDay: true,
+              graceMinutes: true,
+              countUntil: true,
+              workingDays: true,
+              longDayOn: true,
+              longDayOverHours: true,
+              longDayCountsAs: true,
+            },
+          },
         },
       }),
       this.prisma.holiday.findMany({ where: { date: { gte: toDateOnly(first), lte: toDateOnly(last) } }, select: { date: true } }),
@@ -847,6 +860,8 @@ export class AttendanceImportsService {
           employedTo: fromDateOnly(employment.endDate),
           systemPermissionHours: permissions.find((p) => p.employeeId === w.employeeId)?._sum.hours?.toNumber() ?? 0,
           permissionHoursPerMonth: allowance,
+          // a freelancer's long day on the shift (owner, 3 November 2026: "if more than N Hours Count as Y Hours")
+          longDay: employment.employmentType === 'freelance' ? longDayOfShift(s) : null,
         }),
       );
     }

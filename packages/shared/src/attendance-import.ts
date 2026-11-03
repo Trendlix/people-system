@@ -26,6 +26,7 @@
 
 import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, workSpanOf, type PressPair } from './attendance.js';
 import { openCheckInHours, openHalfDayOn, type KeptDay } from './attendance-days.js';
+import { longDayHours, type LongDayRule } from './long-days.js';
 import type { ShiftTimes } from './payroll.js';
 
 // ---------- office or remote ----------
@@ -330,6 +331,11 @@ export interface AttendanceMonthInput {
   systemPermissionHours: number;
   /** The Leave Setup's permission hours a month. */
   permissionHoursPerMonth: number;
+  /**
+   * A freelancer's long day on their shift (owner, 3 November 2026: "if more than N Hours Count as Y Hours"; long-days.ts):
+   * in the month's hours counted, the days kept keeping their own; none for an employee, or a shift without the rule.
+   */
+  longDay?: LongDayRule | null;
 }
 
 /** A person's month as the review shows it and the run's line takes it. */
@@ -441,7 +447,7 @@ export function attendanceMonth(input: AttendanceMonthInput): AttendanceMonthRes
     daysWorked: worked.length,
     officeDays: worked.filter((d) => d.place === 'office').length,
     remoteDays: worked.filter((d) => d.place === 'remote').length,
-    hoursCounted: minutes(worked.reduce((sum, d) => sum + d.hoursCounted, 0)),
+    hoursCounted: minutes(worked.reduce((sum, d) => sum + longDayHours(d.hoursCounted, input.longDay), 0)),
     absentDays: days.filter((d) => d.status === 'absent').length,
     permissionHours: permissionHours !== null && permissionHours > 0 ? permissionHours : null,
     permissionFrom: fromSystem ? 'system' : permissionHours !== null && permissionHours > 0 ? 'zoho' : null,

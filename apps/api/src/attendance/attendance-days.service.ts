@@ -6,6 +6,8 @@ import {
   flexibleWeeks,
   flexNeighbourMonths,
   freelanceDays,
+  longDayRuleOf,
+  type LongDayRule,
   flexWeekStart,
   isFlexibleDays,
   monthDays,
@@ -90,7 +92,21 @@ export const EMPLOYMENT_SELECT = {
   officeDays: true,
   department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true } } } },
   jobTitle: { select: { titleEn: true } },
-  shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true, daysPerWeek: true } },
+  shift: {
+    select: {
+      startTime: true,
+      endTime: true,
+      hoursPerDay: true,
+      graceMinutes: true,
+      countUntil: true,
+      workingDays: true,
+      daysPerWeek: true,
+      // a freelancer's long day (3 November 2026; longDayOfShift)
+      longDayOn: true,
+      longDayOverHours: true,
+      longDayCountsAs: true,
+    },
+  },
 } satisfies Prisma.EmploymentSelect;
 
 export type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT_SELECT }>;
@@ -155,7 +171,14 @@ export const ownDays = (days: readonly Pick<SourcedDay, 'source' | 'exempt' | 'w
   days.some((d) => d.exempt || d.wfhDay || !!d.od || d.compensatory || d.compensated || (OWN_SOURCES as readonly string[]).includes(d.source));
 
 /** The shift's times as the shared rules take them. */
-export const shiftTimesOf = (s: Omit<NonNullable<EmploymentRow['shift']>, 'daysPerWeek'> & { daysPerWeek?: number | null }) => ({
+/**
+ * A freelancer's long day on the shift (owner, 3 November 2026: "if more than N Hours Count as Y Hours", switched on or off
+ * per shift; packages/shared long-days.ts); null while off, or without a shift.
+ */
+export const longDayOfShift = (s: { longDayOn: boolean; longDayOverHours: Prisma.Decimal | null; longDayCountsAs: Prisma.Decimal | null } | null | undefined): LongDayRule | null =>
+  longDayRuleOf(s ? { longDayOn: s.longDayOn, longDayOverHours: s.longDayOverHours?.toNumber() ?? null, longDayCountsAs: s.longDayCountsAs?.toNumber() ?? null } : null);
+
+export const shiftTimesOf = (s: Omit<NonNullable<EmploymentRow['shift']>, 'daysPerWeek' | 'longDayOn' | 'longDayOverHours' | 'longDayCountsAs'> & { daysPerWeek?: number | null }) => ({
   startTime: fromTimeOfDay(s.startTime),
   endTime: fromTimeOfDay(s.endTime),
   hoursPerDay: s.hoursPerDay?.toNumber() ?? null,
@@ -279,7 +302,8 @@ export class AttendanceDaysService {
       }));
       // a freelancer has no working hours to be absent from (owner, 31 October 2026: "if no checkin required, why is it
       // showing him absent?"): the days Zoho kept as absent aren't counted
-      const days = employment?.employmentType === 'freelance' ? freelanceDays(read) : read;
+      // and a long day on their shift counted as it says (owner, 3 November 2026: "if more than N Hours Count as Y Hours")
+      const days = employment?.employmentType === 'freelance' ? freelanceDays(read, longDayOfShift(employment.shift)) : read;
       if (!employment && !days.length) continue;
       out.set(id, {
         employeeId: id,

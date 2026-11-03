@@ -962,6 +962,11 @@ model Shift {
   // and the database); null: every working day. A day counts as absent only once the week can no longer have them
   // (packages/shared flexible-days.ts)
   daysPerWeek  Int?         @map("days_per_week") @db.SmallInt
+  // a freelancer's long day (owner, 3 November 2026: "if more than N Hours Count as Y Hours", switched on or off per
+  // shift): a day counted more than long_day_over_hours counts as long_day_counts_as (packages/shared long-days.ts)
+  longDayOn        Boolean  @default(false) @map("long_day_on")
+  longDayOverHours Decimal? @map("long_day_over_hours") @db.Decimal(4, 2)
+  longDayCountsAs  Decimal? @map("long_day_counts_as") @db.Decimal(4, 2)
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz
   employments  Employment[]

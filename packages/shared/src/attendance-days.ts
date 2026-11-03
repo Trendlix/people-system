@@ -28,6 +28,7 @@ import type { CorrectedFrom } from './attendance-corrections.js';
 import { CHECK_IN_SOURCES, countsAsRemote, daysByPrecedence, isCheckInFlag, type AttendanceSource, type CheckInFlag, type DayPlace } from './check-in.js';
 import type { DayOfficialDuty } from './official-duty.js';
 import { dropsForChoice, type DaySourceChoice } from './attendance-records.js';
+import { longDayHours, type LongDayRule } from './long-days.js';
 
 /** To the minute, as the import counts hours. */
 const toMinute = (hours: number) => Math.round(hours * 60) / 60 + 0;
@@ -113,6 +114,11 @@ export interface KeptDay {
    * absent from, so not counted (status rest).
    */
   notCounted?: boolean;
+  /**
+   * A freelancer's long day (owner, 3 November 2026: "if more than N Hours Count as Y Hours"; freelanceDays): counted
+   * more than its shift's hours, so counted as the hours the shift says (long-days.ts).
+   */
+  longDay?: boolean;
 }
 
 /** A kept day as the Attendance pages show it. */
@@ -490,10 +496,17 @@ export function monthDays<D extends SourcedDay>(rows: readonly D[], ctx: MonthDa
  * A freelancer's days (owner, 31 October 2026, of a freelancer whose October showed 16 absent days kept from Zoho People:
  * "if no checkin required, why is it showing him absent?"): freelance work is outside the labour law and its working
  * hours, and a freelancer doesn't check in (check-in.ts checkInRefusal), so no day of theirs is an absence: a day kept as
- * absent is not counted (status rest, notCounted), never a no-show on the payroll. Their days worked stay as kept.
+ * absent is not counted (status rest, notCounted), never a no-show on the payroll. Their days worked stay as kept, but
+ * for a long day on a shift with the rule (owner, 3 November 2026: "if more than N Hours Count as Y Hours"; `longDay`,
+ * long-days.ts): counted more than its hours, the hours it counts as (`longDay` marked).
  */
-export function freelanceDays<D extends Pick<KeptDay, 'status' | 'notCounted'>>(days: readonly D[]): D[] {
-  return days.map((d) => (d.status === 'absent' ? { ...d, status: 'rest' as const, notCounted: true } : d));
+export function freelanceDays<D extends Pick<KeptDay, 'status' | 'notCounted' | 'longDay'> & { hoursCounted?: number }>(days: readonly D[], longDay: LongDayRule | null = null): D[] {
+  return days.map((d) => {
+    if (d.status === 'absent') return { ...d, status: 'rest' as const, notCounted: true };
+    const hours = d.hoursCounted;
+    if (d.status === 'worked' && typeof hours === 'number' && longDayHours(hours, longDay) !== hours) return { ...d, hoursCounted: longDayHours(hours, longDay), longDay: true };
+    return d;
+  });
 }
 
 /**

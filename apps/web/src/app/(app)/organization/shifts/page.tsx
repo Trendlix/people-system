@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { isFlexibleDays, isFlexibleShift } from '@trendlix/shared';
+import { isFlexibleDays, isFlexibleShift, longDayRuleOf, longDayText } from '@trendlix/shared';
 import { apiGet } from '@/lib/api';
 import { formatTime } from '@/lib/format';
 import { hoursADayText } from '@/lib/shifts';
@@ -9,6 +9,8 @@ import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Shift } from '@/lib/types';
 import { DAY_NAMES, Empty, Loading } from '../ui';
 import { RecountDays } from './recount-days';
+
+const longDay = (s: Shift) => longDayRuleOf(s);
 
 async function ShiftsList() {
   const [user, shifts] = await Promise.all([getCurrentUser(), apiGet<Shift[]>('/shifts')]);
@@ -61,6 +63,8 @@ async function ShiftsList() {
                     {s.workingDays.map((d) => DAY_NAMES[d]).join(', ')}
                     {/* any N of them a week (owner, 31 October 2026) */}
                     {isFlexibleDays(s) && <span className="badge ml-2 whitespace-nowrap">Any {s.daysPerWeek} a week</span>}
+                    {/* a freelancer's long day, while it is on (owner, 3 November 2026) */}
+                    {longDay(s) && <span className="badge ml-2 whitespace-nowrap">Freelancers: {longDayText(longDay(s)!)}</span>}
                   </td>
                   {canEdit && (
                     <td className="text-right">

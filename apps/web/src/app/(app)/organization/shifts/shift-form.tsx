@@ -142,6 +142,44 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
           ))}
         </Select>
       </div>
+      {/* a freelancer's long day (owner, 3 November 2026: "if more than N Hours Count as Y Hours"), on or off per shift */}
+      <fieldset className="space-y-3 rounded-lg border border-line p-4">
+        <legend className="label px-1">Freelancers’ long day</legend>
+        <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm">
+          <input type="checkbox" name="longDayOn" value="1" defaultChecked={valueOf(state, 'longDayOn', shift?.longDayOn ? '1' : '') === '1'} className="size-4 accent-accent" />
+          On for this shift
+        </label>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor={fid('longDayOverHours')} className="label">
+              More than (hours)
+            </label>
+            <input
+              id={fid('longDayOverHours')}
+              name="longDayOverHours"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="10"
+              defaultValue={valueOf(state, 'longDayOverHours', hoursToWorkShown(shift?.longDayOverHours))}
+              className="input w-28"
+            />
+          </div>
+          <div>
+            <label htmlFor={fid('longDayCountsAs')} className="label">
+              Count as (hours)
+            </label>
+            <input
+              id={fid('longDayCountsAs')}
+              name="longDayCountsAs"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="14"
+              defaultValue={valueOf(state, 'longDayCountsAs', hoursToWorkShown(shift?.longDayCountsAs))}
+              className="input w-28"
+            />
+          </div>
+        </div>
+      </fieldset>
       <div className="flex flex-wrap gap-3">
         <SubmitButton>{shift ? 'Save changes' : 'Create shift'}</SubmitButton>
         <Link href="/organization/shifts" className="btn btn-secondary">

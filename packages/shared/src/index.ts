@@ -400,6 +400,7 @@ export * from './attendance-days.js';
 // flexible days (owner, 31 October 2026): a shift worked on any N of its days a week, a day absent only once the week can
 // no longer have them; and the warning on a contract whose days a week differ from its shift's
 export * from './flexible-days.js';
+export * from './long-days.js';
 
 // colleagues by their display names (owner, 31 October 2026): who sees full names, the short name of a full name, and
 // the swap the API makes in an employee's answers and pushes

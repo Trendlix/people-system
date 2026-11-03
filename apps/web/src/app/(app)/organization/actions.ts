@@ -4,10 +4,10 @@
 // the session and the role (HR or Admin; Admin only for the order of departments and teams; a Super Admin only for
 // deleting), so calling these directly can't bypass permissions.
 import { redirect } from 'next/navigation';
-import { ALLOWANCE_BASES, type AllowanceBasis } from '@trendlix/shared';
+import { ALLOWANCE_BASES, longDayProblems, type AllowanceBasis } from '@trendlix/shared';
 import { ApiError, apiSend } from '@/lib/api';
 import { timeFrom } from '@/lib/form-data';
-import { HOURS_TO_WORK_ERROR, hoursToWorkFrom } from '@/lib/shifts';
+import { HOURS_TO_WORK_ERROR, hoursToWorkFrom, longDayHoursFrom } from '@/lib/shifts';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 
@@ -165,6 +165,12 @@ const shiftBody = (fd: FormData, errors: string[]) => {
   if (Number.isNaN(hoursPerDay)) errors.push(HOURS_TO_WORK_ERROR);
   // not required: none chosen is none
   const countUntil = timeFrom(fd, 'countUntil', 'time hours count until', errors);
+  // a freelancer's long day (owner, 3 November 2026: "if more than N Hours Count as Y Hours"), switched on or off
+  const longDayOn = fd.get('longDayOn') === '1';
+  const longDayOverHours = longDayHoursFrom(text(fd, 'longDayOverHours'));
+  const longDayCountsAs = longDayHoursFrom(text(fd, 'longDayCountsAs'));
+  if (Number.isNaN(longDayOverHours) || Number.isNaN(longDayCountsAs)) errors.push('Freelancers’ long day: give the hours as 10, 10:30 or 10.5.');
+  else errors.push(...longDayProblems(longDayOn, longDayOverHours, longDayCountsAs));
   return {
     code: text(fd, 'code'),
     startTime: time('startTime', 'start time'),
@@ -174,6 +180,9 @@ const shiftBody = (fd: FormData, errors: string[]) => {
     graceMinutes: grace === '' ? undefined : Number(grace),
     workingDays: fd.getAll('workingDays').map(Number),
     daysPerWeek: text(fd, 'daysPerWeek') === '' ? null : Number(text(fd, 'daysPerWeek')),
+    longDayOn,
+    longDayOverHours,
+    longDayCountsAs,
   };
 };
 

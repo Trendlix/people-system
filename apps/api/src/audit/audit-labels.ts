@@ -562,6 +562,10 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   followsCompany: 'Back to the company’s pillars',
   ownWeights: 'Own weights',
   ownPillars: 'Own pillars',
+  // a freelancer's long day on a shift (3 November 2026: "if more than N Hours Count as Y Hours")
+  longDayOn: 'Freelancers’ long day on',
+  longDayOverHours: 'Long day: more than (hours)',
+  longDayCountsAs: 'Long day: counts as (hours)',
   pillarsOf: 'Pillars of',
   // custody (Assets step 3, 21 October 2026)
   custodyTerms: 'Custody terms',
