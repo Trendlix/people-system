@@ -140,18 +140,19 @@ describe('a person’s month', () => {
       ['2026-09-02', 'worked', 9],
       ['2026-09-03', 'absent', 0],
       ['2026-09-04', 'rest', 0],
-      ['2026-09-06', 'zoho_leave', 0],
+      // Zoho's check-in and check-out only (owner, 3 November 2026: "only the checkin and out records"): its leave and its
+      // "present" without a check-in are absent, the leave listed for HR to record in the system
+      ['2026-09-06', 'absent', 0],
       ['2026-09-07', 'leave', 0],
       ['2026-09-08', 'holiday', 0],
       ['2026-09-09', 'worked', 0],
-      ['2026-09-10', 'no_check_in', 0],
+      ['2026-09-10', 'absent', 0],
     ]);
-    expect(m).toMatchObject({ daysWorked: 3, officeDays: 2, remoteDays: 1, absentDays: 1, zohoLeaveDays: ['2026-09-06'], missingDays: [], outside: 1 });
+    expect(m).toMatchObject({ daysWorked: 3, officeDays: 2, remoteDays: 1, absentDays: 3, zohoLeaveDays: ['2026-09-06'], missingDays: [], outside: 1 });
     expect(m.hoursCounted).toBeCloseTo(17 + 8 / 60, 9);
     expect(m.warnings).toEqual([
       "1 day is of another month than this payroll's: left out.",
       '1 day has a check-in without a check-out: no hours counted for it.',
-      '1 day Zoho says present or on duty without a check-in: not counted as absent, nor any hours.',
       "Zoho has 4:30 of permission this month: 4:00 counted, the month's allowance.",
     ]);
   });

@@ -253,22 +253,16 @@ export function zohoStatusKind(status: string | null | undefined): ZohoStatusKin
   return 'other';
 }
 
-/** A working day without a check-in, by Zoho's status: its leave, present or on duty without one, else absent. */
-export function zohoKindStatus(zohoStatus: string | null | undefined): AttendanceDayStatus {
-  const kind = zohoStatusKind(zohoStatus);
-  return kind === 'leave' ? 'zoho_leave' : kind === 'present' ? 'no_check_in' : 'absent';
-}
-
 /**
- * A Zoho day without a check-in as the import keeps it, the approved leave aside (read as it is now, withLeaveNow): a
- * holiday, a rest day on a weekday the shift doesn't work, else by Zoho's status. The recount makes it again on the shift
- * as it is now (owner, 3 November 2026: "when the shift is setupped to be all days why does it shows rest days in the
- * attendance?"), as the import would today.
+ * A Zoho day without a check-in, by the system's own rules only (owner, 3 November 2026: "just import the attendance from
+ * zoho not the sifts", "only the checkin and out records"): an official holiday, a rest day on a weekday the shift doesn't
+ * work, else absent; the approved leave and official duty are read over it as they are now (withLeaveNow, official
+ * duty's days). Zoho's own status ("Weekend", "On Duty", "Annual Leave" …) is kept to show, never read.
  */
-export function zohoDayWithoutTimes(date: string, zohoStatus: string | null | undefined, ctx: { workingDays: readonly number[] | null; holidays: ReadonlySet<string> }): AttendanceDayStatus {
+export function zohoDayWithoutTimes(date: string, _zohoStatus: string | null | undefined, ctx: { workingDays: readonly number[] | null; holidays: ReadonlySet<string> }): AttendanceDayStatus {
   if (ctx.holidays.has(date)) return 'holiday';
   if (!(ctx.workingDays ?? SUN_TO_THU).includes(weekdayOf(date))) return 'rest';
-  return zohoKindStatus(zohoStatus);
+  return 'absent';
 }
 
 // ---------- a person's month ----------
@@ -356,7 +350,7 @@ export interface AttendanceMonthResult {
   permissionHours: number | null;
   /** Where the month's permission hours come from: the system's requests, Zoho's column, or none. */
   permissionFrom: 'system' | 'zoho' | null;
-  /** Days Zoho marks as leave that have no leave in the system: listed for HR to record there. */
+  /** Days Zoho marks as leave that have no leave in the system: absent, listed for HR to record the leave there. */
   zohoLeaveDays: string[];
   /** Working days of the month in the employment that have no row in the files. */
   missingDays: string[];
@@ -374,8 +368,9 @@ const SUN_TO_THU = [0, 1, 2, 3, 4];
 
 /**
  * A person's month from their imported days (owner, 19 October 2026): each day of the month within the employment
- * worked out (a check-in: worked, its hours by the shift's rule; none: a holiday, a rest day, leave in the system, leave
- * in Zoho, "no check-in" on a day Zoho says present, else absent), and what the run's line takes: the hours counted,
+ * worked out (a check-in: worked, its hours by the shift's rule; none: a holiday, a rest day of the shift, leave in the
+ * system, else absent: Zoho's own status isn't read, only its check-in and check-out, owner, 3 November 2026: "only the
+ * checkin and out records"), and what the run's line takes: the hours counted,
  * the absent days, and the permission hours (the system's requests, else Zoho's within the allowance).
  */
 export function attendanceMonth(input: AttendanceMonthInput): AttendanceMonthResult {
@@ -420,12 +415,11 @@ export function attendanceMonth(input: AttendanceMonthInput): AttendanceMonthRes
     } else if (holidays.has(d.date)) status = 'holiday';
     else if (!working.has(weekdayOf(d.date))) status = 'rest';
     else if (leave.has(d.date)) status = 'leave';
-    else status = zohoKindStatus(d.zohoStatus);
+    // Zoho's check-in and check-out only (owner, 3 November 2026: "only the checkin and out records"): its status isn't read
+    else status = 'absent';
     days.push({ ...d, status, hoursCounted: minutes(hours) });
   }
   if (noCheckOut) warnings.push(`${noCheckOut} ${noCheckOut === 1 ? 'day has' : 'days have'} a check-in without a check-out: no hours counted for ${noCheckOut === 1 ? 'it' : 'them'}.`);
-  const unchecked = days.filter((d) => d.status === 'no_check_in').length;
-  if (unchecked) warnings.push(`${unchecked} ${unchecked === 1 ? 'day' : 'days'} Zoho says present or on duty without a check-in: not counted as absent, nor any hours.`);
 
   // the working days with no row at all: not absent (the files may not cover them), said
   const missingDays: string[] = [];
@@ -451,7 +445,8 @@ export function attendanceMonth(input: AttendanceMonthInput): AttendanceMonthRes
     absentDays: days.filter((d) => d.status === 'absent').length,
     permissionHours: permissionHours !== null && permissionHours > 0 ? permissionHours : null,
     permissionFrom: fromSystem ? 'system' : permissionHours !== null && permissionHours > 0 ? 'zoho' : null,
-    zohoLeaveDays: days.filter((d) => d.status === 'zoho_leave').map((d) => d.date),
+    // still listed for HR to record in the system: absent until they do
+    zohoLeaveDays: days.filter((d) => d.status === 'absent' && zohoStatusKind(d.zohoStatus) === 'leave').map((d) => d.date),
     missingDays,
     outside,
     warnings,

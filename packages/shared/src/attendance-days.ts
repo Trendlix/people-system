@@ -23,7 +23,7 @@
 // October 2026; check-in-exemptions.ts): an exempt day counts as full, never short, absent or missing a press.
 
 import type { PressPair } from './attendance.js';
-import type { AttendanceDayStatus } from './attendance-import.js';
+import { zohoDayWithoutTimes, type AttendanceDayStatus } from './attendance-import.js';
 import type { CorrectedFrom } from './attendance-corrections.js';
 import { CHECK_IN_SOURCES, countsAsRemote, daysByPrecedence, isCheckInFlag, type AttendanceSource, type CheckInFlag, type DayPlace } from './check-in.js';
 import type { DayOfficialDuty } from './official-duty.js';
@@ -455,15 +455,17 @@ const nextDay = (ymd: string) => new Date(Date.parse(`${ymd}T00:00:00Z`) + 86_40
  * check-in on the system on (`checkInFrom`), within the month and their employment, up to yesterday, each date with
  * none: an official holiday, a rest day of their shift, a day of approved leave, or else an absent day (a working day
  * gone by without a check-in), as source 'system'. Someone who never checked in on the system has only what Zoho's
- * import kept, as before. A day Zoho's import kept is read against the approved leave as it is now (withLeaveNow). In
+ * import kept, as before. A day Zoho's import kept without a check-in is read by the system's rules as they are now
+ * (withShiftNow: the shift's rest days, the holidays) and against the approved leave as it is now (withLeaveNow). In
  * date order.
  */
 export function monthDays<D extends SourcedDay>(rows: readonly D[], ctx: MonthDaysContext): (D | SourcedDay)[] {
   const onLeave = new Set(ctx.leaveDays);
+  const rules = { workingDays: ctx.workingDays, holidays: new Set(ctx.holidays) };
   // a day whose source a Super Admin chose (31 October 2026): the other source's day left out for it
   const chosen = ctx.chosen;
   const rowsChosen = chosen?.size ? rows.filter((r) => !dropsForChoice(r.source, chosen.get(r.date))) : rows;
-  const days: (D | SourcedDay)[] = daysByPrecedence(rowsChosen.filter((r) => r.date.startsWith(ctx.month))).map((d) => withLeaveNow(d, onLeave.has(d.date)));
+  const days: (D | SourcedDay)[] = daysByPrecedence(rowsChosen.filter((r) => r.date.startsWith(ctx.month))).map((d) => withLeaveNow(withShiftNow(d, rules), onLeave.has(d.date)));
   if (!ctx.checkInFrom) return days;
   const first = `${ctx.month}-01`;
   const last = new Date(Date.UTC(Number(ctx.month.slice(0, 4)), Number(ctx.month.slice(5, 7)), 0)).toISOString().slice(0, 10);
@@ -506,6 +508,21 @@ export function freelanceDays<D extends Pick<KeptDay, 'status' | 'notCounted'>>(
 export function withLeaveNow<D extends SourcedDay>(day: D, onLeave: boolean): D {
   if (!onLeave || day.source !== 'zoho' || day.checkIn) return day;
   return day.status === 'absent' || day.status === 'no_check_in' || day.status === 'zoho_leave' ? { ...day, status: 'leave' } : day;
+}
+
+/**
+ * A day Zoho's import kept without a check-in, by the system's rules as they are now (owner, 3 November 2026: "i swear
+ * to God that the assigned shift has no rest Days on Friday and Saturday", "just import the attendance from zoho not the
+ * sifts", "only the checkin and out records"): a holiday, a rest day on a weekday the shift doesn't work, else absent
+ * (zohoDayWithoutTimes), whatever was kept when it was imported (the shift then, or Zoho's own status); a day kept as
+ * leave stays leave on a working day. Every other day stays as it is.
+ */
+export function withShiftNow<D extends SourcedDay>(day: D, rules: { workingDays: readonly number[] | null; holidays: ReadonlySet<string> }): D {
+  if (day.source !== 'zoho' || day.checkIn || day.status === 'worked') return day;
+  const status = zohoDayWithoutTimes(day.date, day.zohoStatus, rules);
+  // kept as leave (the system's approved leave, when imported): leave still, unless now a rest day or a holiday
+  if (day.status === 'leave' && status !== 'rest' && status !== 'holiday') return day;
+  return status === day.status ? day : { ...day, status };
 }
 
 /** Whether a source is one of the system's check-ins (CHECK_IN_SOURCES): from someone's first one on, missing days are absent. */

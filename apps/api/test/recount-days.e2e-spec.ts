@@ -215,12 +215,13 @@ describe('Recount past days (e2e)', () => {
     await kept(fri, 'rest', 'Weekend');
     await kept(sat, 'rest', 'Weekend, On Duty(Outdoor Shooting (Media Production) - 03:55)');
     await kept(sun, 'leave', 'Annual Leave');
-    // the shift now works every day (as it was made): Friday absent, Saturday on duty without a check-in, the leave kept
+    // the shift now works every day (as it was made): Friday and Saturday absent (Zoho's check-in and check-out only, its
+    // "Weekend" and "On Duty" not read: owner, 3 November 2026), the leave kept
     const res = await recount({ ...range, shiftId: otherShiftId }).expect(200);
     // (and the person's system day, recounted on this shift for the first time)
     expect(res.body).toMatchObject({ months: [DRAFT], zohoDays: 3 });
     expect((await rowOf('oth', fri, 'zoho')).status).toBe('absent');
-    expect((await rowOf('oth', sat, 'zoho')).status).toBe('no_check_in');
+    expect((await rowOf('oth', sat, 'zoho')).status).toBe('absent');
     expect((await rowOf('oth', sun, 'zoho')).status).toBe('leave');
     // and back to Sunday to Thursday: rest days again
     await prisma.shift.update({ where: { id: otherShiftId }, data: { workingDays: [0, 1, 2, 3, 4] } });

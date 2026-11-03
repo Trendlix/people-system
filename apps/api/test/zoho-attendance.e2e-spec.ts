@@ -268,7 +268,7 @@ describe('Zoho People attendance import (e2e)', () => {
         daysWorked: 3,
         officeDays: 2,
         remoteDays: 1,
-        absentDays: 1,
+        absentDays: 2,
         permissionHours: 2,
         permissionFrom: 'zoho',
         zohoLeaveDays: [work[3]],
@@ -279,7 +279,7 @@ describe('Zoho People attendance import (e2e)', () => {
         [work[0], 'worked'],
         [work[1], 'worked'],
         [work[2], 'absent'],
-        [work[3], 'zoho_leave'],
+        [work[3], 'absent'],
         [work[4], 'leave'],
         [work[5], 'worked'],
         [friday, 'rest'],
@@ -335,9 +335,10 @@ describe('Zoho People attendance import (e2e)', () => {
 
       const rania = await lineOf('rania');
       expect(rania.inputs.workedHours).toBeCloseTo(24 + 8 / 60, 6);
-      expect(rania.inputs).toMatchObject({ noShowDays: 1, permissionHours: 2 });
+      expect(rania.inputs).toMatchObject({ noShowDays: 2, permissionHours: 2 });
       expect(rania.result).toMatchObject({ permissionHours: 2 });
-      expect(rania.result.noShowCut).toBe(1000); // 2 days of 15,000 ÷ 30
+      // 2 no-shows (the absent day, and the day of leave in Zoho only: owner, 3 November 2026), 2 days of 15,000 ÷ 30 each
+      expect(rania.result.noShowCut).toBe(2000);
       expect(rania.attendanceImport).toMatchObject({ source: 'zoho', importId, fields: ['workedHours', 'noShowDays', 'permissionHours'] });
       // Omar's permission is the system's: the typed one cleared, the request's hour counted
       const omar = await lineOf('omar');
@@ -351,7 +352,7 @@ describe('Zoho People attendance import (e2e)', () => {
         [work[0], 'worked', 'office'],
         [work[1], 'worked', 'remote'],
         [work[2], 'absent', null],
-        [work[3], 'zoho_leave', null],
+        [work[3], 'absent', null],
         [work[4], 'leave', null],
         [work[5], 'worked', 'office'],
         [friday, 'rest', null],

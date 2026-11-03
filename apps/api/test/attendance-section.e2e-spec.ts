@@ -235,6 +235,7 @@ describe('The Attendance section (e2e)', () => {
         day('rami', d2, 'worked', { in: '10:45', out: '19:30', place: 'remote', hours: 8.5, zohoStatus: 'Present' }),
         day('rami', d3, 'absent', { zohoStatus: 'Absent' }),
         day('rami', d4, 'worked', { in: '09:10', place: 'office', zohoStatus: 'Present' }),
+        // leave in Zoho only: absent, Zoho's own status not read (owner, 3 November 2026: "only the checkin and out records")
         day('rami', d5, 'zoho_leave', { zohoStatus: 'Annual Leave' }),
         day('rami', friday, 'rest', { zohoStatus: 'Weekend' }),
         // Sara: 8:00 with Zoho's 2:00 of permission (the system's 1:00 counts instead: short 0:00 … 9 − 8 − 1), on leave
@@ -283,7 +284,7 @@ describe('The Attendance section (e2e)', () => {
         daysWorked: 3,
         daysCounted: 2,
         hoursCounted: 17.5,
-        absentDays: 1,
+        absentDays: 2,
         shortHours: 0.5,
         // no day past the shift's 9 hours (make-up hours, 20 October 2026: make-up-hours.e2e-spec.ts)
         extraHours: 0,
@@ -292,7 +293,7 @@ describe('The Attendance section (e2e)', () => {
         officeDays: 2,
         remoteDays: 1,
         leaveDays: 0,
-        zohoLeaveDays: 1,
+        zohoLeaveDays: 0,
         missingCheckOuts: 1,
         // checking in on the system (19 October 2026): none of these are the system's
         missingCheckIns: 0,
@@ -310,7 +311,7 @@ describe('The Attendance section (e2e)', () => {
           [work[1], 'worked', 0.5, false],
           [work[2], 'absent', 0, false],
           [work[3], 'worked', 0, true],
-          [work[4], 'zoho_leave', 0, false],
+          [work[4], 'absent', 0, false],
           [friday, 'rest', 0, false],
         ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
       );
@@ -350,14 +351,14 @@ describe('The Attendance section (e2e)', () => {
       expect(listed(await month(hr, '&only=missing_check_outs'))).toEqual(['rami']);
       expect(listed(await month(hr, '&only=remote'))).toEqual(['omar', 'rami']);
       const totals = (await month(hr, `&departmentId=${teamId}`)).totals;
-      expect(totals).toMatchObject({ daysWorked: 4, absentDays: 2, hoursCounted: 25.5, shortHours: 1.5 });
+      expect(totals).toMatchObject({ daysWorked: 4, absentDays: 3, hoursCounted: 25.5, shortHours: 1.5 });
       expect(said(await api().get('/api/attendance?month=2026-13').set('Cookie', hr).expect(400))).toEqual(['Choose the month as YYYY-MM, e.g. 2026-10.']);
       await api().get('/api/attendance?only=everyone').set('Cookie', hr).expect(400);
     });
 
     it('shows a person’s month: anyone’s for HR but a C-level person’s, whom only the CEO sees', async () => {
       const rami = (await api().get(`/api/attendance/employees/${ids.rami}?month=${MONTH}`).set('Cookie', hr).expect(200)).body as PersonView;
-      expect(rami).toMatchObject({ month: MONTH, self: false, run: { id: runId }, person: { employee: { id: ids.rami }, figures: { absentDays: 1 } } });
+      expect(rami).toMatchObject({ month: MONTH, self: false, run: { id: runId }, person: { employee: { id: ids.rami }, figures: { absentDays: 2 } } });
       expect(rami.sources.map((s) => s.importId)).toEqual([importId]);
       // a month without days: none, and no sources
       const earlier = (await api().get(`/api/attendance/employees/${ids.rami}?month=${EARLIER}`).set('Cookie', hr).expect(200)).body as PersonView;
@@ -429,10 +430,10 @@ describe('The Attendance section (e2e)', () => {
       expect(s).toMatchObject({ period: { from: MONTH, to: MONTH }, months: [MONTH], hidden: { count: 1 } });
       const [dept, other] = mine(s);
       expect([dept.name, dept.people, dept.personMonths]).toEqual([name('Attendance Dept'), 3, 3]);
-      expect(dept.figures).toMatchObject({ daysWorked: 5, absentDays: 2, hoursCounted: 33.5, shortHours: 1.5, permissionHours: 1, remoteDays: 1, leaveDays: 1, zohoLeaveDays: 1, missingCheckOuts: 1 });
+      expect(dept.figures).toMatchObject({ daysWorked: 5, absentDays: 3, hoursCounted: 33.5, shortHours: 1.5, permissionHours: 1, remoteDays: 1, leaveDays: 1, zohoLeaveDays: 0, missingCheckOuts: 1 });
       // 33:30 over the 4 days counted
       expect(dept.averageHours).toBe(Math.round((33.5 / 4) * 60) / 60);
-      expect(dept.teams.map((t) => [t.name, t.people, t.figures.absentDays, t.figures.shortHours, t.averageHours])).toEqual([['Field Team', 2, 2, 1.5, Math.round((25.5 / 3) * 60) / 60]]);
+      expect(dept.teams.map((t) => [t.name, t.people, t.figures.absentDays, t.figures.shortHours, t.averageHours])).toEqual([['Field Team', 2, 3, 1.5, Math.round((25.5 / 3) * 60) / 60]]);
       expect([other.name, other.people, other.figures.permissionHours, other.figures.remoteDays, other.averageHours]).toEqual([name('Other Dept'), 1, 2, 1, 7]);
       // the Summary's period: a range, the months with days in it
       const range = (await api().get(`/api/attendance/summary?from=${EARLIER}&to=${MONTH}`).set('Cookie', finance).expect(200)).body as Summary;
@@ -444,7 +445,7 @@ describe('The Attendance section (e2e)', () => {
     it('counts the C-level person for the CEO', async () => {
       const s = (await api().get(`/api/attendance/summary?month=${MONTH}`).set('Cookie', ceo).expect(200)).body as Summary;
       expect(s.hidden).toBeNull();
-      expect(mine(s)[0]).toMatchObject({ people: 4, figures: { absentDays: 3 } });
+      expect(mine(s)[0]).toMatchObject({ people: 4, figures: { absentDays: 4 } });
     });
 
     it('downloads as a workbook for HR, the CEO and Finance, by department and team, by person and each day; in the audit log', async () => {
