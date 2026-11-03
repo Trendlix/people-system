@@ -11,7 +11,9 @@ import { previewRecount, runRecount, type RecountState } from './recount-actions
 // new shift run"; asked earlier, "Months not yet paid"): From and To months (at most 12), one shift or everyone, a preview,
 // then Recount. Every kept day with times in a month whose payroll isn't with the CEO, approved or paid is counted again
 // on the person's shift as it is now (the system's days from their presses, Zoho People's from their pairs or first and
-// last); the draft payrolls refill. Check-in and check-out times never change.
+// last); the draft payrolls refill. Check-in and check-out times never change. Zoho People's days without times are made
+// again on the shift's working days as they are now (owner, 3 November 2026: "when the shift is setupped to be all days
+// why does it shows rest days in the attendance?"): a rest day on a weekday the shift now works, or the other way round.
 
 export function RecountDays({ shifts, thisMonth }: { shifts: Shift[]; thisMonth: string }) {
   const [open, setOpen] = useState(false);

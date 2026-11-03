@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { zonedMoment } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
-import { addDays, todayInCairo, toDateOnly } from '../src/common/date-only.js';
+import { addDays, fromDateOnly, todayInCairo, toDateOnly } from '../src/common/date-only.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
 import { firstDay, monthsLater } from '../src/payroll/months.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
@@ -196,6 +196,40 @@ describe('Recount past days (e2e)', () => {
     await recount({ from: monthsLater(CURRENT, -12), to: CURRENT }).expect(400);
     await recount({ from: DRAFT, to: monthsLater(CURRENT, 1) }).expect(400);
     await recount({ from: CURRENT, to: DRAFT }).expect(400);
+  });
+
+  // owner, 3 November 2026: "when the shift is setupped to be all days why does it shows rest days in the attendance?"
+  it('makes Zoho’s days without times again on the shift’s working days as they are now, either way', async () => {
+    const holidays = new Set((await prisma.holiday.findMany({ select: { date: true } })).map((h) => fromDateOnly(h.date)));
+    const onWeekday = (weekday: number) => {
+      for (let n = 7; n < 28; n++) {
+        const d = day(DRAFT, n);
+        if (new Date(`${d}T00:00:00Z`).getUTCDay() === weekday && !holidays.has(d)) return d;
+      }
+      throw new Error(`No weekday ${weekday} in ${DRAFT}`);
+    };
+    const [fri, sat, sun] = [onWeekday(5), onWeekday(6), onWeekday(0)];
+    const kept = (date: string, status: string, zohoStatus: string) =>
+      prisma.attendanceDay.create({ data: { employeeId: ids.oth, date: toDateOnly(date), status, zohoStatus, hoursCounted: 0, source: 'zoho', importedById: hrUserId } });
+    // imported while the shift worked Sunday to Thursday: Zoho's weekends kept as rest days, a day of leave as leave
+    await kept(fri, 'rest', 'Weekend');
+    await kept(sat, 'rest', 'Weekend, On Duty(Outdoor Shooting (Media Production) - 03:55)');
+    await kept(sun, 'leave', 'Annual Leave');
+    // the shift now works every day (as it was made): Friday absent, Saturday on duty without a check-in, the leave kept
+    const res = await recount({ ...range, shiftId: otherShiftId }).expect(200);
+    // (and the person's system day, recounted on this shift for the first time)
+    expect(res.body).toMatchObject({ months: [DRAFT], zohoDays: 3 });
+    expect((await rowOf('oth', fri, 'zoho')).status).toBe('absent');
+    expect((await rowOf('oth', sat, 'zoho')).status).toBe('no_check_in');
+    expect((await rowOf('oth', sun, 'zoho')).status).toBe('leave');
+    // and back to Sunday to Thursday: rest days again
+    await prisma.shift.update({ where: { id: otherShiftId }, data: { workingDays: [0, 1, 2, 3, 4] } });
+    expect((await recount({ ...range, shiftId: otherShiftId }).expect(200)).body).toMatchObject({ daysChanged: 2 });
+    expect((await rowOf('oth', fri, 'zoho')).status).toBe('rest');
+    expect((await rowOf('oth', sat, 'zoho')).status).toBe('rest');
+    expect((await rowOf('oth', sun, 'zoho')).status).toBe('leave');
+    // run again: nothing
+    expect((await recount({ ...range, shiftId: otherShiftId }).expect(200)).body).toMatchObject({ daysChanged: 0 });
   });
 
   it('is for HR and a Super Admin: an employee and a developer are refused', async () => {

@@ -253,6 +253,24 @@ export function zohoStatusKind(status: string | null | undefined): ZohoStatusKin
   return 'other';
 }
 
+/** A working day without a check-in, by Zoho's status: its leave, present or on duty without one, else absent. */
+export function zohoKindStatus(zohoStatus: string | null | undefined): AttendanceDayStatus {
+  const kind = zohoStatusKind(zohoStatus);
+  return kind === 'leave' ? 'zoho_leave' : kind === 'present' ? 'no_check_in' : 'absent';
+}
+
+/**
+ * A Zoho day without a check-in as the import keeps it, the approved leave aside (read as it is now, withLeaveNow): a
+ * holiday, a rest day on a weekday the shift doesn't work, else by Zoho's status. The recount makes it again on the shift
+ * as it is now (owner, 3 November 2026: "when the shift is setupped to be all days why does it shows rest days in the
+ * attendance?"), as the import would today.
+ */
+export function zohoDayWithoutTimes(date: string, zohoStatus: string | null | undefined, ctx: { workingDays: readonly number[] | null; holidays: ReadonlySet<string> }): AttendanceDayStatus {
+  if (ctx.holidays.has(date)) return 'holiday';
+  if (!(ctx.workingDays ?? SUN_TO_THU).includes(weekdayOf(date))) return 'rest';
+  return zohoKindStatus(zohoStatus);
+}
+
 // ---------- a person's month ----------
 
 /** A day as the import read it: its check-in and check-out (moments, ISO), where, Zoho's status and permission hours. */
@@ -402,10 +420,7 @@ export function attendanceMonth(input: AttendanceMonthInput): AttendanceMonthRes
     } else if (holidays.has(d.date)) status = 'holiday';
     else if (!working.has(weekdayOf(d.date))) status = 'rest';
     else if (leave.has(d.date)) status = 'leave';
-    else {
-      const kind = zohoStatusKind(d.zohoStatus);
-      status = kind === 'leave' ? 'zoho_leave' : kind === 'present' ? 'no_check_in' : 'absent';
-    }
+    else status = zohoKindStatus(d.zohoStatus);
     days.push({ ...d, status, hoursCounted: minutes(hours) });
   }
   if (noCheckOut) warnings.push(`${noCheckOut} ${noCheckOut === 1 ? 'day has' : 'days have'} a check-in without a check-out: no hours counted for ${noCheckOut === 1 ? 'it' : 'them'}.`);

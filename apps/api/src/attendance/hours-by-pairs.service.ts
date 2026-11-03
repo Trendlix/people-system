@@ -11,6 +11,7 @@ import {
   spanHours,
   spansOfPairs,
   workSpanOf,
+  zohoDayWithoutTimes,
   type CheckInPlace,
   type ImportedDay,
   type PunchKind,
@@ -221,7 +222,7 @@ export class HoursByPairsService {
         const rows = await tx.attendanceDay.findMany({
           where: { AND: [sourceWhere, dateWhere], ...(ids && { employeeId: { in: ids } }) },
           orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
-          select: { id: true, employeeId: true, date: true, source: true, checkIn: true, checkOut: true, place: true, flags: true, hoursCounted: true, pairs: true, breakMinutes: true, openAt: true, zohoStatus: true, permissionHours: true },
+          select: { id: true, employeeId: true, date: true, source: true, status: true, checkIn: true, checkOut: true, place: true, flags: true, hoursCounted: true, pairs: true, breakMinutes: true, openAt: true, zohoStatus: true, permissionHours: true },
         });
         // without `zoho`, a Zoho day only when kept with two pairs or more: its hours change with the breaks counted
         const monthRows = rows.filter((r) => !locked.has(fromDateOnly(r.date).slice(0, 7)) && (r.source === 'system' || scope.zoho || (readPressPairs(r.pairs)?.length ?? 0) >= 2));
@@ -338,6 +339,29 @@ export class HoursByPairsService {
                 touch(r.employeeId, date);
               }
             }
+          }
+        }
+        // Zoho People's days without times (owner, 3 November 2026: "when the shift is setupped to be all days why does it
+        // shows rest days in the attendance?"): their status made again on the shift as it is now, as the import would
+        // today: a rest day on a weekday it now works (or the other way round). A day kept as leave stays so, unless now
+        // a rest day or a holiday; the approved leave is read with the days as it is (withLeaveNow).
+        if (scope.zoho) {
+          const holidayDates = new Set((await tx.holiday.findMany({ where: dateWhere, select: { date: true } })).map((h) => fromDateOnly(h.date)));
+          for (const r of monthRows) {
+            if (r.source !== 'zoho' || r.checkIn) continue;
+            const date = fromDateOnly(r.date);
+            const job = jobOn(r.employeeId, date);
+            if (!job || (scope.shiftId && job.shiftId !== scope.shiftId)) continue;
+            const status = zohoDayWithoutTimes(date, r.zohoStatus, { workingDays: job.shift?.workingDays ?? null, holidays: holidayDates });
+            out.daysRecounted++;
+            out.zohoDays++;
+            read.add(r.employeeId);
+            if (status === r.status || (r.status === 'leave' && status !== 'rest' && status !== 'holiday')) continue;
+            if (!scope.dryRun) await tx.attendanceDay.update({ where: { id: r.id }, data: { status } });
+            out.daysWritten++;
+            out.zohoDaysChanged++;
+            changedPeople.add(r.employeeId);
+            touch(r.employeeId, date);
           }
         }
         for (const r of monthRows) {
