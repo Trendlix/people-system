@@ -29,11 +29,24 @@ android {
         versionName = flutter.versionName
     }
 
+    // The app's one signing key (owner, 2 November 2026: "if it is not applicable skip it", the step to remove the old
+    // version first): in CI the keystore at PEOPLE_KEYSTORE (flutter-android.yml: from ANDROID_DEBUG_KEYSTORE_BASE64, else
+    // kept in the Actions cache, else made once), so each APK installs over the last; a build on a Mac signs with its own
+    // debug key. A store key comes with the Play Store.
+    signingConfigs {
+        System.getenv("PEOPLE_KEYSTORE")?.takeIf { it.isNotBlank() }?.let { path ->
+            create("people") {
+                storeFile = file(path)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // the old app's test key (the Actions cache or ANDROID_DEBUG_KEYSTORE_BASE64, flutter-android.yml), so each
-            // APK installs over the last; a store key comes with the Play Store
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("people") ?: signingConfigs.getByName("debug")
         }
     }
 }

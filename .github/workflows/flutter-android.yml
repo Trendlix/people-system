@@ -2,8 +2,9 @@ name: Flutter app (Android)
 
 # Builds Trendlix People, the employee app in Flutter (apps/flutter, README Phase 0; owner, 30 October 2026: "lets start
 # in the flutter one"), as an Android APK the owner downloads and installs to try each phase. It takes the old app's
-# place (apps/mobile, "Replace it now"): the same Android identity (com.trendlix.people) and the same signing key, and a
-# higher version code, so it installs over the old app.
+# place (apps/mobile, "Replace it now"): the same Android identity (com.trendlix.people) and a higher version code. Each
+# build is signed with the app's one key (below) and its release says since which version that key is the same, so the
+# app's update asks to remove the old version first only when the phone's build has another key.
 #
 # Runs on a push to main that touches apps/flutter or this file, and by hand ("Run workflow" on the Actions page). It
 # does not watch the API, the web app or apps/mobile, and backend.yml does not watch apps/flutter.
@@ -77,24 +78,37 @@ jobs:
       - name: Test
         run: flutter test
 
-      # The old app's signing key (mobile-android.yml), so this APK installs over it and each new one over the last (a
-      # phone refuses an update signed with another key). From the secret ANDROID_DEBUG_KEYSTORE_BASE64 when it is set;
-      # until then the key kept in the Actions cache under the old workflow's name, which GitHub drops after 7 days
-      # without a build (the next APK then needs the app uninstalled once).
+      # The app's one signing key, so each APK installs over the last (a phone refuses an update signed with another
+      # key; owner, 2 November 2026: "if it is not applicable skip it", the app's step to remove the old version first).
+      # From the secret ANDROID_DEBUG_KEYSTORE_BASE64 when it is set; else the keystore kept in the Actions cache (GitHub
+      # drops it after 7 days without a build); else one made now and kept from then on. Builds before 2 November 2026
+      # each had a key of their own: the cache of ~/.android/debug.keystore was never saved, Gradle's key being elsewhere.
+      # The build signs with it through PEOPLE_KEYSTORE (android/app/build.gradle.kts). A debug keystore's passwords.
       - name: Signing key from the cache
         if: env.HAS_DEBUG_KEYSTORE != 'true'
         uses: actions/cache@v6
         with:
-          path: ~/.android/debug.keystore
-          key: android-debug-keystore-v1
+          path: ~/.people-signing/people.keystore
+          key: people-signing-keystore-v1
 
       - name: Signing key from the secret
         if: env.HAS_DEBUG_KEYSTORE == 'true'
         env:
           KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
-          mkdir -p ~/.android
-          printf '%s' "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+          mkdir -p ~/.people-signing
+          printf '%s' "$KEYSTORE" | base64 -d > ~/.people-signing/people.keystore
+
+      - name: Signing key
+        run: |
+          mkdir -p ~/.people-signing
+          if [ ! -s ~/.people-signing/people.keystore ]; then
+            keytool -genkeypair -keystore ~/.people-signing/people.keystore -storetype PKCS12 \
+              -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Trendlix People, O=Trendlix, C=EG"
+            echo "::warning::A new signing key was made: this APK doesn't install over the last one, so the app says to remove the old version first (once)."
+          fi
+          echo "PEOPLE_KEYSTORE=$HOME/.people-signing/people.keystore" >> "$GITHUB_ENV"
 
       - name: Version
         id: version
@@ -140,9 +154,10 @@ jobs:
           dest="$RUNNER_TEMP/trendlix-people-$APP_VERSION_NAME.apk"
           cp "$src" "$dest"
           echo "path=$dest" >> "$GITHUB_OUTPUT"
-          # the signing certificate's fingerprint: the same as the old app's builds means it installs over them
+          # the signing certificate's fingerprint: the same as the last build's means it installs over it
           tools="$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -1)"
           cert="$("$tools/apksigner" verify --print-certs "$dest" 2>/dev/null | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          echo "APP_SIGNING_CERT=$cert" >> "$GITHUB_ENV"
           {
             echo "### Trendlix People $APP_VERSION_NAME (Flutter)"
             echo ""
@@ -175,10 +190,28 @@ jobs:
             gh release upload "app-$APP_VERSION_NAME" "$RUNNER_TEMP/release/trendlix-people.apk" --repo "$GITHUB_REPOSITORY" --clobber
             exit 0
           fi
+          # Since which version the signing key is the same (People's app/latest reads the line, app-releases.ts): a phone
+          # on it or later updates in place, an older one is told to remove its version first. The same key as the
+          # newest release: since that release's own "since" (or that release, when it doesn't say); else this one.
+          prev="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)"
+          since="app-$APP_VERSION_NAME"
+          if [ -n "$prev" ] && [ -n "$APP_SIGNING_CERT" ] && gh release download "$prev" --repo "$GITHUB_REPOSITORY" -p trendlix-people.apk -D "$RUNNER_TEMP/previous" >/dev/null 2>&1; then
+            tools="$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -1)"
+            before="$("$tools/apksigner" verify --print-certs "$RUNNER_TEMP/previous/trendlix-people.apk" 2>/dev/null | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+            if [ "$before" = "$APP_SIGNING_CERT" ]; then
+              earlier="$(gh release view "$prev" --repo "$GITHUB_REPOSITORY" --json body -q .body | sed -n 's/^Same signing key since \(app-[0-9.]*\).*/\1/p' | head -1)"
+              since="${earlier:-$prev}"
+            fi
+          fi
+          echo "- Same signing key since $since (the last release: ${prev:-none})" >> "$GITHUB_STEP_SUMMARY"
+          notes="$(printf '%s\n\n%s\n%s\n' \
+            "The employee app, version $APP_VERSION_NAME (code $APP_VERSION_CODE). Install: open the .apk on the phone." \
+            "Signing certificate SHA-256: ${APP_SIGNING_CERT:-unknown}" \
+            "Same signing key since $since")"
           gh release create "app-$APP_VERSION_NAME" "$RUNNER_TEMP/release/trendlix-people.apk" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Trendlix People $APP_VERSION_NAME" \
-            --notes "The employee app, version $APP_VERSION_NAME (code $APP_VERSION_CODE). Install: open the .apk on the phone." \
+            --notes "$notes" \
             --latest
           echo "- Released: https://github.com/$GITHUB_REPOSITORY/releases/tag/app-$APP_VERSION_NAME" >> "$GITHUB_STEP_SUMMARY"
