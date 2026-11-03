@@ -126,6 +126,14 @@ export class KpiTemplateContentDto {
    */
   @Allow()
   weights?: unknown;
+
+  /**
+   * The job title's own pillars (owner, 3 November 2026: "Yes Please", to its own pillar names): { pillars: [{ key, name,
+   * short?, weight }], attendancePillar }; null: back to its team's, department's or the company's; left out: as it has
+   * them. Checked by the service (packages/shared kpiPillarSetProblems).
+   */
+  @Allow()
+  ownPillars?: unknown;
 }
 
 /** A step's picks (the self-rating, the scoring): a criterion a metric, each with a comment; its overall comment; sent or saved. */

@@ -263,13 +263,15 @@ export class KpiFrameworkService {
     const published = await db.kpiTemplate.findMany({
       where: { status: 'published' },
       orderBy: { version: 'desc' },
-      select: { jobTitleId: true, pillars: true, attendancePillar: true, ownWeights: true, jobTitle: { select: { departmentId: true } } },
+      select: { jobTitleId: true, pillars: true, attendancePillar: true, ownWeights: true, ownPillars: true, jobTitle: { select: { departmentId: true } } },
     });
     const seen = new Set<string>();
     const out = new Set<string>();
     for (const t of published) {
       if (seen.has(t.jobTitleId)) continue;
       seen.add(t.jobTitleId);
+      // its job title's own pillars (3 November 2026): never old for the pillars it would take
+      if (t.ownPillars) continue;
       if (!kpiSamePillars(pillarSetOf(t), kpiWithWeights(of(t.jobTitle.departmentId).framework.set, t.ownWeights))) out.add(t.jobTitleId);
     }
     return out;

@@ -4576,6 +4576,7 @@ model KpiTemplate {
   pillars          Json // its pillars, [{ key, name, short, weight }], in order
   attendancePillar String         @map("attendance_pillar") // the key of the Attendance metric's pillar
   ownWeights       Json?          @map("own_weights") // its job title's own weights for its pillars, { key: weight } (22 October 2026); none: its department's
+  ownPillars       Boolean        @default(false) @map("own_pillars") // its pillars are its job title's own (3 November 2026), not its team's, department's or the company's
   metrics          KpiMetric[]
   scorecards       KpiScorecard[]
 

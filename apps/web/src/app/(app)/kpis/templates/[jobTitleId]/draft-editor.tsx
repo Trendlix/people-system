@@ -13,9 +13,12 @@ import {
   aboveTarget,
   addCriterion,
   addMetric,
+  addPillar,
   addTypedDuty,
   baseWeightLabel,
+  canAddPillar,
   canMove,
+  canRemovePillar,
   contentOf,
   draftWeightTotal,
   dutiesFull,
@@ -24,14 +27,20 @@ import {
   hasDuty,
   moveMetric,
   onlyForPublishing,
+  ownPillarsProblems,
   PILLARS_CHANGED_NOTE,
   pickDuty,
   pillarsFromText,
   removeCriterion,
   removeDuty,
   removeMetric,
+  removePillar,
+  renamePillar,
   resetWeights,
+  setAttendancePillar,
   setPillarWeight,
+  toBasePillars,
+  toOwnPillars,
   typedWeights,
   UNPLACED_NOTE,
   UNPLACED_TITLE,
@@ -63,6 +72,9 @@ import {
 // link to KPI Pillars; each pillar's weight is typed on its header, the department's shown beside it when it differs,
 // with the total and "Use the department's weights"; a draft whose own weights were reset (the pillars gained or lost
 // one) says so.
+// A job title's own pillars (owner, 3 November 2026: "Yes Please", to its own pillar names): "Own pillars for this job
+// title" beside the pillars it takes; then each pillar's name and weight are typed on its header, a pillar removed (its
+// metrics to Unplaced) or added (up to 8), and the pillar the Attendance metric counts in chosen.
 // Attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"; the setting Attendance in the KPI, off): the
 // Attendance metric and its points aren't shown or asked for (its points are sent as they were, kept for when it is
 // back), and a pillar it was alone in says it isn't scored, its weight spread over the others, until a metric is added.
@@ -423,7 +435,7 @@ function PillarWeight({ pillarKey, name, form, max, baseLabel, fid, setForm }: {
   const id = fid(`weight-${pillarKey}`);
   const base = form.baseWeights?.[pillarKey] ?? null;
   const typed = typedWeights(form)[pillarKey];
-  if (base === null) {
+  if (base === null && !form.own) {
     return (
       <p className="text-sm text-muted tabular-nums">
         Weight {form.weights[pillarKey]}% · max {max} points
@@ -439,7 +451,7 @@ function PillarWeight({ pillarKey, name, form, max, baseLabel, fid, setForm }: {
         inputMode="numeric"
         autoComplete="off"
         maxLength={3}
-        aria-describedby={typed !== base ? `${id}-base` : undefined}
+        aria-describedby={base !== null && typed !== base ? `${id}-base` : undefined}
         onChange={(e) => {
           const weight = e.target.value;
           setForm((f) => setPillarWeight(f, pillarKey, weight));
@@ -447,7 +459,7 @@ function PillarWeight({ pillarKey, name, form, max, baseLabel, fid, setForm }: {
         className="input min-h-9 w-16 py-1 tabular-nums"
       />
       <span>%</span>
-      {typed !== base && (
+      {base !== null && typed !== base && (
         <span id={`${id}-base`} className="badge bg-line-soft text-muted">
           <span className="sr-only">{name}: </span>
           {baseLabel}: {base}%
@@ -481,9 +493,38 @@ function PillarEditor({
   return (
     <section aria-labelledby={heading} className={pillar ? 'space-y-3' : 'space-y-3 rounded-lg border border-warn/40 bg-warn-soft/40 p-4'}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
-        <h3 id={heading} className={pillar ? 'font-semibold' : 'font-semibold text-warn'}>
-          {pillar ? pillar.name : UNPLACED_TITLE}
-        </h3>
+        {pillar && form.own ? (
+          // the job title's own pillars (3 November 2026): its name typed here
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 id={heading} className="sr-only">
+              {pillar.name.trim() || 'New pillar'}
+            </h3>
+            <label htmlFor={fid(`name-${pillar.key}`)} className="text-sm text-muted">
+              Pillar
+            </label>
+            <input
+              id={fid(`name-${pillar.key}`)}
+              value={pillar.name}
+              maxLength={60}
+              autoComplete="off"
+              placeholder="Its name"
+              onChange={(e) => {
+                const name = e.target.value;
+                setForm((f) => renamePillar(f, pillar.key, name));
+              }}
+              className="input min-h-9 w-64 py-1 font-semibold"
+            />
+            {canRemovePillar(form) && (
+              <button type="button" onClick={() => setForm((f) => removePillar(f, pillar.key))} className="btn btn-secondary min-h-9 py-1 text-danger">
+                Remove pillar<span className="sr-only"> {pillar.name}</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <h3 id={heading} className={pillar ? 'font-semibold' : 'font-semibold text-warn'}>
+            {pillar ? pillar.name : UNPLACED_TITLE}
+          </h3>
+        )}
         {pillar && <PillarWeight pillarKey={pillar.key} name={pillar.name} form={form} max={max} baseLabel={baseLabel} fid={fid} setForm={setForm} />}
       </div>
       {!pillar && <p className="max-w-3xl text-sm text-warn">{UNPLACED_NOTE}</p>}
@@ -518,7 +559,7 @@ function PillarEditor({
           }}
           className="btn btn-secondary"
         >
-          Add a metric to {pillar.name}
+          Add a metric to {pillar.name.trim() || 'this pillar'}
         </button>
       )}
     </section>
@@ -564,7 +605,7 @@ export function DraftEditor({
 }: {
   draft: Pick<KpiTemplateView, 'version' | 'updatedAt' | 'attendancePoints' | 'metrics' | 'pillars' | 'attendancePillar' | 'pillarsChanged'> &
     // an API from before department pillars sends none of these (nor, before practice scorecards, their count)
-    Partial<Pick<KpiTemplateView, 'pillarsFrom' | 'baseWeights' | 'ownWeights' | 'weightsReset' | 'practiceScorecards'>>;
+    Partial<Pick<KpiTemplateView, 'pillarsFrom' | 'baseWeights' | 'ownWeights' | 'weightsReset' | 'practiceScorecards' | 'ownPillars' | 'basePillars'>>;
   /** The JD's duty rows, to link a metric to. */
   duties: readonly string[];
   /** Saves the draft, or (`intent` publish) saves and publishes it. */
@@ -577,12 +618,15 @@ export function DraftEditor({
   attendanceInKpi?: boolean;
 }) {
   const fid = useFieldIds();
-  // the KPI framework's newest pillars, which the API placed the draft's metrics in
-  const [pillars] = useState<KpiPillarSet>(() => ({ pillars: draft.pillars, attendancePillar: draft.attendancePillar }));
-  const [form, setFormState] = useState<DraftForm>(() => formOf(draft, duties, pillars, draft.baseWeights ?? null, attendanceInKpi));
+  // the KPI framework's newest pillars, which the API placed the draft's metrics in, or the job title's own (3 November 2026)
+  const [start] = useState<KpiPillarSet>(() => ({ pillars: draft.pillars, attendancePillar: draft.attendancePillar }));
+  const own = draft.basePillars ? { own: !!draft.ownPillars, basePillars: draft.basePillars } : null;
+  const [form, setFormState] = useState<DraftForm>(() => formOf(draft, duties, start, draft.baseWeights ?? null, attendanceInKpi, own));
   // the draft as saved, to say when there are changes not saved yet (placed in new pillars, or its own weights reset:
   // not saved so yet)
-  const [saved] = useState(() => (draft.pillarsChanged || draft.weightsReset ? '' : JSON.stringify(contentOf(formOf(draft, duties, pillars, draft.baseWeights ?? null, attendanceInKpi)))));
+  const [saved] = useState(() => (draft.pillarsChanged || draft.weightsReset ? '' : JSON.stringify(contentOf(formOf(draft, duties, start, draft.baseWeights ?? null, attendanceInKpi, own)))));
+  // the pillars the metrics are in: the form's (its own ones edited, or those it takes)
+  const pillars = form.pillars;
   const [state, dispatch, pending] = useActionState(action, {});
   const [intent, setIntent] = useState<'save' | 'publish'>('save');
   const counter = useRef(0);
@@ -595,7 +639,7 @@ export function DraftEditor({
 
   const content = contentOf(form);
   // the Attendance metric's points checked only while it counts in the KPI (25 October 2026)
-  const saving = [...kpiTemplateProblems(content, { pillars, attendance: attendanceInKpi }), ...weightsProblems(form)];
+  const saving = [...ownPillarsProblems(form), ...kpiTemplateProblems(content, { pillars, attendance: attendanceInKpi }), ...weightsProblems(form)];
   const whose = pillarsFromText(draft.pillarsFrom);
   const baseLabel = baseWeightLabel(draft.pillarsFrom);
   const total = draftWeightTotal(form);
@@ -655,6 +699,52 @@ export function DraftEditor({
           </p>
         )}
       </div>
+      {form.basePillars && (
+        // the job title's own pillars, or those it takes (3 November 2026: "Yes Please")
+        <div className="space-y-3 rounded-lg bg-canvas px-4 py-3 text-sm">
+          <div role="group" aria-label="Pillars" className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">Pillars</span>
+            <button type="button" aria-pressed={!form.own} onClick={() => setForm(toBasePillars)} className={`btn min-h-9 py-1 ${form.own ? 'btn-secondary' : 'btn-primary'}`}>
+              {whose ?? 'The pillars it takes'}
+            </button>
+            <button type="button" aria-pressed={!!form.own} onClick={() => setForm(toOwnPillars)} className={`btn min-h-9 py-1 ${form.own ? 'btn-primary' : 'btn-secondary'}`}>
+              Own pillars for this job title
+            </button>
+          </div>
+          {form.own && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <p role="status" aria-live="polite" className={`font-semibold tabular-nums ${total === 100 ? 'text-ok' : 'text-warn'}`}>
+                Weights total {total}%{total === 100 ? '' : ': they must add up to 100%'}
+              </p>
+              {attendanceInKpi && (
+                <div className="flex items-center gap-2">
+                  <label htmlFor={fid('attendancePillar')}>Attendance counts in</label>
+                  <Select
+                    id={fid('attendancePillar')}
+                    value={form.pillars.attendancePillar}
+                    onChange={(e) => {
+                      const key = e.target.value;
+                      setForm((f) => setAttendancePillar(f, key));
+                    }}
+                    className="input min-h-9 py-1"
+                  >
+                    {form.pillars.pillars.map((p, i) => (
+                      <option key={p.key} value={p.key}>
+                        {p.name.trim() || `Pillar ${i + 1}`}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+              {canAddPillar(form) && (
+                <button type="button" onClick={() => setForm(addPillar)} className="btn btn-secondary min-h-9 py-1">
+                  Add a pillar
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {form.baseWeights && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-canvas px-4 py-3 text-sm">
           <Link href={KPI_PATHS.pillars}>{whose ?? 'KPI Pillars'}</Link>

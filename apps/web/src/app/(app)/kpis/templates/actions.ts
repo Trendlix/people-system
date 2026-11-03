@@ -17,6 +17,8 @@
 import {
   kpiSettingsProblems,
   kpiTemplateProblems,
+  kpiPillarSetOf,
+  kpiPillarSetProblems,
   kpiWeightsProblems,
   type KpiDraftAllResult,
   type KpiFrameworkInput,
@@ -154,8 +156,13 @@ export async function sendKpiDraft(jobTitleId: string, templateId: string, _prev
   const pillars = pillarsFromJson(fd.get('pillars'));
   // the Attendance metric's points only while it counts in the KPI (25 October 2026), as the page had it
   const attendance = fd.get('attendance') !== 'off';
+  // the job title's own pillars (3 November 2026) checked as they were typed; own weights only over the pillars it takes
   const problems = pillars
-    ? [...kpiTemplateProblems(content, { publishing: publish, pillars, attendance }), ...(content.weights ? kpiWeightsProblems(pillars, content.weights) : [])]
+    ? [
+        ...(content.ownPillars ? kpiPillarSetProblems(kpiPillarSetOf(content.ownPillars), { attendance }) : []),
+        ...kpiTemplateProblems(content, { publishing: publish, pillars, attendance }),
+        ...(content.weights && !content.ownPillars ? kpiWeightsProblems(pillars, content.weights) : []),
+      ]
     : [];
   if (problems.length) return { errors: problems };
   try {

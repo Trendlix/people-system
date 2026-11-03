@@ -1,10 +1,17 @@
 import {
+  KPI_FRAMEWORK_LIMITS,
   KPI_TEMPLATE_LIMITS,
   kpiMetricDuties,
+  kpiPillarKeyFor,
+  kpiPillarSetOf,
+  kpiPillarSetProblems,
+  kpiPlaceMetrics,
+  kpiWeightsOf,
   kpiSameDuty,
   kpiTidyDuties,
   kpiWeightsProblems,
   type KpiCriterion,
+  type KpiPillarInput,
   type KpiMetric,
   type KpiPillar,
   type KpiPillarSet,
@@ -27,6 +34,11 @@ import { wholeOf } from '../templates';
 // pillar's weight is typed on its header, the total shown, "Use the department's weights" puts the department's (or
 // the company's) back. Saved with the draft (`weights`: null when they are the department's), published with it, so
 // they apply from next month like any change; the pillars themselves are the department's (KPI Pillars).
+// A job title's own pillars (owner, 3 November 2026: "Yes Please", to a job title having its own pillar names, not only
+// weights): "Own pillars for this job title" starts from the pillars it takes now (with the weights typed); each pillar
+// is then renamed, removed (its metrics to Unplaced) or added (up to 8), its weight typed, and the Attendance metric's
+// pillar chosen; "Use the team's pillars" puts those back, the metrics placed in them by name. Saved with the draft
+// (`ownPillars`: null for the pillars it takes), published with it, so they apply from next month like any change.
 // Attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"; the setting Attendance in the KPI, off): the
 // Attendance metric and its points are hidden and not checked (kpiTemplateProblems with `attendance` off), the points
 // kept and sent as they were; a pillar it was alone in isn't scored, its weight spread over the others (said so).
@@ -74,6 +86,13 @@ export interface DraftForm {
   baseWeights: Record<string, number> | null;
   /** Whether the Attendance metric counts in the KPI (the setting, 25 October 2026); left out: it does. */
   attendance?: boolean;
+  /** The job title's own pillars (3 November 2026): `pillars` are then its own, edited here. */
+  own?: boolean;
+  /**
+   * The pillars it takes when it has none of its own (its team's, its department's or the company's), with their
+   * weights; null or left out: the API doesn't take own pillars (one from before them), so none are offered or sent.
+   */
+  basePillars?: KpiPillarSet | null;
 }
 
 /** A pillar's place in the set's order; Unplaced (or a pillar not in the set) after them all. */
@@ -118,14 +137,19 @@ export function formOf(
   baseWeights: Record<string, number> | null = null,
   /** Whether the Attendance metric counts in the KPI (25 October 2026: "Fixed cut only"); on unless sent. */
   attendance = true,
+  /** Whether `pillars` are the job title's own (3 November 2026), and the pillars it takes otherwise; none: not offered. */
+  ownPillars: { own: boolean; basePillars: KpiPillarSet | null } | null = null,
 ): DraftForm {
+  const own = !!ownPillars?.own;
   return {
     ...(!attendance && { attendance: false }),
     attendancePoints: String(content.attendancePoints),
     metrics: inPillarOrder(content.metrics, pillars).map((m, i) => metricFormOf(m, `m${i}`, duties)),
     pillars,
     weights: Object.fromEntries(pillars.pillars.map((p) => [p.key, String(p.weight)])),
-    baseWeights: baseWeights ? Object.fromEntries(pillars.pillars.map((p) => [p.key, baseWeights[p.key] ?? p.weight])) : null,
+    // own pillars have their weights in them: no "own weights" over the team's
+    baseWeights: baseWeights && !own ? Object.fromEntries(pillars.pillars.map((p) => [p.key, baseWeights[p.key] ?? p.weight])) : null,
+    ...(ownPillars?.basePillars && { own, basePillars: ownPillars.basePillars }),
   };
 }
 
@@ -137,7 +161,8 @@ const textOrNull = (text: string): string | null => (text.trim() ? text.trim() :
  */
 export function contentOf(form: DraftForm): KpiTemplateContent {
   return {
-    ...(form.baseWeights && { weights: ownWeightsOf(form) }),
+    ...(form.basePillars && { ownPillars: form.own ? ownPillarSetOf(form) : null }),
+    ...(!form.own && form.baseWeights && { weights: ownWeightsOf(form) }),
     attendancePoints: wholeOf(form.attendancePoints),
     metrics: inPillarOrder(form.metrics, form.pillars).map(
       (m): KpiMetric => ({
@@ -162,7 +187,10 @@ export function contentFromJson(text: unknown): KpiTemplateContent | null {
   const v = value as Partial<KpiTemplateContent>;
   if (!Array.isArray(v.metrics) || !v.metrics.every((m) => m && typeof m === 'object' && Array.isArray(m.criteria))) return null;
   const weights = v.weights === null ? null : v.weights && typeof v.weights === 'object' && !Array.isArray(v.weights) ? v.weights : undefined;
-  return { ...(weights !== undefined && { weights }), attendancePoints: v.attendancePoints as number, metrics: v.metrics };
+  // the job title's own pillars (3 November 2026): null for the pillars it takes; anything else not one is left out
+  const own = v.ownPillars;
+  const ownPillars = own === null ? null : own && typeof own === 'object' && Array.isArray(own.pillars) && typeof own.attendancePillar === 'string' ? own : undefined;
+  return { ...(ownPillars !== undefined && { ownPillars }), ...(weights !== undefined && { weights }), attendancePoints: v.attendancePoints as number, metrics: v.metrics };
 }
 
 /** The pillars a draft is placed in, as the form sent them (JSON), or null when they aren't. */
@@ -243,6 +271,84 @@ export function weightsResetNote(pillarsFrom: { nameEn: string } | null | undefi
   const whose = pillarsFrom ? `${pillarsFrom.nameEn}’s` : 'the company’s';
   return `${whose.charAt(0).toUpperCase()}${whose.slice(1)} pillars changed, so this job title’s own weights were reset to ${whose}.`;
 }
+
+// ---------- the job title's own pillars (3 November 2026) ----------
+
+/** The own pillars as typed, to check and send: names trimmed, the weights typed (not whole: NaN), a renamed one's short name made again. */
+export function ownPillarSetOf(form: Pick<DraftForm, 'pillars' | 'weights' | 'basePillars'>): { pillars: KpiPillarInput[]; attendancePillar: string } {
+  const typed = typedWeights(form);
+  const baseName = new Map((form.basePillars?.pillars ?? []).map((p) => [p.key, p.name]));
+  return {
+    attendancePillar: form.pillars.attendancePillar,
+    pillars: form.pillars.pillars.map((p) => {
+      const name = p.name.trim().replace(/\s+/g, ' ');
+      // its short name kept while its name is as it was; renamed (or new), made from the name
+      const kept = p.short && (baseName.get(p.key) ?? null) === name;
+      return { key: p.key, name, ...(kept && { short: p.short }), weight: typed[p.key] };
+    }),
+  };
+}
+
+/** What is wrong with the own pillars typed (kpiPillarSetProblems); none when the pillars aren't the job title's own. */
+export const ownPillarsProblems = (form: DraftForm): string[] =>
+  form.own ? kpiPillarSetProblems(kpiPillarSetOf(ownPillarSetOf(form)), { attendance: form.attendance !== false }) : [];
+
+/** "Own pillars for this job title": the pillars it takes now, with the weights typed, to edit. */
+export function toOwnPillars(form: DraftForm): DraftForm {
+  if (form.own || !form.basePillars) return form;
+  return { ...form, own: true, pillars: weightedPillars(form), baseWeights: null };
+}
+
+/** Back to the pillars it takes (its team's, department's or the company's): the metrics placed in them by name. */
+export function toBasePillars(form: DraftForm): DraftForm {
+  const base = form.basePillars;
+  if (!form.own || !base) return form;
+  const placed = kpiPlaceMetrics(form.metrics, form.pillars, base);
+  const metrics = form.metrics.map((m, i) => ({ ...m, pillar: placed[i].pillar, wasIn: placed[i].wasIn }));
+  return {
+    ...form,
+    own: false,
+    pillars: base,
+    metrics: inPillarOrder(metrics, base),
+    weights: Object.fromEntries(base.pillars.map((p) => [p.key, String(p.weight)])),
+    baseWeights: kpiWeightsOf(base),
+  };
+}
+
+/** A pillar renamed (its key, and so its metrics, kept). */
+export const renamePillar = (form: DraftForm, key: string, name: string): DraftForm => ({
+  ...form,
+  pillars: { ...form.pillars, pillars: form.pillars.pillars.map((p) => (p.key === key ? { ...p, name } : p)) },
+});
+
+/** Whether a pillar can be added (at most 8) or removed (at least 1). */
+export const canAddPillar = (form: Pick<DraftForm, 'pillars'>): boolean => form.pillars.pillars.length < KPI_FRAMEWORK_LIMITS.pillarsMax;
+export const canRemovePillar = (form: Pick<DraftForm, 'pillars'>): boolean => form.pillars.pillars.length > KPI_FRAMEWORK_LIMITS.pillarsMin;
+
+/** A new pillar last, to name and weigh; its key one no pillar has. */
+export function addPillar(form: DraftForm): DraftForm {
+  if (!form.own || !canAddPillar(form)) return form;
+  const keys = form.pillars.pillars.map((p) => p.key);
+  const key = kpiPillarKeyFor(`Pillar ${keys.length + 1}`, keys);
+  return { ...form, pillars: { ...form.pillars, pillars: [...form.pillars.pillars, { key, name: '', short: '', weight: 0 }] }, weights: { ...form.weights, [key]: '' } };
+}
+
+/** A pillar removed: its metrics to Unplaced (with its name), the Attendance metric to the first pillar when it was there. */
+export function removePillar(form: DraftForm, key: string): DraftForm {
+  const pillar = form.pillars.pillars.find((p) => p.key === key);
+  if (!form.own || !pillar || !canRemovePillar(form)) return form;
+  const pillars = form.pillars.pillars.filter((p) => p.key !== key);
+  const weights = Object.fromEntries(Object.entries(form.weights).filter(([k]) => k !== key));
+  return {
+    ...form,
+    pillars: { attendancePillar: form.pillars.attendancePillar === key ? pillars[0].key : form.pillars.attendancePillar, pillars },
+    weights,
+    metrics: form.metrics.map((m) => (m.pillar === key ? { ...m, pillar: null, wasIn: pillar.name.trim() || null } : m)),
+  };
+}
+
+/** The pillar the Attendance metric counts in. */
+export const setAttendancePillar = (form: DraftForm, key: string): DraftForm => ({ ...form, pillars: { ...form.pillars, attendancePillar: key } });
 
 // ---------- the pillars ----------
 

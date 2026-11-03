@@ -4,6 +4,9 @@ import {
   aboveTarget,
   addCriterion,
   addMetric,
+  addPillar,
+  canAddPillar,
+  canRemovePillar,
   addTypedDuty,
   baseWeightLabel,
   canMove,
@@ -16,6 +19,7 @@ import {
   hasDuty,
   moveMetric,
   onlyForPublishing,
+  ownPillarsProblems,
   ownWeightsOf,
   pickDuty,
   pillarGroups,
@@ -24,8 +28,13 @@ import {
   removeCriterion,
   removeDuty,
   removeMetric,
+  removePillar,
+  renamePillar,
   resetWeights,
+  setAttendancePillar,
   setPillarWeight,
+  toBasePillars,
+  toOwnPillars,
   updateCriterion,
   updateMetric,
   weightedPillars,
@@ -424,5 +433,86 @@ describe('a job title’s own weights', () => {
     // a team's own (22 October 2026: "Yes, add team pillars")
     expect(weightsResetNote({ nameEn: 'Video' })).toBe('Video’s pillars changed, so this job title’s own weights were reset to Video’s.');
     expect(weightsResetNote(null)).toBe('The company’s pillars changed, so this job title’s own weights were reset to the company’s.');
+  });
+});
+
+// owner, 3 November 2026: "Yes Please", to a job title having its own pillar names, not only weights
+describe('a job title’s own pillars', () => {
+  const BASE = { delivery: 30, quality: 25, clients: 25, discipline: 20 };
+  const offer = { own: false, basePillars: FOUR };
+
+  it('sends none while it takes the pillars of its team or department, its weights as before', () => {
+    const form = formOf(content, DUTIES, FOUR, BASE, true, offer);
+    expect(form.own).toBe(false);
+    expect(contentOf(form)).toMatchObject({ ownPillars: null, weights: null });
+    expect(ownPillarsProblems(form)).toEqual([]);
+    // an API from before own pillars: nothing about them sent
+    expect('ownPillars' in contentOf(formOf(content, DUTIES, FOUR, BASE))).toBe(false);
+  });
+
+  it('starts from those, with the weights typed, then is renamed, added to and weighed, checked as the API checks them', () => {
+    let form = toOwnPillars(setPillarWeight(formOf(content, DUTIES, FOUR, BASE, true, offer), 'delivery', '40'));
+    expect(form).toMatchObject({ own: true, baseWeights: null });
+    expect('weights' in contentOf(form)).toBe(false);
+    expect(ownPillarsProblems(form)).toEqual(['The weights add up to 110%: make them add up to 100%.']);
+    form = renamePillar(setPillarWeight(form, 'quality', '15'), 'quality', 'Payroll Accuracy');
+    form = addPillar(form);
+    const added = form.pillars.pillars.at(-1)!;
+    expect(added).toMatchObject({ key: 'pillar-5', name: '' });
+    expect(ownPillarsProblems(form)).toContain('Pillar 5: give it a name.');
+    form = setPillarWeight(setPillarWeight(renamePillar(form, added.key, 'Compliance'), added.key, '10'), 'clients', '15');
+    expect(ownPillarsProblems(form)).toEqual([]);
+    expect(contentOf(form).ownPillars).toEqual({
+      attendancePillar: 'discipline',
+      pillars: [
+        { key: 'delivery', name: 'Delivery & Timeliness', short: 'Delivery', weight: 40 },
+        // renamed: its short name made again from its new name
+        { key: 'quality', name: 'Payroll Accuracy', weight: 15 },
+        { key: 'clients', name: 'Clients & Teamwork', short: 'Clients', weight: 15 },
+        { key: 'discipline', name: 'Discipline & Growth', short: 'Discipline', weight: 20 },
+        { key: 'pillar-5', name: 'Compliance', weight: 10 },
+      ],
+    });
+    // its metrics stay in their pillars, renamed or not
+    expect(contentOf(form).metrics.map((m) => m.pillar)).toEqual(['delivery', 'quality']);
+  });
+
+  it('a pillar removed sends its metrics to Unplaced, and the Attendance metric to the first pillar when it was there', () => {
+    let form = setAttendancePillar(toOwnPillars(formOf(content, DUTIES, FOUR, BASE, true, offer)), 'delivery');
+    form = removePillar(form, 'delivery');
+    expect(form.pillars.pillars.map((p) => p.key)).toEqual(['quality', 'clients', 'discipline']);
+    expect(form.pillars.attendancePillar).toBe('quality');
+    expect(contentOf(form).metrics.find((m) => m.id === 'd1')).toMatchObject({ pillar: null, wasIn: 'Delivery & Timeliness' });
+    expect(form.weights).not.toHaveProperty('delivery');
+    // back to the pillars it takes: placed in them by name again, their weights back
+    const back = toBasePillars(form);
+    expect(back).toMatchObject({ own: false, pillars: FOUR, baseWeights: BASE });
+    expect(contentOf(back)).toMatchObject({ ownPillars: null, weights: null });
+    expect(contentOf(back).metrics.map((m) => [m.id, m.pillar])).toEqual([
+      ['d1', 'delivery'],
+      ['q1', 'quality'],
+    ]);
+  });
+
+  it('keeps 1 to 8 pillars', () => {
+    let form = toOwnPillars(formOf(content, DUTIES, FOUR, BASE, true, offer));
+    for (let i = 0; i < 6; i++) form = addPillar(form);
+    expect(form.pillars.pillars).toHaveLength(8);
+    expect(canAddPillar(form)).toBe(false);
+    expect(addPillar(form)).toBe(form);
+    let one = toOwnPillars(formOf(content, DUTIES, FOUR, BASE, true, offer));
+    for (const key of ['delivery', 'quality', 'clients']) one = removePillar(one, key);
+    expect(canRemovePillar(one)).toBe(false);
+    expect(removePillar(one, 'discipline')).toBe(one);
+  });
+
+  it('starts as its own when the draft has them, and reads them back from what the form sent', () => {
+    const form = formOf(content, DUTIES, THREE, BASE, true, { own: true, basePillars: FOUR });
+    expect(form).toMatchObject({ own: true, baseWeights: null });
+    expect(contentOf(form).ownPillars?.pillars.map((p) => p.name)).toEqual(['Delivery', 'Quality of Work', 'Growth']);
+    const sent = JSON.stringify(contentOf(form));
+    expect(contentFromJson(sent)?.ownPillars).toEqual(contentOf(form).ownPillars);
+    expect(contentFromJson(JSON.stringify({ ...content, ownPillars: null }))?.ownPillars).toBeNull();
+    expect('ownPillars' in contentFromJson(JSON.stringify({ ...content, ownPillars: 'x' }))!).toBe(false);
   });
 });

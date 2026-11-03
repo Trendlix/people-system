@@ -37,18 +37,20 @@ export function TemplateView({
 }: {
   template: Pick<KpiTemplateView, 'metrics' | 'attendancePoints' | 'pillars' | 'attendancePillar'> &
     // an API from before department pillars sends neither
-    Partial<Pick<KpiTemplateView, 'pillarsFrom' | 'ownWeights'>>;
+    Partial<Pick<KpiTemplateView, 'pillarsFrom' | 'ownWeights' | 'ownPillars'>>;
   headingLevel?: 'h3' | 'h4';
   /** Whether the Attendance metric counts in the KPI (the setting, 25 October 2026); on unless sent. */
   attendance?: boolean;
 }) {
   const Heading = headingLevel;
-  const whose = pillarsFromText(template.pillarsFrom);
+  // the job title's own pillars (3 November 2026): not its team's, department's or the company's
+  const whose = template.ownPillars ? null : pillarsFromText(template.pillarsFrom);
   return (
     <div className="space-y-6">
-      {(whose || template.ownWeights) && (
+      {(whose || template.ownWeights || template.ownPillars) && (
         <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
           {whose && <span>{whose}</span>}
+          {template.ownPillars && <span className="badge bg-accent-soft text-accent">Own pillars for this job title</span>}
           {template.ownWeights && <span className="badge bg-accent-soft text-accent">Own weights for this job title</span>}
         </p>
       )}

@@ -39,6 +39,7 @@
 // Pure code: the API enforces these rules, the web shows them live. Tested in apps/api/src/common/kpis.spec.ts.
 
 import type { EmploymentType } from './index.js';
+import type { KpiPillarInput } from './kpi-framework.js';
 import type { KpiPracticeInfo, KpiPracticeStep } from './kpi-practice.js';
 
 // ---------- the framework: pillars, weights, levels ----------
@@ -197,6 +198,12 @@ export interface KpiTemplateContent {
    * it has are kept.
    */
   weights?: Record<string, number> | null;
+  /**
+   * The job title's own pillars (owner, 3 November 2026: "Yes Please", to a job title having its own pillar names): its
+   * pillars (names, weights) and the Attendance metric's, in place of those its team, department or the company has, its
+   * own weights in them; null: back to those; left out: as it has them.
+   */
+  ownPillars?: { pillars: KpiPillarInput[]; attendancePillar: string } | null;
 }
 
 /** The automatic metric's name, on every template in the pillar the framework chose (Discipline & Growth by default). */
@@ -806,6 +813,13 @@ export interface KpiTemplateView {
   ownWeights: boolean;
   /** A draft whose own weights were dropped, its pillars having gained or lost one: it takes the department's again. */
   weightsReset: boolean;
+  /**
+   * Its pillars are the job title's own (owner, 3 November 2026), not its team's, department's or the company's: kept as
+   * they are whatever those become. Left out by an API from before them.
+   */
+  ownPillars?: boolean;
+  /** A draft's: the pillars it takes when it has none of its own (its team's, department's or the company's), to go back to. */
+  basePillars?: KpiPillarSet;
 }
 
 /** A job title on the KPI Templates list. */

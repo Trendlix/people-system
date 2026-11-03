@@ -561,6 +561,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // KPI pillars by department, weights by job title (22 October 2026)
   followsCompany: 'Back to the company’s pillars',
   ownWeights: 'Own weights',
+  ownPillars: 'Own pillars',
   pillarsOf: 'Pillars of',
   // custody (Assets step 3, 21 October 2026)
   custodyTerms: 'Custody terms',
