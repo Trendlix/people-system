@@ -9,6 +9,7 @@ import '../../providers.dart';
 import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import 'approvals.dart';
 import 'kinds/claim.dart';
 import 'kinds/compensatory.dart';
 import 'kinds/correction.dart';
@@ -251,6 +252,37 @@ class _RequestPageState extends ConsumerState<RequestPage> {
     }
   }
 
+  /// Approved, or rejected with why, by the one whose step it waits for (4 November 2026); People's refusal said at the top.
+  Future<void> _decide(PeopleRequest r, {required bool approve}) async {
+    String? why;
+    if (!approve) {
+      why = await askWhyRejected(context);
+      if (why == null || !mounted) return;
+    }
+    setState(() => _busy = true);
+    try {
+      final now = await decideRequest(ref, r, approve: approve, reason: why);
+      if (!mounted) return;
+      setState(() {
+        _request = now;
+        _notice = approve ? ApproveWords.approved(r.employeeName) : ApproveWords.rejected(r.employeeName);
+        _noticeOk = true;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _notice = refusalOf(e).join(' ');
+        _noticeOk = false;
+      });
+      if (e.status == 409) await _load();
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+        requestsChanged(ref);
+      }
+    }
+  }
+
   /// Reads the file from People with the session and opens it in the phone's viewer; People's refusal said at the top.
   Future<void> _open(OpenableFile f, String noViewer) async {
     setState(() => _opening = f.path);
@@ -393,6 +425,37 @@ class _RequestPageState extends ConsumerState<RequestPage> {
                             ],
                           ),
                         ),
+                    ],
+                  ),
+                ),
+              ],
+              // its step waits for the one reading it (4 November 2026): Reject and Approve
+              if (r != null && r.waitingForYou && approvableKinds.contains(r.kind)) ...[
+                const SizedBox(height: 16),
+                SurfaceCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(ApproveWords.decideTitle, style: text.titleLarge),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _busy ? null : () => _decide(r, approve: false),
+                              style: OutlinedButton.styleFrom(foregroundColor: p.danger, side: BorderSide(color: p.danger.withValues(alpha: 0.5))),
+                              child: const Text(ApproveWords.reject),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: _busy ? null : () => _decide(r, approve: true),
+                              child: Text(_busy ? ApproveWords.sending : ApproveWords.approve),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),

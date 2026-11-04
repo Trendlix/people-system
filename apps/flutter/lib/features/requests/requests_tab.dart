@@ -13,6 +13,7 @@ import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
 import '../dashboard/dashboard_data.dart';
 import '../dashboard/dashboard_screen.dart' show DashboardWords;
+import 'approvals.dart';
 import 'history.dart';
 import 'kinds/claim.dart';
 import 'kinds/compensatory.dart';
@@ -79,6 +80,8 @@ class _RequestsTabState extends ConsumerState<RequestsTab> {
         children: [
           head,
           const SizedBox(height: 20),
+          // an approver with no employee profile of their own (HR's account) still approves (4 November 2026)
+          if (me != null && !me.hold) const ToApproveCard(),
           Notice(text: me?.hold == true ? DashboardWords.hold : RequestsWords.noProfile, ok: false),
         ],
       );
@@ -95,6 +98,8 @@ class _RequestsTabState extends ConsumerState<RequestsTab> {
         children: [
           head,
           const SizedBox(height: 24),
+          // what waits for their step, approved in one tap (owner, 4 November 2026: "why there is no approve button in the app?")
+          const ToApproveCard(),
           _CreateButton(
             onPressed: () {
               if (leaveOffered) {

@@ -188,5 +188,5 @@ phase, and record every decision the owner makes here (with the date and their w
   the whole app only with the location on ("app has to be location enabled to work": `lib/platform/location_gate.dart`)
   and the phone's last position sent with each request (`x-people-location`, read at most once a minute in use) for
   People's activity log (0.6.8).
-- [ ] Phase 3 — Approve in one move — not in the phone design; to be placed in the Requests tab in its style — next.
+- [x] Phase 3 — Approve in one move (4 November 2026, owner: "For roles who approve requests, why there is no approve button in the app?"; asked, "Now: everyday requests"): To approve at the top of the Requests tab — leave, permission, work from home, official duty, compensatory days, attendance corrections and expense claims waiting for the person's step, oldest first; Approve in one tap, Reject with why, Approve all; the same two buttons on the request's page. A claim is approved for its amount. Raises, pay raises, KPIs and check-in locations are still decided on the website. No undo: People has none for a decision.
 - [ ] Phase 4 — push notifications (Firebase); opening files and payslip PDFs in the app.

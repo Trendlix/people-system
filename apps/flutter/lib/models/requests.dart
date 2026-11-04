@@ -131,6 +131,7 @@ abstract class PeopleRequest {
       canCancel = j.flag('canCancel'),
       confidential = j.flag('confidential'),
       recordedByHr = j.flag('recordedByHr'),
+      waitingForYou = j.flag('waitingForYou'),
       manager = Approver.of(j.m['manager']),
       rejectedStage = j.text('rejectedStage'),
       rejectReason = j.text('rejectReason'),
@@ -156,6 +157,9 @@ abstract class PeopleRequest {
   /// A C-level person's: HR's stage is the CEO's.
   final bool confidential;
   final bool recordedByHr;
+
+  /// Its step waits for the one reading it (an approver, HR): they approve or reject it (4 November 2026).
+  final bool waitingForYou;
 
   /// Who decides first; null: nobody, it went straight to HR.
   final Approver? manager;

@@ -56,6 +56,44 @@ abstract final class RequestPaths {
   static String action(RequestKind kind, String id, String action) => '${list(kind)}/${Uri.encodeComponent(id)}/$action';
 }
 
+// ---------- To approve (owner, 4 November 2026: "For roles who approve requests, why there is no approve button in the app?") ----------
+
+/// The kinds approved in the app (asked, "Now: everyday requests"): raises, pay raises, KPIs and check-in locations
+/// stay on the website.
+const approvableKinds = [RequestKind.leave, RequestKind.permission, RequestKind.wfh, RequestKind.od, RequestKind.compensatory, RequestKind.correction, RequestKind.claim];
+
+/// Those of a kind waiting for the caller's step (the website's "waiting" lists: GET …?status=waiting).
+String waitingPath(RequestKind kind) => '${RequestPaths.one(kind, '_').replaceFirst(RegExp(r'/_$'), '')}?status=waiting';
+
+/// What waits for the caller: every approvable kind's, oldest first; `failed` when a list couldn't be read (one that isn't
+/// the caller's to read, 403 or 404, is simply none).
+class WaitingRequests {
+  const WaitingRequests({required this.items, required this.failed});
+
+  final List<PeopleRequest> items;
+  final bool failed;
+}
+
+final waitingRequestsProvider = FutureProvider.autoDispose<WaitingRequests>((ref) async {
+  final client = ref.read(peopleClientProvider);
+  var failed = false;
+  final lists = await Future.wait([
+    for (final k in approvableKinds)
+      client.get(waitingPath(k)).then((json) => requestsOf<PeopleRequest>(k, json)).catchError((Object e) {
+        if (!(e is ApiException && (e.status == 403 || e.status == 404))) failed = true;
+        return <PeopleRequest>[];
+      }),
+  ]);
+  final items = [for (final l in lists) ...l.where((r) => r.waitingForYou)]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  return WaitingRequests(items: items, failed: failed);
+});
+
+/// A request's step decided: approved, or rejected with why (People needs the why). People's view of it back.
+Future<PeopleRequest> decideRequest(WidgetRef ref, PeopleRequest r, {required bool approve, String? reason}) async {
+  final json = await sendJson(ref, '${RequestPaths.one(r.kind, r.id)}/decide', {'decision': approve ? 'approve' : 'reject', 'comment': ?reason});
+  return requestOf(r.kind, json);
+}
+
 /// Whether People answered that it has no such thing (an API from before it): the part is left out, not failed.
 bool isUnavailable(Object? error) => error is ApiException && error.status == 404;
 
@@ -119,6 +157,7 @@ final reimbursementTypesProvider = FutureProvider.autoDispose.family<List<Reimbu
 /// After a request is sent, cancelled or withdrawn: everything that counts it is read again.
 void requestsChanged(WidgetRef ref) {
   ref
+    ..invalidate(waitingRequestsProvider)
     ..invalidate(myRequestsProvider)
     ..invalidate(myResignationProvider)
     ..invalidate(oneRequestProvider)
