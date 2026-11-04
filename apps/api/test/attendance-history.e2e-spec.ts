@@ -45,7 +45,7 @@ interface History {
   trend: { by: string; points: { key: string }[] };
   checkIns: { from: number; count: number }[];
   weekdays: { weekday: number; lateDays: number }[];
-  log: { only: string | null; page: number; pages: number; pageSize: number; total: number; days: { date: string; mode: string; source: string; onTime: boolean | null; lateMinutes: number; odRequestId: string | null }[] };
+  log: { only: string | null; page: number; pages: number; pageSize: number; total: number; days: { date: string; mode: string; source: string; onTime: boolean | null; lateMinutes: number; odRequestId: string | null; expected: boolean; attended: boolean; nothingKept?: boolean }[] };
 }
 
 describe('Attendance history (e2e)', () => {
@@ -247,8 +247,12 @@ describe('Attendance history (e2e)', () => {
     // the official duty over an absent day: attended, on time, its request linked
     const od = since.log.days.find((d) => d.mode === 'od');
     expect(od).toMatchObject({ odRequestId: ids.od, onTime: true });
-    // each row's source
-    expect(new Set(since.log.days.map((d) => d.source))).toEqual(new Set(['zoho', 'correction']));
+    // each row's source; a date of those months nothing was kept for shown as No record, with none (owner, 4 November
+    // 2026: "just record nothing but dont hide the dates")
+    expect(new Set(since.log.days.filter((d) => !d.nothingKept).map((d) => d.source))).toEqual(new Set(['zoho', 'correction']));
+    const gaps = since.log.days.filter((d) => d.nothingKept);
+    expect(gaps.length).toBeGreaterThan(0);
+    expect(gaps.every((d) => ['no_record', 'rest', 'holiday', 'leave'].includes(d.mode) && !d.expected && !d.attended)).toBe(true);
     // a custom range needs both days
     expect((await history('hana', '?period=custom').expect(400)).body.message).toEqual(['Choose the first and the last day of the range, e.g. 2026-01-01 and 2026-06-30.']);
   });
@@ -261,7 +265,8 @@ describe('Attendance history (e2e)', () => {
     const dates = all.log.days.map((d) => d.date);
     expect(dates).toEqual(all.log.days.map((d) => d.date).sort().reverse());
     expect((await history('hana', '?period=since_joining&only=od').expect(200)).body.log.total).toBe(1);
-    expect((await history('hana', '?period=since_joining&page=99').expect(200)).body.log.page).toBe(1);
+    // a page past the last: the last
+    expect((await history('hana', '?period=since_joining&page=99').expect(200)).body.log.page).toBe(all.log.pages);
   });
 
   it('is for HR, the CEO, Finance and the Super Admin; a manager and the employee get 404; a C-level person’s hidden from HR', async () => {
@@ -298,12 +303,14 @@ describe('Attendance history (e2e)', () => {
     const row = log.getRows(2, log.rowCount - 1)!.find((r) => r.getCell(1).value === lateDay.split('-').reverse().join('/'))!;
     expect([row.getCell(3).value, row.getCell(7).value, row.getCell(8).value, row.getCell(9).value]).toEqual(['Office', 40, 'No', 'Zoho import']);
     expect(row.getCell(4).text).toMatch(/^10:55\sAM$/);
-    expect(log.rowCount).toBe(seeded.length - 1 + 1);
+    // every day of the log, the dates with no record too (4 November 2026), under its title
+    const shown = (await history('hana', '?period=since_joining').expect(200)).body as History;
+    expect(log.rowCount).toBe(shown.log.total + 1);
     const figures = wb.getWorksheet('Figures')!;
     expect(figures.getRow(1).values).toEqual([undefined, 'Figure', 'Value', 'What it means']);
     expect(figures.getColumn(1).values).toContain('Attendance rate');
     const audit = await prisma.auditLog.findFirst({ where: { action: 'attendance_history_file', entityId: ids.hana }, orderBy: { id: 'desc' } });
-    expect(audit).toMatchObject({ entityType: 'employee', diff: { period: 'since_joining', from: joined, to: TODAY, days: seeded.length - 1 } });
+    expect(audit).toMatchObject({ entityType: 'employee', diff: { period: 'since_joining', from: joined, to: TODAY, days: shown.log.total } });
     // a developer sees the page (masked), never the file
     await history('hana', '', developer).expect(200);
     const refused = await api().get(`/api/attendance/employees/${ids.hana}/history.xlsx`).set('Cookie', developer).expect(403);

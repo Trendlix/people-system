@@ -11,6 +11,7 @@ import {
   flexWeekStart,
   isFlexibleDays,
   monthDays,
+  withNoRecordDays,
   officialDutyDays,
   OWN_SOURCES,
   readPressPairs,
@@ -165,10 +166,11 @@ export function monthDayOf(d: DayRow): MonthDay {
  * we pay nothing"; compensatoryDays `compensatory`, `compensated`). Those keep the day's source 'zoho', so until 26
  * October 2026 a month made only of Excel-imported Zoho days never reached the line with them (September's attendance
  * cut for an approved day at home with no check-in stayed, the fill recounting its no-shows alone). A month of only
- * Zoho's days with none is still left to its import.
+ * Zoho's days with none is still left to its import. A date nothing was kept for (4 November 2026: withNoRecordDays) is
+ * never one.
  */
-export const ownDays = (days: readonly Pick<SourcedDay, 'source' | 'exempt' | 'wfhDay' | 'od' | 'compensatory' | 'compensated'>[]): boolean =>
-  days.some((d) => d.exempt || d.wfhDay || !!d.od || d.compensatory || d.compensated || (OWN_SOURCES as readonly string[]).includes(d.source));
+export const ownDays = (days: readonly Pick<SourcedDay, 'source' | 'exempt' | 'wfhDay' | 'od' | 'compensatory' | 'compensated' | 'nothingKept'>[]): boolean =>
+  days.some((d) => !d.nothingKept && (d.exempt || d.wfhDay || !!d.od || d.compensatory || d.compensated || (OWN_SOURCES as readonly string[]).includes(d.source)));
 
 /** The shift's times as the shared rules take them. */
 /**
@@ -295,7 +297,10 @@ export class AttendanceDaysService {
       // "if the day is compensated with a day, we pay nothing")
       const comp = compensatory.get(id);
       const compensated = employment && comp ? compensatoryDays(exempt, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, hoursOff: comp.hoursOff, daysWorked: comp.daysWorked }) : exempt;
-      const read = compensated.map((d) => ({
+      // every date shown, those nothing was kept for too (owner, 4 November 2026: "just record nothing but dont hide the
+      // dates"): a holiday, a rest day, leave, else a working day with no record, neither absent nor expected
+      const shown = !employment ? compensated : withNoRecordDays(compensated, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo });
+      const read = shown.map((d) => ({
         ...d,
         importId: 'importId' in d ? (d.importId as string | null) : null,
         flags: [...(d.flags ?? [])],
@@ -314,7 +319,7 @@ export class AttendanceDaysService {
         // exempt days (25 October 2026), so an exempt person's line is filled from them; and a work from home, official
         // duty or compensatory day read over Zoho's Excel-imported rows (26 October 2026), so those reach the line too
         own: ownDays(days),
-        sources: [...new Set(days.map((d) => d.source))],
+        sources: [...new Set(days.filter((d) => !d.nothingKept).map((d) => d.source))],
         exemptions: periods,
       });
     }

@@ -47,6 +47,8 @@ const DOT: Record<GlanceKind, string> = {
   zoho_leave: 'rounded-full border border-warn',
   absent: 'rounded-[2px] bg-danger',
   no_check_in: 'rounded-[2px] border border-warn',
+  // nothing kept: an empty square (4 November 2026)
+  no_record: 'rounded-[2px] border border-line',
 };
 
 /**

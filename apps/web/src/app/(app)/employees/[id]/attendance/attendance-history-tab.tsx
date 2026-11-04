@@ -224,6 +224,8 @@ function ModeCell({ d }: { d: HistoryDay }) {
 
 /** Where a day came from: System, Zoho import, Corrected (linking to the correction). */
 function SourceCell({ d }: { d: HistoryDay }) {
+  // a date nothing was kept for (4 November 2026)
+  if (d.nothingKept) return <>—</>;
   const label = HISTORY_SOURCE_LABELS[d.source] ?? d.source;
   if (d.source === 'correction' && d.correctionId) {
     return (

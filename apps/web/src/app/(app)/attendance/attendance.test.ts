@@ -275,6 +275,15 @@ describe('a month’s figures in words', () => {
       ['Missing check-outs', '0', 'A check-in without a check-out: counted as half a day until corrected', null],
     ]);
     expect(figureTiles(NO_ATTENDANCE_FIGURES, { averageHours: null }).find((t) => t.key === 'hours')?.note).toBeNull();
+    // the working days nothing was kept for (owner, 4 November 2026: "just record nothing but dont hide the dates"), only with any
+    expect(figureTiles(NO_ATTENDANCE_FIGURES, { averageHours: null }).some((t) => t.key === 'no_record')).toBe(false);
+    expect(figureTiles({ ...NO_ATTENDANCE_FIGURES, noRecordDays: 3 }, { averageHours: null }).find((t) => t.key === 'no_record')).toEqual({
+      key: 'no_record',
+      label: 'Days with no record',
+      value: '3',
+      note: 'Not absent, and not expected: correct a day to count it',
+      tone: 'warn',
+    });
     // no one checks in on the system, and none missing or flagged: no tiles for them
     expect(tiles.map((t) => t.key)).not.toContain('checkins');
     expect(tiles.map((t) => t.key)).not.toContain('flagged');

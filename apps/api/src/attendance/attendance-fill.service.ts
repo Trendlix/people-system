@@ -4,6 +4,7 @@ import {
   EMPTY_PAYROLL_INPUTS,
   figuresBefore,
   isFlexibleDays,
+  noRecordCount,
   openCheckInDates,
   PERMISSION_RULE_DEFAULTS,
   type AttendanceImportMark,
@@ -143,6 +144,8 @@ export class AttendanceFillService {
           // the days off of a flexible days shift (31 October 2026)
           flexible: flexibleDaysOf(person),
         });
+        // none left with no record (corrected since, 4 November 2026): put back to none
+        if (filled.noRecordDays === undefined && was.noRecordDays) filled.noRecordDays = null;
         // those days, for the line's warning and Send to the CEO (27 October 2026)
         const openCheckIns = openCheckInDates(person.days, { hourly, hoursADay: person.hoursADay });
         const fields = Object.keys(filled) as ImportedInput[];
@@ -170,8 +173,12 @@ export class AttendanceFillService {
         const noShowDays = person.days.filter((d) => d.status === 'absent').length;
         // and a flexible days shift's days off (31 October 2026), out of the expected hours
         const flexDaysOff = flexibleDaysOf(person) && line.payBasis !== 'hourly' ? person.days.filter((d) => d.flexOff).length : (was.flexDaysOff ?? null);
-        if ((was.noShowDays ?? 0) === noShowDays && (was.flexDaysOff ?? null) === flexDaysOff) continue;
-        inputs = { ...EMPTY_PAYROLL_INPUTS, ...was, noShowDays, flexDaysOff };
+        // and the working days nothing was kept for (owner, 4 November 2026: "just record nothing but dont hide the dates"),
+        // out of the expected hours: neither a cut nor a lower attendance
+        const noRecord = line.payBasis !== 'hourly' ? noRecordCount(person.days) : 0;
+        const noRecordDays = noRecord > 0 ? noRecord : null;
+        if ((was.noShowDays ?? 0) === noShowDays && (was.flexDaysOff ?? null) === flexDaysOff && (was.noRecordDays ?? null) === noRecordDays) continue;
+        inputs = { ...EMPTY_PAYROLL_INPUTS, ...was, noShowDays, flexDaysOff, noRecordDays };
         next = mark;
         result.leaveCounted++;
       } else continue;

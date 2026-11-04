@@ -211,7 +211,8 @@ export const daysCount = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 /** A day's tone on the review's day list: absent in red, leave in Zoho only in amber, the others plain. */
 export function dayTone(status: AttendanceDayStatus): 'danger' | 'warn' | null {
   if (status === 'absent') return 'danger';
-  if (status === 'zoho_leave' || status === 'no_check_in') return 'warn';
+  // a working day nothing was kept for (4 November 2026), so it can't be missed
+  if (status === 'zoho_leave' || status === 'no_check_in' || status === 'no_record') return 'warn';
   return null;
 }
 

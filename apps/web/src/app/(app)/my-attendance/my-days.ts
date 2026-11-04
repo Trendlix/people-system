@@ -20,10 +20,12 @@ export const GLANCE_LABELS: Record<GlanceKind, string> = {
   zoho_leave: 'Leave in Zoho only',
   absent: 'Absent',
   no_check_in: 'No check-in',
+  // a working day nothing was kept for (owner, 4 November 2026: "just record nothing but dont hide the dates")
+  no_record: 'No record',
 };
 
 /** The legend's order: the design's (worked, rest, leave), the others where they fit. */
-const ORDER: readonly GlanceKind[] = ['worked', 'rest', 'holiday', 'leave', 'zoho_leave', 'absent', 'no_check_in'];
+const ORDER: readonly GlanceKind[] = ['worked', 'rest', 'holiday', 'leave', 'zoho_leave', 'absent', 'no_check_in', 'no_record'];
 
 /** A day's dot: its date, what it was, and its title on hover ("Thursday 01/10/2026: Worked"). */
 export interface GlanceDot {

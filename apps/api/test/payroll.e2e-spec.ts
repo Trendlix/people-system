@@ -376,6 +376,8 @@ describe('Payroll (e2e)', () => {
         permissionHours: null,
         // a flexible days shift's days off (31 October 2026), filled from the attendance
         flexDaysOff: null,
+        // the working days nothing was kept for (4 November 2026), filled from the attendance
+        noRecordDays: null,
         released: null,
         // the CEO's waiver (17 October 2026); no bonus or penalty days, commission or settlements: they are on
         // Additions / Deductions since then

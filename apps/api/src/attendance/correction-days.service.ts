@@ -61,7 +61,9 @@ export class CorrectionDaysService {
       select: DAY_SELECT,
     });
     const person = (await this.days.monthOf(month, [employeeId], rows, db)).get(employeeId);
-    const base = person?.days.find((d) => d.date === date) ?? null;
+    // a date nothing was kept for (shown as No record, 4 November 2026) corrects a day with nothing kept
+    const found = person?.days.find((d) => d.date === date) ?? null;
+    const base = found?.nothingKept ? null : found;
     const shift = person?.employment?.shift ? shiftTimesOf(person.employment.shift) : null;
     // the first working day of their employment (27 October 2026): counted from the shift's start, never over Zoho's day
     const onFirstDay = !!person?.employment && base?.source !== 'zoho' && (await firstWorkingDayOn(db, person.employment, date));

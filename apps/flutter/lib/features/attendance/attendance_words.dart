@@ -72,6 +72,7 @@ abstract final class AttendanceWords {
     'absent': 'Absent',
     'zoho_leave': 'Leave in Zoho only',
     'no_check_in': 'No check-in',
+    'no_record': 'No record',
   };
 
   // ---------- the month's figures ----------
@@ -140,6 +141,8 @@ abstract final class AttendanceWords {
     'leave': 'On leave',
     'zoho_leave': 'Leave in Zoho only',
     'no_check_in': 'No check-in, not absent',
+    // a working day nothing was kept for (owner, 4 November 2026: "just record nothing but dont hide the dates")
+    'no_record': 'No record',
   };
   static String statusOf(String s) => statuses[s] ?? s;
 
@@ -295,7 +298,7 @@ abstract final class AttendanceWords {
   static const noDayOnRecord = 'No day on record';
   static const noCheckInOrOut = 'No check-in or check-out';
   static const absent = 'Absent';
-  static const leaveLike = {'rest': 'Rest day', 'holiday': 'Official holiday', 'leave': 'On leave', 'zoho_leave': 'Leave in Zoho only', 'no_check_in': 'No check-in'};
+  static const leaveLike = {'rest': 'Rest day', 'holiday': 'Official holiday', 'leave': 'On leave', 'zoho_leave': 'Leave in Zoho only', 'no_check_in': 'No check-in', 'no_record': 'No record'};
   static String times(String? checkIn, String? checkOut) => '${checkIn ?? 'no check-in'} – ${checkOut ?? 'no check-out'}';
   static const whereItStands = 'Where it stands';
   static const rejectedBecause = 'Why it was rejected';

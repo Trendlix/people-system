@@ -135,6 +135,9 @@ void main() {
     // owner, 31 October 2026: "replace correction with OD in the homepage for the requests section"
     await tester.scrollUntilVisible(find.text(DashboardWords.officialDuty), 300, scrollable: find.byType(Scrollable).first);
     expect(find.text('Fix attendance'), findsNothing);
+    // clear of the tab bar, whatever the day's cards above it make the page's height
+    await tester.ensureVisible(find.text(DashboardWords.officialDuty));
+    await tester.pumpAndSettle();
     await tester.tap(find.text(DashboardWords.officialDuty));
     await tester.pumpAndSettle();
     expect(find.text(OdWords.title), findsWidgets);

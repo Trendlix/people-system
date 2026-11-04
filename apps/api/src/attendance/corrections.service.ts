@@ -369,7 +369,9 @@ export class AttendanceCorrectionsService {
         tx.attendanceCorrection.count({ where: { employeeId, date: toDateOnly(date), status: { in: ['with_manager', 'with_hr'] } } }),
         this.runStatus(date, tx),
       ]);
-      const shown = person?.days.find((d) => d.date === date) ?? null;
+      // a date nothing was kept for (shown as No record, 4 November 2026) is a day with nothing kept
+      const found = person?.days.find((d) => d.date === date) ?? null;
+      const shown = found?.nothingKept ? null : found;
       const day: CorrectableDay | null = shown && { ...shown };
       const shift = person?.employment?.shift ? shiftTimesOf(person.employment.shift) : null;
       const problems = correctionProblems(dto, { today: todayInCairo(), now: Date.now(), runStatus, day, shift, open: open > 0, name, askFrom });

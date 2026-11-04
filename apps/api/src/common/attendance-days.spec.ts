@@ -72,6 +72,7 @@ describe('a month’s figures', () => {
       missingCheckIns: 0,
       flaggedDays: 0,
       noCheckInDays: 1,
+      noRecordDays: 0,
       holidays: 1,
       restDays: 1,
       exemptDays: 0,

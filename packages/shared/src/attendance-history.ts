@@ -81,7 +81,7 @@ export const trendByQuarter = (range: { from: string; to: string }): boolean => 
 // ---------- a day ----------
 
 /** What a day was, as the log shows it (the brief: "Office / WFH / OD / Leave / Absent / Holiday"). */
-export const HISTORY_MODES = ['office', 'remote', 'wfh', 'od', 'exempt', 'compensatory', 'leave', 'absent', 'holiday', 'rest', 'day_off', 'not_counted', 'no_check_in', 'zoho_leave'] as const;
+export const HISTORY_MODES = ['office', 'remote', 'wfh', 'od', 'exempt', 'compensatory', 'leave', 'absent', 'holiday', 'rest', 'day_off', 'not_counted', 'no_check_in', 'zoho_leave', 'no_record'] as const;
 export type HistoryMode = (typeof HISTORY_MODES)[number];
 
 export const HISTORY_MODE_LABELS: Record<HistoryMode, string> = {
@@ -100,6 +100,8 @@ export const HISTORY_MODE_LABELS: Record<HistoryMode, string> = {
   not_counted: 'Not counted (freelance)',
   no_check_in: 'Present, no check-in',
   zoho_leave: 'Leave in Zoho only',
+  // a working day nothing was kept for, shown so no date is hidden (owner, 4 November 2026: "just record nothing but dont hide the dates")
+  no_record: 'No record',
 };
 
 /** Where a day came from, as the log says it (the spec: "System / Zoho import"; and Corrected). */
@@ -115,7 +117,7 @@ export const isHistoryFilter = (v: unknown): v is HistoryFilter => (HISTORY_FILT
 
 /** A day as the history reads it: the attendance's day, and what the API knows of it besides. */
 export type HistoryDayInput = Pick<AttendanceDayView, 'date' | 'status' | 'checkIn' | 'checkOut' | 'place' | 'hoursCounted' | 'extraHours' | 'od' | 'correctionId'> &
-  Partial<Pick<AttendanceDayView, 'pairs' | 'openAt' | 'breakMinutes' | 'exempt' | 'compensatory' | 'wfhDay' | 'permissionHours' | 'flexOff' | 'notCounted'>> & {
+  Partial<Pick<AttendanceDayView, 'pairs' | 'openAt' | 'breakMinutes' | 'exempt' | 'compensatory' | 'wfhDay' | 'permissionHours' | 'flexOff' | 'notCounted' | 'nothingKept'>> & {
   source: AttendanceSource;
   /** A work from home day approved for them (wfh.ts). */
   wfh: boolean;
@@ -163,6 +165,8 @@ export interface HistoryDay {
   /** The system's extra time that day (attendance-days.ts extraHours): the overtime figure. */
   extraHours: number;
   source: AttendanceSource;
+  /** A date nothing was kept for, shown so no date is hidden (4 November 2026): no source to show. */
+  nothingKept?: boolean;
   /** The official duty's request (its page), and the correction's. */
   odRequestId: string | null;
   correctionId: string | null;
@@ -242,6 +246,7 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
     checkInMinutes,
     extraHours: d.extraHours ?? 0,
     source: d.source,
+    ...(d.nothingKept && { nothingKept: true }),
     odRequestId: d.od?.requestId ?? null,
     correctionId: d.correctionId ?? null,
     pairs: d.pairs ?? null,
@@ -351,7 +356,8 @@ export function historyFigures(days: readonly HistoryDay[]): HistoryFigures {
   let checkInSum = 0;
   let checkIns = 0;
   for (const d of days) {
-    f.daysOnRecord++;
+    // a date nothing was kept for is shown, never on record (4 November 2026)
+    if (!d.nothingKept) f.daysOnRecord++;
     if (d.expected) f.expectedDays++;
     if (d.attended) {
       f.attendedDays++;

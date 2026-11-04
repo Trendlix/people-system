@@ -351,6 +351,8 @@ export function figureTiles(
     { key: 'worked', label: 'Days worked', value: String(f.daysWorked), note: `${f.officeDays} at the office · ${f.remoteDays} remote`, tone: null },
     { key: 'hours', label: 'Hours counted', value: hoursText(f.hoursCounted), note: o.averageHours === null ? null : `${hoursText(o.averageHours)} a day on average`, tone: null },
     { key: 'absent', label: 'Absent days', value: String(f.absentDays), note: "The payroll's no-show days", tone: f.absentDays > 0 ? 'danger' : null },
+    // the working days nothing was kept for (owner, 4 November 2026: "just record nothing but dont hide the dates"): only with any
+    ...noRecordTiles(f),
     {
       key: 'short',
       label: 'Short hours',
@@ -375,6 +377,12 @@ export function figureTiles(
     // exempt from check-in (25 October 2026): only with exempt days
     ...exemptTiles(f),
   ];
+}
+
+/** The working days nothing was kept for (owner, 4 November 2026), once there is any (an API from before them has none). */
+function noRecordTiles(f: Partial<Pick<AttendanceFigures, 'noRecordDays'>>): FigureTile[] {
+  const n = typeof f.noRecordDays === 'number' ? f.noRecordDays : 0;
+  return n > 0 ? [{ key: 'no_record', label: 'Days with no record', value: String(n), note: 'Not absent, and not expected: correct a day to count it', tone: 'warn' }] : [];
 }
 
 /** The month's exempt days (owner, 25 October 2026), once there is any (an API from before them has none). */

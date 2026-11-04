@@ -289,9 +289,11 @@ export interface ImportedDay {
 /**
  * What a day is, by the owner's rules (19 October 2026): worked (a check-in), absent (a working day with none), a rest
  * day, an official holiday, leave in the system, leave in Zoho not in the system (not absent; for HR to record), or no
- * check-in on a day Zoho says present or on duty (not absent; for HR to check).
+ * check-in on a day Zoho says present or on duty (not absent; for HR to check). And a working day nothing was kept for,
+ * shown but never saved (owner, 4 November 2026: "just record nothing but dont hide the dates"; attendance-days.ts
+ * withNoRecordDays): not absent, its hours not expected.
  */
-export const ATTENDANCE_DAY_STATUSES = ['worked', 'absent', 'rest', 'holiday', 'leave', 'zoho_leave', 'no_check_in'] as const;
+export const ATTENDANCE_DAY_STATUSES = ['worked', 'absent', 'rest', 'holiday', 'leave', 'zoho_leave', 'no_check_in', 'no_record'] as const;
 export type AttendanceDayStatus = (typeof ATTENDANCE_DAY_STATUSES)[number];
 
 export const ATTENDANCE_DAY_STATUS_LABELS: Record<AttendanceDayStatus, string> = {
@@ -302,6 +304,7 @@ export const ATTENDANCE_DAY_STATUS_LABELS: Record<AttendanceDayStatus, string> =
   leave: 'On leave',
   zoho_leave: 'Leave in Zoho only',
   no_check_in: 'No check-in, not absent',
+  no_record: 'No record',
 };
 
 /** A day worked out: its status and the hours it counts. */
@@ -472,9 +475,10 @@ function clock(hours: number): string {
 
 /**
  * The inputs an import fills on a payroll line (owner's brief, 19 October 2026): worked hours, no-show days, permission
- * hours; and a flexible days shift's days off (owner, 31 October 2026), filled from the attendance days alone.
+ * hours; a flexible days shift's days off (owner, 31 October 2026) and the working days with no record (owner, 4 November
+ * 2026: "just record nothing but dont hide the dates"), filled from the attendance days alone.
  */
-export const IMPORTED_INPUTS = ['workedHours', 'noShowDays', 'permissionHours', 'flexDaysOff'] as const;
+export const IMPORTED_INPUTS = ['workedHours', 'noShowDays', 'permissionHours', 'flexDaysOff', 'noRecordDays'] as const;
 export type ImportedInput = (typeof IMPORTED_INPUTS)[number];
 
 /** The inputs as the screens and messages name them. */
@@ -483,6 +487,7 @@ export const IMPORTED_INPUT_LABELS: Record<ImportedInput, string> = {
   noShowDays: 'No-show days',
   permissionHours: 'Permission hours',
   flexDaysOff: 'Flexible days off',
+  noRecordDays: 'Days with no record',
 };
 
 /**
@@ -595,6 +600,9 @@ export function openCheckInDates(days: readonly (LineDay & { date: string })[], 
     .sort();
 }
 
+/** The working days of a month nothing was kept for (status no_record): not absent, their hours not expected. */
+export const noRecordCount = (days: readonly Pick<LineDay, 'status'>[]): number => days.filter((d) => d.status === 'no_record').length;
+
 /**
  * What a payroll line takes from a month's attendance days (owner's brief, 19 October 2026: "a draft run's lines are
  * filled from the month's attendance days (source 'system' first; for a person with none, the Zoho days if imported)"):
@@ -605,7 +613,9 @@ export function openCheckInDates(days: readonly (LineDay & { date: string })[], 
  * within the shift's hours a day, until corrected (lineDayHours; owner, 27 October 2026: "open check ins with half
  * day"), on a monthly salary: paid by the hour, only the hours its closed pairs counted are paid (no time is paid that no
  * press shows). An exempt day counts its full hours already (check-in-exemptions.ts). On a flexible days shift (`flexible`;
- * owner, 31 October 2026) the days its weeks didn't need are its days off (flexDaysOff), on a monthly salary.
+ * owner, 31 October 2026) the days its weeks didn't need are its days off (flexDaysOff), on a monthly salary; and the
+ * working days nothing was kept for (owner, 4 November 2026: "just record nothing") are left out of the expected hours
+ * (noRecordDays), on a monthly salary too.
  */
 export function attendanceLineInputs(
   days: readonly LineDay[],
@@ -623,5 +633,7 @@ export function attendanceLineInputs(
     noShowDays: days.filter((d) => d.status === 'absent').length,
     permissionHours: permission !== null && permission > 0 ? permission : null,
     ...(opts.flexible && { flexDaysOff: days.filter((d) => d.flexOff).length }),
+    // the working days nothing was kept for (owner, 4 November 2026: "just record nothing"): out of the expected hours
+    ...(noRecordCount(days) > 0 && { noRecordDays: noRecordCount(days) }),
   };
 }

@@ -305,7 +305,11 @@ describe('Checking in on the system (e2e)', () => {
 
     it('fills this month’s draft line from the attendance days at once', async () => {
       const line = await lineOf(monthRun, 'olga');
-      expect(line.attendanceImport).toMatchObject({ source: 'attendance', fields: ['workedHours', 'noShowDays', 'permissionHours'], sources: ['system'] });
+      expect(line.attendanceImport).toMatchObject({ source: 'attendance', sources: ['system'] });
+      // the working days of the month before her first check-in, nothing kept on them, are days with no record (owner,
+      // 4 November 2026: "just record nothing but dont hide the dates"): none on the month's first working day
+      const before = (line.attendanceImport as { fields: string[] }).fields;
+      expect(before.filter((f) => f !== 'noRecordDays')).toEqual(['workedHours', 'noShowDays', 'permissionHours']);
       expect(line.inputs.noShowDays).toBe(0);
     });
   });

@@ -27,6 +27,7 @@ import {
   lateByWeekday,
   matchesHistoryFilter,
   monthDays,
+  withNoRecordDays,
   monthRange,
   officialDutyDays,
   openPressText,
@@ -308,9 +309,11 @@ export class AttendanceHistoryService {
           hoursADay,
         });
         const comp = compensatory.get(employeeId);
-        const days = comp
+        const read = comp
           ? compensatoryDays(exempt, { month, today, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, hoursOff: comp.hoursOff, daysWorked: comp.daysWorked })
           : exempt;
+        // every date shown, those nothing was kept for too (owner, 4 November 2026: "just record nothing but dont hide the dates")
+        const days = withNoRecordDays(read, { month, today, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo });
         const part = made.get(e.id) ?? { shift, workingDays, hoursADay, employedFrom, employedTo, freelance: e.employmentType === 'freelance', longDay: longDayOfShift(e.shift), days: [] };
         part.days.push(...days);
         made.set(e.id, part);
@@ -422,7 +425,7 @@ const DAY_COLUMNS: readonly Column<HistoryDay>[] = [
   { header: 'Hours', width: 9, value: (d) => (d.status === 'worked' ? asTime(d.hours) : null), numFmt: HOURS },
   { header: 'Late minutes', width: 12, value: (d) => (d.lateMinutes > 0 ? d.lateMinutes : null), numFmt: '0' },
   { header: 'On time', width: 9, value: (d) => (d.onTime === null ? null : d.onTime ? 'Yes' : 'No') },
-  { header: 'Source', width: 18, value: (d) => HISTORY_SOURCE_LABELS[d.source] ?? d.source },
+  { header: 'Source', width: 18, value: (d) => (d.nothingKept ? '—' : (HISTORY_SOURCE_LABELS[d.source] ?? d.source)) },
   // a day as the sum of its pairs (owner, 25 October 2026): its pairs and an open last check-in, the break between them
   { header: 'Pairs', width: 44, value: (d) => ((d.pairs?.length ?? 0) > 1 || d.openAt ? [pairsText(d.pairs ?? []), d.openAt ? openPressText(d.openAt) : null].filter(Boolean).join(' · ') : null) },
   { header: 'Break', width: 9, value: (d) => (d.breakMinutes ? asTime(d.breakMinutes / 60) : null), numFmt: HOURS },

@@ -20,6 +20,9 @@ import { createApp, createUser, signIn } from './helpers.js';
 const RUN = Date.now().toString(36).toLowerCase();
 const TODAY = todayInCairo();
 const MONTH = monthsLater(TODAY.slice(0, 7), -2); // two months back: its days are past
+/** Every date of a month, YYYY-MM-DD. */
+const monthDates = (month: string) =>
+  Array.from({ length: new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate() }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`);
 const EARLIER = monthsLater(MONTH, -1);
 
 interface Figures {
@@ -38,6 +41,7 @@ interface Figures {
   missingCheckIns: number;
   flaggedDays: number;
   noCheckInDays: number;
+  noRecordDays: number;
   holidays: number;
   restDays: number;
 }
@@ -49,7 +53,7 @@ interface PersonMonth {
   figures: Figures;
   averageHours: number | null;
   permissionFrom: string | null;
-  days: { date: string; status: string; checkIn: string | null; checkOut: string | null; hoursCounted: number; shortHours: number; missingCheckOut: boolean; permissionHours: number; importId: string | null }[];
+  days: { date: string; status: string; checkIn: string | null; checkOut: string | null; hoursCounted: number; shortHours: number; missingCheckOut: boolean; permissionHours: number; importId: string | null; nothingKept?: boolean }[];
 }
 
 interface Source {
@@ -299,13 +303,20 @@ describe('The Attendance section (e2e)', () => {
         missingCheckIns: 0,
         flaggedDays: 0,
         noCheckInDays: 0,
+        // the month's other working days, nothing kept on them (owner, 4 November 2026: "just record nothing but dont
+        // hide the dates"): shown, never absent
+        noRecordDays: rami.days.filter((d) => d.status === 'no_record').length,
         holidays: 0,
         restDays: 1,
         // exempt from check-in (25 October 2026): none
         exemptDays: 0,
         compensatoryDays: 0,
       });
-      expect(rami.days.map((d) => [d.date, d.status, d.shortHours, d.missingCheckOut])).toEqual(
+      // every date of the month shown, those nothing was kept for marked so (4 November 2026)
+      expect(rami.days.map((d) => d.date)).toEqual(monthDates(MONTH));
+      expect(rami.figures.noRecordDays).toBeGreaterThan(0);
+      const keptDays = rami.days.filter((d) => !d.nothingKept);
+      expect(keptDays.map((d) => [d.date, d.status, d.shortHours, d.missingCheckOut])).toEqual(
         [
           [work[0], 'worked', 0, false],
           [work[1], 'worked', 0.5, false],
@@ -315,10 +326,10 @@ describe('The Attendance section (e2e)', () => {
           [friday, 'rest', 0, false],
         ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
       );
-      expect(rami.days[0].importId).toBe(importId);
+      expect(keptDays[0].importId).toBe(importId);
       // the system's approved permission counts, not Zoho's column; Omar's is Zoho's
       expect(of(view, 'sara')).toMatchObject({ permissionFrom: 'system', figures: { permissionHours: 1, shortHours: 0, leaveDays: 1 } });
-      expect(of(view, 'sara')!.days[0].permissionHours).toBe(1);
+      expect(of(view, 'sara')!.days.find((d) => !d.nothingKept)!.permissionHours).toBe(1);
       expect(of(view, 'omar')).toMatchObject({ permissionFrom: 'zoho', figures: { permissionHours: 2, shortHours: 0 } });
       expect(view.sources).toEqual([expect.objectContaining({ importId, runId, runStatus: 'draft', files: [`everyone-${RUN}.xlsx`], appliedAt: expect.any(String) })]);
     });
@@ -405,7 +416,7 @@ describe('The Attendance section (e2e)', () => {
     it('gives everyone their own month, and nobody else’s; an employee sees no one else’s list, Summary or imports', async () => {
       const mine = (await api().get(`/api/attendance/me?month=${MONTH}`).set('Cookie', sessions.sara).expect(200)).body as PersonView;
       expect(mine).toMatchObject({ self: true, run: null, person: { employee: { id: ids.sara }, permissionFrom: 'system', figures: { daysWorked: 1, leaveDays: 1 } } });
-      expect(mine.person.days.map((d) => d.status)).toEqual(['worked', 'leave']);
+      expect(mine.person.days.filter((d) => !d.nothingKept).map((d) => d.status)).toEqual(['worked', 'leave']);
       await api().get(`/api/attendance/employees/${ids.sara}?month=${MONTH}`).set('Cookie', sessions.sara).expect(200);
       await api().get(`/api/attendance/employees/${ids.rami}?month=${MONTH}`).set('Cookie', sessions.sara).expect(404);
       expect(said(await api().get(`/api/attendance?month=${MONTH}`).set('Cookie', sessions.sara).expect(403))).toEqual([
@@ -470,7 +481,8 @@ describe('The Attendance section (e2e)', () => {
       expect(names).not.toContain(name('Cleo Chief'));
       const days: unknown[] = [];
       wb.getWorksheet('Days')!.eachRow((r) => days.push(r.getCell(3).value));
-      expect(days.filter((n) => n === name('Rami Report'))).toHaveLength(6);
+      // every date of the month, those with no record too (4 November 2026)
+      expect(days.filter((n) => n === name('Rami Report'))).toHaveLength(monthDates(MONTH).length);
       const logged = await prisma.auditLog.findFirst({ where: { action: 'attendance_summary_file' }, orderBy: { at: 'desc' } });
       expect(logged?.diff).toMatchObject({ from: MONTH, to: MONTH, months: [MONTH] });
     });

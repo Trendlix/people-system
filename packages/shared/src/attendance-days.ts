@@ -119,6 +119,13 @@ export interface KeptDay {
    * more than its shift's hours, so counted as the hours the shift says (long-days.ts).
    */
   longDay?: boolean;
+  /**
+   * A date nothing was kept for, shown so no date is hidden (owner, 4 November 2026: "just record nothing but dont hide
+   * the dates"; withNoRecordDays): a holiday, a rest day or leave as the system's rules say, else a working day with no
+   * record (status no_record). Never saved, never the system's own day (the payroll line isn't filled for it), and a
+   * correction on it corrects a day with nothing kept.
+   */
+  nothingKept?: boolean;
 }
 
 /** A kept day as the Attendance pages show it. */
@@ -285,6 +292,8 @@ export interface AttendanceFigures {
   flaggedDays: number;
   /** Days Zoho says present or on duty without a check-in: not absent, nor any hours. */
   noCheckInDays: number;
+  /** Working days nothing was kept for (owner, 4 November 2026: "just record nothing"): not absent, nor any hours. */
+  noRecordDays: number;
   holidays: number;
   restDays: number;
   /** Days exempt from check-in (owner, 25 October 2026): counted as full. */
@@ -311,6 +320,7 @@ export const NO_ATTENDANCE_FIGURES: Readonly<AttendanceFigures> = Object.freeze(
   missingCheckIns: 0,
   flaggedDays: 0,
   noCheckInDays: 0,
+  noRecordDays: 0,
   holidays: 0,
   restDays: 0,
   exemptDays: 0,
@@ -332,6 +342,12 @@ export function attendanceFigures(days: readonly AttendanceDayView[], options: {
   let permission = 0;
   const byMonth = new Map<string, { extra: number; short: number }>();
   for (const d of days) {
+    // a date nothing was kept for is shown, never recorded: only its working days counted, as days with no record (4
+    // November 2026: "just record nothing but dont hide the dates")
+    if (d.nothingKept) {
+      if (d.status === 'no_record') f.noRecordDays++;
+      continue;
+    }
     f.daysRecorded++;
     if (d.status === 'worked') {
       f.daysWorked++;
@@ -357,6 +373,7 @@ export function attendanceFigures(days: readonly AttendanceDayView[], options: {
     else if (d.status === 'leave') f.leaveDays++;
     else if (d.status === 'zoho_leave') f.zohoLeaveDays++;
     else if (d.status === 'no_check_in') f.noCheckInDays++;
+    else if (d.status === 'no_record') f.noRecordDays++;
     else if (d.status === 'holiday') f.holidays++;
     else if (d.status === 'rest') f.restDays++;
     permission += Math.max(0, d.permissionHours);
@@ -490,6 +507,36 @@ export function monthDays<D extends SourcedDay>(rows: readonly D[], ctx: MonthDa
     days.push({ date, status, checkIn: null, checkOut: null, place: null, zohoStatus: null, permissionHours: 0, hoursCounted: 0, source: 'system', flags: [] });
   }
   return days.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Every date of a month with a record shown (owner, 4 November 2026, of someone whose attendance comes from Zoho alone,
+ * with dates Zoho's file had no row for: "just record nothing but dont hide the dates"): once the month has any day, each
+ * date of their employment in it gone by (before today) with no day yet, as the system's rules say: an official holiday, a rest day on a weekday the
+ * shift doesn't work, approved leave, else a working day with no record (no_record): not absent, its hours not expected
+ * (the payroll's noRecordDays). Each marked nothingKept. Done after every other day is worked out (the system's
+ * check-ins and the days gone by since the first, official duty, work from home, exemptions, compensatory days), so it
+ * only fills what is still missing. A month with no day at all stays empty (not imported yet, or before they were
+ * recorded at all): nothing to fill gaps in.
+ */
+export function withNoRecordDays<D extends SourcedDay>(days: readonly D[], ctx: Omit<MonthDaysContext, 'checkInFrom' | 'chosen'>): (D | SourcedDay)[] {
+  if (!days.some((d) => d.date.startsWith(ctx.month) && !d.nothingKept)) return [...days];
+  const first = `${ctx.month}-01`;
+  const last = new Date(Date.UTC(Number(ctx.month.slice(0, 4)), Number(ctx.month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  const from = ctx.employedFrom && ctx.employedFrom > first ? ctx.employedFrom : first;
+  const to = ctx.employedTo && ctx.employedTo < last ? ctx.employedTo : last;
+  const known = new Set(days.map((d) => d.date));
+  const holidays = new Set(ctx.holidays);
+  const leave = new Set(ctx.leaveDays);
+  const working = new Set(ctx.workingDays ?? SUN_TO_THU);
+  const out: (D | SourcedDay)[] = [...days];
+  for (let date = from; date <= to && date < ctx.today; date = nextDay(date)) {
+    if (known.has(date)) continue;
+    const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+    const status: AttendanceDayStatus = holidays.has(date) ? 'holiday' : !working.has(weekday) ? 'rest' : leave.has(date) ? 'leave' : 'no_record';
+    out.push({ date, status, checkIn: null, checkOut: null, place: null, zohoStatus: null, permissionHours: 0, hoursCounted: 0, source: 'system', flags: [], nothingKept: true });
+  }
+  return out.length === days.length ? out : out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /**

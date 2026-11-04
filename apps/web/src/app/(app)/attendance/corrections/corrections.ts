@@ -165,7 +165,7 @@ export function dayBeforeText(d: CorrectionDayBefore | null): string {
   return `${d.checkIn ? cairoTime(d.checkIn) : 'no check-in'} – ${d.checkOut ? cairoTime(d.checkOut) : 'no check-out'}`;
 }
 
-const LEAVE_LIKE: Partial<Record<string, string>> = { rest: 'Rest day', holiday: 'Official holiday', leave: 'On leave', zoho_leave: 'Leave in Zoho only', no_check_in: 'No check-in' };
+const LEAVE_LIKE: Partial<Record<string, string>> = { rest: 'Rest day', holiday: 'Official holiday', leave: 'On leave', zoho_leave: 'Leave in Zoho only', no_check_in: 'No check-in', no_record: 'No record' };
 
 /** Once sent: where it goes, or, recorded by HR, that the day is changed. */
 export function correctionSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {

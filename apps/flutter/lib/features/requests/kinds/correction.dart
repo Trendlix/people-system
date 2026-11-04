@@ -40,7 +40,7 @@ abstract final class CorrectionWords {
     'worked_remotely': 'Worked remotely or at a client',
   };
   static const sources = {'zoho': 'Zoho People', 'system': 'Checked in on the system', 'device': 'Attendance device', 'correction': 'Corrected'};
-  static const leaveLike = {'rest': 'Rest day', 'holiday': 'Official holiday', 'leave': 'On leave', 'zoho_leave': 'Leave in Zoho only', 'no_check_in': 'No check-in'};
+  static const leaveLike = {'rest': 'Rest day', 'holiday': 'Official holiday', 'leave': 'On leave', 'zoho_leave': 'Leave in Zoho only', 'no_check_in': 'No check-in', 'no_record': 'No record'};
   static const absent = 'Absent';
   static const nothing = 'No check-in or check-out';
   static const noDay = 'No day on record';
