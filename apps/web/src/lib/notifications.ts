@@ -50,6 +50,8 @@ export function notificationHref(link: string | null | undefined, kind: string, 
     const month = at < 0 ? null : new URLSearchParams(safe.slice(at + 1).split('#', 1)[0]).get('month');
     return appAttendanceHref(month);
   }
+  // a change made by hand for an employee (4 November 2026): not the person's own, nor waiting for them: its page on the site
+  if (kind === 'manual_change') return safe;
   return toAppHref(safe, notificationSection(kind));
 }
 

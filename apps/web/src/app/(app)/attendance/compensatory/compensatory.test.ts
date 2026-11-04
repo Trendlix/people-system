@@ -113,7 +113,7 @@ describe('the request form’s live checks', () => {
 
   it('asks a day before at the latest: today and a past day off are refused', () => {
     expect(compensatoryFormProblems(typed('06/11/2026', '12/11/2026'), FORM)).toEqual(['12/11/2026 is today: ask for a compensatory day a day before the day off at the latest.']);
-    expect(compensatoryFormProblems(typed('06/11/2026', '09/11/2026'), FORM)).toEqual(['09/11/2026 has gone by: only HR records a day off that is past.']);
+    expect(compensatoryFormProblems(typed('06/11/2026', '09/11/2026'), FORM)).toEqual(['09/11/2026 has gone by: a day off is asked for before it comes.']);
   });
 
   it('says what refuses them at all, and leaves the rest to the API while the form couldn’t be read', () => {
@@ -152,7 +152,7 @@ describe('the day worked’s menu', () => {
       [
         'Worked',
         [
-          { value: '10/11/2026', label: 'Tuesday 10/11/2026 · Test Day (official holiday) · no check-in: HR will ask to confirm' },
+          { value: '10/11/2026', label: 'Tuesday 10/11/2026 · Test Day (official holiday) · no check-in: to be confirmed' },
           { value: '06/11/2026', label: 'Friday 06/11/2026 · rest day · check-in kept' },
         ],
       ],

@@ -386,6 +386,8 @@ export class OdService {
     // its days gone by count as attended for its hours on the months' draft payroll runs
     const input = this.inputOf(dto);
     await this.refill({ employeeId: dto.employeeId, startDate: toDateOnly(input.startDate), endDate: toDateOnly(input.endDate) }, user);
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('od', id, 'recorded', user.id);
     return this.one(id, user);
   }
 
@@ -420,6 +422,8 @@ export class OdService {
     await this.refill(before, user);
     // cancelled in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
     const warnings = await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'od', requestId: id, change: 'cancelled', from: fromDateOnly(before.startDate), to: fromDateOnly(before.endDate) }, user);
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('od', id, 'cancelled', user.id);
     return withWarnings(await this.one(id, user), warnings);
   }
 

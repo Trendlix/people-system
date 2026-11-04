@@ -8,6 +8,7 @@ import {
   claimPaidText,
   daysText,
   decidedText,
+  manualChangeText,
   homeDecidedText,
   homeWaitingText,
   kpiManagerSignText,
@@ -155,5 +156,22 @@ describe('notification texts', () => {
     expect(keptNotification({ kind: 'salary' as never, title: 't', body: 'b' })).toBeNull();
     expect(keptNotification({ kind: 'leave_waiting', title: '  ', body: 'b' })).toBeNull();
     expect(keptNotification({ kind: 'leave_waiting', title: 't', body: 'b', link: 'https://evil.example' })?.link).toBeNull();
+  });
+});
+
+describe('a change made by hand, told to the manager of whoever made it (owner, 4 November 2026)', () => {
+  it('says who did what for whom', () => {
+    expect(manualChangeText('correction', 'recorded', 'Sara Ali', 'Omar Adel', 'Mon 26/10/2026', '/attendance/corrections/x')).toEqual({
+      kind: 'manual_change',
+      title: 'Sara Ali corrected Omar Adel’s attendance',
+      body: 'Mon 26/10/2026',
+      link: '/attendance/corrections/x',
+    });
+    expect(manualChangeText('leave', 'recorded', 'Sara Ali', 'Omar Adel', 'w', 'l').title).toBe('Sara Ali recorded leave for Omar Adel');
+    expect(manualChangeText('od', 'recorded', 'Sara Ali', 'Omar Adel', 'w', 'l').title).toBe('Sara Ali recorded an official duty for Omar Adel');
+    expect(manualChangeText('correction', 'cancelled', 'Sara Ali', 'Omar Adel', 'w', 'l').title).toBe('Sara Ali cancelled Omar Adel’s attendance correction');
+    expect(manualChangeText('leave', 'edited', 'Sara Ali', 'Omar Adel', 'w', 'l').title).toBe('Sara Ali changed Omar Adel’s leave');
+    expect(manualChangeText('leave', 'restored', 'Sara Ali', 'Omar Adel', 'w', 'l').title).toBe('Sara Ali restored Omar Adel’s leave');
+    expect(manualChangeText('wfh', 'cancelled', 'Sara Ali', 'Omar Adel', 'w', 'l').title).toBe('Sara Ali cancelled Omar Adel’s work from home day');
   });
 });

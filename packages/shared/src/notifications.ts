@@ -119,6 +119,9 @@ export const NOTIFICATION_KINDS = [
   'photo_request_decided',
   // a message HR sends to the people they chose on the Employees list (owner, 1 November 2026: bulk actions)
   'hr_message',
+  // a change made by hand for an employee (owner, 4 November 2026: "when HR corrects something manually, her manager has
+  // to be notified in a popup"): the direct manager of whoever made it, on the bell and in a popup until marked seen
+  'manual_change',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -205,6 +208,7 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   photo_request_waiting: 'Photo',
   photo_request_decided: 'Photo',
   hr_message: 'Message from HR',
+  manual_change: 'Manual change',
 };
 
 // ---------- the reminders and the person's switches ----------
@@ -345,3 +349,31 @@ export function clippedText(text: string, max: number): string {
   const value = text.replace(/\s+/g, ' ').trim();
   return value.length <= max ? value : `${value.slice(0, max - 1).trimEnd()}…`;
 }
+
+// ---------- the manual changes popup (owner, 4 November 2026) ----------
+
+/**
+ * A change made by hand for an employee, as the popup lists it for the direct manager of whoever made it (owner, 4
+ * November 2026: "when HR corrects something manually, her manager has to be notified in a popup"; asked, "The HR
+ * person's manager", "Everything done for an employee", "Shows until marked seen"): "Sara Ali corrected Omar Adel's
+ * attendance", its days, its page and when. Read from their unread manual_change notifications; Seen marks them read.
+ */
+export interface ManualChangeView {
+  id: string;
+  title: string;
+  body: string;
+  link: string | null;
+  at: string;
+}
+
+/** GET /me/manual-changes: the manual changes not seen yet, newest first (at most MANUAL_CHANGES_SHOWN), and how many in all. */
+export interface ManualChangesView {
+  items: ManualChangeView[];
+  total: number;
+}
+
+/** At most this many listed in the popup; the rest are counted ("and 4 more") and on the bell. */
+export const MANUAL_CHANGES_SHOWN = 20;
+
+/** The popup's heading: "1 change made by hand", "3 changes made by hand". */
+export const manualChangesHeading = (n: number): string => `${n} ${n === 1 ? 'change' : 'changes'} made by hand`;

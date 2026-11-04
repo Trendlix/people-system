@@ -9,6 +9,7 @@ import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { BellLink, NotificationBell } from '@/components/notification-bell';
 import { CheckInReminder } from '@/components/check-in-reminder';
 import { KpiReminder } from '@/components/kpi-reminder';
+import { ManualChanges } from '@/components/manual-changes';
 import { SessionWatch } from '@/components/session-watch';
 import { PhoneMenu } from '@/components/phone-menu';
 import { ThemeSwitch } from '@/components/theme-switch';
@@ -222,6 +223,8 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
         <CheckInReminder surface="site" />
         {/* KPI scorecards waiting: once a sign-in, unless postponed (1 November 2026) */}
         <KpiReminder />
+        {/* changes made by hand by someone they manage, until marked seen (4 November 2026) */}
+        <ManualChanges surface="site" />
       </Suspense>
       <div className="flex flex-1 flex-col md:flex-row">
         {/* the owner's design (30 October 2026): the near-black side menu, its own scroll on a computer so the page's

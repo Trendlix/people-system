@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { brandMetadata } from '@/components/brand';
 import { CheckInReminder } from '@/components/check-in-reminder';
 import { KpiReminder } from '@/components/kpi-reminder';
+import { ManualChanges } from '@/components/manual-changes';
 import { SessionWatch } from '@/components/session-watch';
 import { DeveloperBanner } from '@/components/developer-banner';
 import { ModeGate } from '@/components/mode-gate';
@@ -96,6 +97,8 @@ export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
         <CheckInReminder surface="app" />
         {/* KPI scorecards waiting: once a sign-in, unless postponed (1 November 2026) */}
         <KpiReminder big />
+        {/* changes made by hand by someone they manage, until marked seen (4 November 2026) */}
+        <ManualChanges big surface="app" />
       </Suspense>
       {/* push notifications inside the app (Phase 4, 20 October 2026): registered again on each open once allowed, and a
           notification tapped opens its page here */}

@@ -138,6 +138,9 @@ export const APP_ENDPOINTS: readonly string[] = [
   'GET /api/me/notifications',
   'GET /api/me/notifications/unread-count',
   'POST /api/me/notifications/read-all',
+  // the changes made by hand by someone the person manages, in a popup until seen (4 November 2026)
+  'GET /api/me/manual-changes',
+  'POST /api/me/manual-changes/seen',
 ];
 
 /**

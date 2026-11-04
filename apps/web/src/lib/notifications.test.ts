@@ -37,6 +37,9 @@ const ID = '0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e';
 describe('where a notification opens', () => {
   it('opens its link as it is on the site', () => {
     expect(notificationHref(`/leave/${ID}`, 'leave_decided', 'site')).toBe(`/leave/${ID}`);
+    // a change made by hand for an employee (4 November 2026): its page on the site, from the phone pages too
+    expect(notificationHref(`/leave/${ID}`, 'manual_change', 'site')).toBe(`/leave/${ID}`);
+    expect(notificationHref(`/attendance/corrections/${ID}`, 'manual_change', 'app')).toBe(`/attendance/corrections/${ID}`);
     expect(notificationHref('/raise-requests?status=with_hr', 'raise_request_waiting', 'site')).toBe('/raise-requests?status=with_hr');
     expect(notificationHref('/my-attendance', 'check_in_reminder', 'site')).toBe('/my-attendance');
     expect(notificationHref('/app/payslips/line-1', 'payslip_issued', 'site')).toBe('/app/payslips/line-1');

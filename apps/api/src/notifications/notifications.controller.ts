@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
-import type { CheckInReminderView, NotificationPage, NotificationSettings } from '@trendlix/shared';
+import type { CheckInReminderView, ManualChangesView, NotificationPage, NotificationSettings } from '@trendlix/shared';
 import { CurrentActiveSession, CurrentUser, OpenOnHold } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { ActiveSession } from '../auth/sessions.service.js';
@@ -51,6 +51,21 @@ export class NotificationsController {
   @HttpCode(204)
   read(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<void> {
     return this.notifications.markRead(user.id, id);
+  }
+
+  /**
+   * The changes made by hand for employees by the people the caller manages (owner, 4 November 2026: "when HR corrects
+   * something manually, her manager has to be notified in a popup"): the popup's list until Seen.
+   */
+  @Get('manual-changes')
+  manualChanges(@CurrentUser() user: SessionUser): Promise<ManualChangesView> {
+    return this.notifications.manualChanges(user.id);
+  }
+
+  @Post('manual-changes/seen')
+  @HttpCode(200)
+  manualChangesSeen(@CurrentUser() user: SessionUser): Promise<{ marked: number }> {
+    return this.notifications.manualChangesSeen(user.id);
   }
 
   @Get('notification-settings')

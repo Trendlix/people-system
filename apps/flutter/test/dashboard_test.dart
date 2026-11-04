@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:people/app.dart';
 import 'package:people/auth/session_store.dart';
 import 'package:people/features/dashboard/dashboard_screen.dart';
+import 'package:people/features/manual_changes/manual_changes.dart';
 import 'package:people/features/requests/kinds/od.dart' show OdWords;
 import 'package:people/features/today/check_in_words.dart';
 import 'package:people/features/sign_in/sign_in_screen.dart';
@@ -229,6 +230,27 @@ void main() {
     expect(Theme.of(tester.element(find.byType(DashboardScreen))).brightness, Brightness.dark);
     expect(look.mode, ThemeMode.dark);
     expect(find.byTooltip(ShellWords.toLight), findsOneWidget);
+  });
+
+  testWidgets('shows the changes made by hand by someone they manage until marked seen (owner, 4 November 2026)', (tester) async {
+    people
+      ..on(
+        'GET /api/me/manual-changes',
+        (req) => json({
+          'items': [
+            {'id': 'n1', 'title': 'Sara Ali corrected Omar Adel’s attendance', 'body': 'Mon 26/10/2026', 'link': '/attendance/corrections/c1', 'at': '2026-11-04T08:00:00.000Z'},
+          ],
+          'total': 1,
+        }),
+      )
+      ..on('POST /api/me/manual-changes/seen', (req) => json({'marked': 1}));
+    await open(tester, people);
+    expect(find.text(ManualChangeWords.title(1)), findsOneWidget);
+    expect(find.text('Sara Ali corrected Omar Adel’s attendance'), findsOneWidget);
+    await tester.tap(find.text(ManualChangeWords.seen));
+    await tester.pumpAndSettle();
+    expect(people.calls, contains('POST /api/me/manual-changes/seen'));
+    expect(find.text(ManualChangeWords.title(1)), findsNothing);
   });
 
   testWidgets('opens in the look kept from last time', (tester) async {

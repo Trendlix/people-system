@@ -59,6 +59,35 @@ export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh' | 'od' | 
   return { kind: `${kind}_decided`, title: CANCELLED_BY_HR[kind], body: when, link };
 }
 
+/** What was done by hand for an employee (owner, 4 November 2026): recorded (corrected, for attendance), cancelled, changed or restored. */
+export type ManualAction = 'recorded' | 'cancelled' | 'edited' | 'restored';
+
+/** Each kind as the manager's line names it: "leave", "an official duty", "attendance". */
+const MANUAL_NOUNS: Record<LeaveLikeKind, { a: string; of: string }> = {
+  leave: { a: 'leave', of: 'leave' },
+  permission: { a: 'a permission', of: 'permission' },
+  wfh: { a: 'a work from home day', of: 'work from home day' },
+  od: { a: 'an official duty', of: 'official duty' },
+  compensatory: { a: 'a compensatory day', of: 'compensatory day' },
+  correction: { a: 'an attendance correction', of: 'attendance correction' },
+};
+
+/**
+ * A change made by hand for an employee, told to the direct manager of whoever made it (owner, 4 November 2026: "when HR
+ * corrects something manually, her manager has to be notified in a popup"): "Sara Ali corrected Omar Adel's attendance",
+ * "Sara Ali recorded leave for Omar Adel", "Sara Ali cancelled Omar Adel's leave"; its days, and its page.
+ */
+export function manualChangeText(kind: LeaveLikeKind, action: ManualAction, by: string, forName: string, when: string, link: string): NotificationInput {
+  const n = MANUAL_NOUNS[kind];
+  const title =
+    kind === 'correction' && action === 'recorded'
+      ? `${by} corrected ${forName}’s attendance`
+      : action === 'recorded'
+        ? `${by} recorded ${n.a} for ${forName}`
+        : `${by} ${action === 'edited' ? 'changed' : action} ${forName}’s ${n.of}`;
+  return { kind: 'manual_change', title, body: when, link };
+}
+
 /** HR recorded an official duty for the employee, approved at once (owner, 26 October 2026: "HR records it"). */
 export function recordedByHrText(kind: 'od', when: string, link: string): NotificationInput {
   return { kind: `${kind}_decided`, title: 'Official duty recorded', body: when, link };

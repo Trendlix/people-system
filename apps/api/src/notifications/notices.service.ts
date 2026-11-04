@@ -19,6 +19,8 @@ import {
   homeWaitingText,
   leaveEditedText,
   leaveRestoredText,
+  manualChangeText,
+  type ManualAction,
   payRaiseDecidedText,
   payRaiseWaitingText,
   payrollLockedChangeText,
@@ -229,6 +231,76 @@ export class NoticesService {
     }
     if (event === 'decided' && (r.status === 'approved' || r.status === 'rejected')) {
       await this.toEmployee(r.employeeId, { ...decidedText(kind, r.status, r.when, r.link), ...(kind !== 'compensatory' && { whatsapp: updateOf(kind, r.span, r.status) }) });
+    }
+  }
+
+  // ---------- a change made by hand for an employee (owner, 4 November 2026) ----------
+
+  /**
+   * A change made by hand for an employee (owner, 4 November 2026: "when HR corrects something manually, her manager has
+   * to be notified in a popup"; asked, "The HR person's manager", "Everything done for an employee"): the current direct
+   * manager of whoever made it (`actorId`, a user) told, on the bell and in their popup until seen (GET
+   * /me/manual-changes). Nobody when they have no employee profile or no manager. Never the employee it was done for
+   * (owner, the same day: "dont show the employee that anyone can do anything on their behalf"), so not when that
+   * manager is them; and a C-level person's only to a manager who sees C-level people (the CEO, a Super Admin).
+   */
+  async manualChange(kind: LeaveLikeKind, id: string, action: ManualAction, actorId: string): Promise<void> {
+    await this.safely('manual change', async () => {
+      const r = await this.manualFacts(kind, id);
+      if (!r) return;
+      const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { employeeId: true, employee: { select: { fullNameEn: true } } } });
+      if (!actor?.employeeId || !actor.employee) return;
+      const job = await this.prisma.employment.findFirst({
+        where: { employeeId: actor.employeeId, endDate: null, managerId: { not: null } },
+        orderBy: { joinDate: 'desc' },
+        select: { managerId: true },
+      });
+      const managerId = job?.managerId;
+      if (!managerId || managerId === r.employeeId) return;
+      const userId = (await this.usersOf([managerId])).get(managerId);
+      if (!userId || userId === actorId) return;
+      if (await this.confidential.isConfidential(r.employeeId)) {
+        const roles = await this.prisma.userRole.findMany({ where: { userId }, select: { role: { select: { key: true } } } });
+        if (!roles.some((x) => x.role.key === 'ceo' || x.role.key === 'super_admin')) return;
+      }
+      await this.notifications.notify([userId], manualChangeText(kind, action, actor.employee.fullNameEn, r.name, r.when, r.link));
+    });
+  }
+
+  /** The employee, their name, the days and the page of a leave-like request, for its manual change's line. */
+  private async manualFacts(kind: LeaveLikeKind, id: string): Promise<{ employeeId: string; name: string; when: string; link: string } | null> {
+    const employee = { select: { fullNameEn: true } } as const;
+    const one = (r: { employeeId: string; employee: { fullNameEn: string } }, from: Date, to: Date, link: string, halfDay = false) => ({
+      employeeId: r.employeeId,
+      name: r.employee.fullNameEn,
+      when: daysText(fromDateOnly(from), fromDateOnly(to), halfDay),
+      link,
+    });
+    switch (kind) {
+      case 'leave': {
+        const r = await this.prisma.leaveRequest.findUnique({ where: { id }, select: { employeeId: true, startDate: true, endDate: true, halfDay: true, employee } });
+        return r && one(r, r.startDate, r.endDate, REQUEST_LINKS.leave(id), r.halfDay);
+      }
+      case 'permission': {
+        const r = await this.prisma.permissionRequest.findUnique({ where: { id }, select: { employeeId: true, date: true, employee } });
+        return r && one(r, r.date, r.date, REQUEST_LINKS.permission(id));
+      }
+      case 'wfh': {
+        const r = await this.prisma.wfhRequest.findUnique({ where: { id }, select: { employeeId: true, date: true, employee } });
+        return r && one(r, r.date, r.date, REQUEST_LINKS.wfh(id));
+      }
+      case 'od': {
+        const r = await this.prisma.odRequest.findUnique({ where: { id }, select: { employeeId: true, startDate: true, endDate: true, employee } });
+        return r && one(r, r.startDate, r.endDate, REQUEST_LINKS.od(id));
+      }
+      case 'compensatory': {
+        const r = await this.prisma.compensatoryRequest.findUnique({ where: { id }, select: { employeeId: true, dayWorked: true, employee } });
+        return r && one(r, r.dayWorked, r.dayWorked, REQUEST_LINKS.compensatory(id));
+      }
+      case 'correction': {
+        const r = await this.prisma.attendanceCorrection.findUnique({ where: { id }, select: { employeeId: true, date: true, employee } });
+        return r && one(r, r.date, r.date, REQUEST_LINKS.correction(id));
+      }
     }
   }
 

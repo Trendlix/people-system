@@ -10,6 +10,7 @@ import '../auth/auth_controller.dart';
 import '../features/about/diagnostics.dart' show AboutWords, versionLineOf;
 import '../features/kpis/kpi_reminder.dart';
 import '../features/kpis/kpi_words.dart' show KpiWords;
+import '../features/manual_changes/manual_changes.dart';
 import '../features/review/review_gate.dart';
 import '../format.dart';
 import '../models/me.dart';
@@ -45,6 +46,8 @@ class _AppShellState extends ConsumerState<AppShell> {
       await _offerFingerprint();
       // KPI scorecards waiting: once a sign-in, unless postponed (1 November 2026)
       if (mounted) await remindKpis(context, ref);
+      // changes made by hand by someone they manage, until marked seen (4 November 2026)
+      if (mounted) await showManualChanges(context, ref);
     });
   }
 

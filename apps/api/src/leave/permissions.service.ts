@@ -194,6 +194,8 @@ export class PermissionRequestsService {
     await this.payroll.syncDrafts(dto.employeeId, dto.date, dto.date, user);
     // a month whose payroll has moved on keeps its lines: flagged, never silent (owner's brief, 27 October 2026)
     const warnings = await this.lockedChanges.flag({ employeeId: dto.employeeId, kind: 'permission', requestId: id, change: 'recorded', from: dto.date, to: dto.date }, user);
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('permission', id, 'recorded', user.id);
     return withWarnings(await this.one(id, user), warnings);
   }
 
@@ -308,6 +310,8 @@ export class PermissionRequestsService {
     // cancelled in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
     const warnings = await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'permission', requestId: id, change: 'cancelled', from: date, to: date }, user);
     await this.notices.permission(id, 'cancelled_by_hr');
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('permission', id, 'cancelled', user.id);
     return withWarnings(await this.one(id, user), warnings);
   }
 

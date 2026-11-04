@@ -3,11 +3,13 @@ import {
   clippedText,
   DEFAULT_NOTIFICATION_SETTINGS,
   isNotificationKind,
+  MANUAL_CHANGES_SHOWN,
   NOTIFICATION_BODY_MAX,
   NOTIFICATION_TITLE_MAX,
   NOTIFICATIONS_PAGE_SIZE,
   safeNotificationLink,
   seesFullNames,
+  type ManualChangesView,
   type NotificationKind,
   type NotificationPage,
   type NotificationSettings,
@@ -194,6 +196,28 @@ export class NotificationsService {
   /** Marks all the user's notifications read; answers how many were unread. */
   async markAllRead(userId: string): Promise<{ marked: number }> {
     const { count } = await this.prisma.notification.updateMany({ where: { userId, readAt: null }, data: { readAt: new Date() } });
+    return { marked: count };
+  }
+
+  // ---------- the manual changes popup (owner, 4 November 2026) ----------
+
+  /**
+   * The changes made by hand that the user's popup lists (owner, 4 November 2026: "her manager has to be notified in a
+   * popup"; asked, "Shows until marked seen"): their unread manual_change notifications, newest first, at most
+   * MANUAL_CHANGES_SHOWN, and how many in all.
+   */
+  async manualChanges(userId: string): Promise<ManualChangesView> {
+    const where = { userId, kind: 'manual_change', readAt: null };
+    const [rows, total] = await Promise.all([
+      this.prisma.notification.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: MANUAL_CHANGES_SHOWN, select: { id: true, title: true, body: true, link: true, createdAt: true } }),
+      this.prisma.notification.count({ where }),
+    ]);
+    return { items: rows.map((r) => ({ id: r.id, title: r.title, body: r.body, link: r.link, at: r.createdAt.toISOString() })), total };
+  }
+
+  /** Seen: the user's manual changes marked read (on the bell too); answers how many were. */
+  async manualChangesSeen(userId: string): Promise<{ marked: number }> {
+    const { count } = await this.prisma.notification.updateMany({ where: { userId, kind: 'manual_change', readAt: null }, data: { readAt: new Date() } });
     return { marked: count };
   }
 

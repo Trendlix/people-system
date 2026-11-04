@@ -396,6 +396,8 @@ export class CompensatoryService {
     const outcome: CompensatoryOutcome = dto.outcome ?? 'day_off';
     if (outcome === 'day_off' && !dto.dayOff) throw new BadRequestException(['Enter the day off, e.g. 2026-11-10.']);
     const id = await this.submit(employment, { dayWorked: dto.dayWorked, dayOff: outcome === 'cash' ? null : dto.dayOff!, reason: dto.reason, outcome, hoursWorked: dto.hoursWorked ?? null }, caller, true);
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('compensatory', id, 'recorded', user.id);
     return this.one(id, user);
   }
 
@@ -440,6 +442,8 @@ export class CompensatoryService {
     }
     await this.refill(before.employeeId, dayWorked, user, fromDateOnly(before.dayOff));
     await this.notices.compensatory(id, 'cancelled_by_hr');
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('compensatory', id, 'cancelled', user.id);
     return this.one(id, user);
   }
 

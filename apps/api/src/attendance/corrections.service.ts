@@ -185,6 +185,8 @@ export class AttendanceCorrectionsService {
     });
     await this.fill.fillMonth(before.employeeId, date.slice(0, 7), user);
     await this.notices.correction(id, 'cancelled_by_hr');
+    // the canceller's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('correction', id, 'cancelled', user.id);
     return this.one(id, user);
   }
 
@@ -429,6 +431,9 @@ export class AttendanceCorrectionsService {
       },
     });
     if (change) await this.applied(employeeId, date, id, change, user);
+    // a day corrected by hand: the corrector's own manager told (owner, 4 November 2026: "when HR corrects something
+    // manually, her manager has to be notified in a popup")
+    if (byHr) await this.notices.manualChange('correction', id, 'recorded', user.id);
     return id;
   }
 

@@ -273,6 +273,8 @@ export class LeaveRequestsService {
     if (coverId) await this.notices.cover(id, coverId);
     // approved at once: a stand-in whose days have started is told now
     await this.standIns.tick();
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('leave', id, 'recorded', user.id);
     return withWarnings(await this.one(id, user), warnings);
   }
 
@@ -420,6 +422,8 @@ export class LeaveRequestsService {
     // cancelled in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
     const warnings = await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'leave', requestId: id, change: 'cancelled', from: startDate, to: fromDateOnly(before.endDate) }, user);
     await this.notices.leave(id, 'cancelled_by_hr');
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('leave', id, 'cancelled', user.id);
     return withWarnings(await this.one(id, user), warnings);
   }
 
@@ -625,6 +629,8 @@ export class LeaveRequestsService {
       if (coverId) await this.notices.cover(id, coverId);
       if (before.coverId) await this.notices.cover(id, before.coverId, true);
     }
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('leave', id, 'edited', user.id);
     return (await this.views([row], caller))[0];
   }
 
@@ -748,6 +754,8 @@ export class LeaveRequestsService {
       // back with its approver: told as when it was sent to them
       await this.notices.leave(id, 'sent');
     }
+    // done by hand for an employee: the doer's own manager told (owner, 4 November 2026: "her manager has to be notified in a popup")
+    await this.notices.manualChange('leave', id, 'restored', user.id);
     return (await this.views([row], caller))[0];
   }
 
