@@ -195,6 +195,17 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
           },
         ]
       : []),
+    // logging hours instead of checking in (4 November 2026), from an API that has it
+    ...(e.worksOnTimesheets !== undefined
+      ? [
+          {
+            key: 'worksOnTimesheets',
+            label: 'Works on timesheets',
+            value: e.worksOnTimesheets ? 'Yes' : 'No',
+            note: e.worksOnTimesheets ? 'Logs hours instead of checking in' : undefined,
+          },
+        ]
+      : []),
     {
       key: 'jdAcknowledgedAt',
       label: 'Job description acknowledged',

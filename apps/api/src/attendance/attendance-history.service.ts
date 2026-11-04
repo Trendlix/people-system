@@ -314,7 +314,7 @@ export class AttendanceHistoryService {
           : exempt;
         // every date shown, those nothing was kept for too (owner, 4 November 2026: "just record nothing but dont hide the dates")
         const days = withNoRecordDays(read, { month, today, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo });
-        const part = made.get(e.id) ?? { shift, workingDays, hoursADay, employedFrom, employedTo, freelance: e.employmentType === 'freelance', longDay: longDayOfShift(e.shift), days: [] };
+        const part = made.get(e.id) ?? { shift, workingDays, hoursADay, employedFrom, employedTo, freelance: e.employmentType === 'freelance' || e.worksOnTimesheets, longDay: longDayOfShift(e.shift), days: [] };
         part.days.push(...days);
         made.set(e.id, part);
       }

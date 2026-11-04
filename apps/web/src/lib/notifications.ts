@@ -52,6 +52,8 @@ export function notificationHref(link: string | null | undefined, kind: string, 
   }
   // a change made by hand for an employee (4 November 2026): not the person's own, nor waiting for them: its page on the site
   if (kind === 'manual_change') return safe;
+  // a week of hours to approve, or their own decided (4 November 2026): the phone pages have no timesheet pages, the site's open
+  if (kind === 'timesheet_waiting' || kind === 'timesheet_decided') return safe;
   return toAppHref(safe, notificationSection(kind));
 }
 

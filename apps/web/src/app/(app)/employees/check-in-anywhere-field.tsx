@@ -36,6 +36,31 @@ export function CheckInAnywhereField({ state, employment }: { state: FormState; 
   );
 }
 
+/**
+ * "Works on timesheets" (owner, 4 November 2026: "Only those HR switches on"): they log each day's hours against a client or
+ * a task and send the week for approval, instead of checking in; sent with its marker, unticked as no.
+ */
+export function WorksOnTimesheetsField({ state, employment }: { state: FormState; employment: Employment }) {
+  return (
+    <div>
+      <input type="hidden" name="worksOnTimesheetsSent" value="1" />
+      <label className={`${chip} w-fit`}>
+        <input
+          type="checkbox"
+          name="worksOnTimesheets"
+          defaultChecked={tickedOf(state, 'worksOnTimesheets', employment.worksOnTimesheets ?? false)}
+          className="size-4 accent-accent"
+        />
+        Works on timesheets
+      </label>
+      <p className="hint">{WORKS_ON_TIMESHEETS_HINT}</p>
+    </div>
+  );
+}
+
+/** What the switch means, under it. */
+export const WORKS_ON_TIMESHEETS_HINT = 'Logs each day’s hours against a client or a task and sends the week for approval, instead of checking in.';
+
 export function CheckInWithoutLocationField({ state, employment }: { state: FormState; employment: Employment }) {
   return (
     <div>

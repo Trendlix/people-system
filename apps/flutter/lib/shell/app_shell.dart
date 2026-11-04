@@ -11,6 +11,8 @@ import '../features/about/diagnostics.dart' show AboutWords, versionLineOf;
 import '../features/kpis/kpi_reminder.dart';
 import '../features/kpis/kpi_words.dart' show KpiWords;
 import '../features/manual_changes/manual_changes.dart';
+import '../features/timesheet/timesheet_data.dart';
+import '../features/timesheet/timesheet_words.dart';
 import '../features/review/review_gate.dart';
 import '../format.dart';
 import '../models/me.dart';
@@ -351,6 +353,9 @@ Future<void> showMoreMenu(BuildContext context, Me me) {
                     // their own KPIs, easy to find (owner, 2 November 2026: "the employees cant find the KPIs in the app")
                     if (me.employeeId != null) _MenuRow(icon: CupertinoIcons.graph_square, label: KpiWords.myTitle, onTap: () => go('/dashboard/performance')),
                     if (me.scoresTeam) _MenuRow(icon: CupertinoIcons.person_2, label: KpiWords.teamTitle, onTap: () => go('/dashboard/performance/team')),
+                    // their hours, for those on timesheets only (owner, 4 November 2026)
+                    if (me.employeeId != null && ref.watch(logsHoursProvider).value == true)
+                      _MenuRow(icon: CupertinoIcons.timer, label: TimesheetWords.menu, onTap: () => go('/dashboard/timesheet')),
                     // the app's version and what helps find a problem (owner, 31 October 2026)
                     _MenuRow(icon: CupertinoIcons.info, label: AboutWords.menu, onTap: () => go('/profile/about')),
                     ],

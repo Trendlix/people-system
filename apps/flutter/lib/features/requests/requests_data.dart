@@ -11,6 +11,7 @@ import '../../models/request_forms.dart';
 import '../../models/requests.dart';
 import '../../providers.dart';
 import '../dashboard/dashboard_data.dart';
+import '../timesheet/timesheet_data.dart';
 
 // What the Requests tab reads from People and sends to it: one's own requests of each kind, each request on its own,
 // and what each form starts from (the leave types and who may cover, the month's permission hours, the work from home
@@ -158,6 +159,7 @@ final reimbursementTypesProvider = FutureProvider.autoDispose.family<List<Reimbu
 void requestsChanged(WidgetRef ref) {
   ref
     ..invalidate(waitingRequestsProvider)
+    ..invalidate(waitingTimesheetsProvider)
     ..invalidate(myRequestsProvider)
     ..invalidate(myResignationProvider)
     ..invalidate(oneRequestProvider)

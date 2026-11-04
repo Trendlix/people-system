@@ -576,6 +576,9 @@ describe('the figures filled from Zoho People (owner, 19 October 2026: "HR\'s ty
     expect(importMarkText('zoho')).toBe('from Zoho');
     // a mark from before the source: Zoho's
     expect(importMarkText(undefined)).toBe('from Zoho');
+    // someone on timesheets (4 November 2026): their approved hours
+    expect(importMarkText('timesheet')).toBe('from timesheets');
+    expect(importTitle(mark.at, 'timesheet')).toBe('Filled from their approved timesheets on 19/10/2026. They change when a week is approved, or on Refresh from attendance.');
   });
 
   it('marks the cells filled from the month’s attendance days "from attendance" (checking in on the system, 19 October 2026), read only the same', () => {

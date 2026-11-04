@@ -13,7 +13,7 @@ import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
 import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
-import { CheckInAnywhereField, CheckInWithoutLocationField } from './check-in-anywhere-field';
+import { CheckInAnywhereField, CheckInWithoutLocationField, WorksOnTimesheetsField } from './check-in-anywhere-field';
 import { CASUAL_TOO_LONG } from './employment-law';
 import { statusField } from './employment-status';
 import { HazardousWorkField } from './leave-fields';
@@ -419,6 +419,9 @@ export function EmploymentFields({
 
       {/* refusing presses without a location's exception (20 October 2026: "Company switch + exceptions"), from an API that has it */}
       {employment?.checkInWithoutLocation !== undefined && <CheckInWithoutLocationField state={state} employment={employment} />}
+
+      {/* logging hours instead of checking in (4 November 2026: "Only those HR switches on"), from an API that has it */}
+      {employment?.worksOnTimesheets !== undefined && <WorksOnTimesheetsField state={state} employment={employment} />}
 
       {arrangement === 'hybrid' && (
         <fieldset>

@@ -6,6 +6,7 @@ import { PAYROLL_SECTIONS } from '../app/(app)/payroll/sections';
 import { firstSetupPage, SETUP_PATHS } from '../app/(app)/organization/setup-pages';
 import { ASSET_PATHS, CUSTODY_PATHS } from '../lib/asset-paths';
 import { KPI_PATHS } from '../lib/kpi-paths';
+import { MY_TIMESHEET_PATH, TIMESHEETS_PATH } from '../app/(app)/timesheets/timesheets';
 import { hasRole, isSelfService } from '../lib/roles';
 
 export interface NavItem {
@@ -300,6 +301,9 @@ export const NAV: NavItem[] = [
       // leaves", then "Show it with leave"): a working day, not leave, moved here from Attendance; its pages keep their
       // address (/attendance/wfh, which the notifications and the phone pages link to)
       { href: ATTENDANCE_WFH_PATH, label: 'Work From Home', section: ATTENDANCE_WFH_PATH, roles: ['hr', 'ceo'] },
+      // the weeks of hours sent by those on timesheets (owner, 4 November 2026: "Direct manager, weekly"): HR decides those
+      // with nobody to approve them and reads everyone's, the CEO too; a manager decides their team's from My Team
+      { href: TIMESHEETS_PATH, label: 'Timesheets', section: TIMESHEETS_PATH, roles: ['hr', 'ceo'] },
     ],
   },
   // attendance (owner, 19 October 2026: "the attendance is not active in the side menu"; it was under Coming Next until
@@ -348,6 +352,12 @@ export const MY_TEAM = '/my-team';
 export const MY_ATTENDANCE = '/my-attendance';
 
 /**
+ * The employee's own week of hours (app/(app)/my-timesheet; owner, 4 November 2026: "Timesheet in app/website"): for
+ * those HR switched to timesheets; the page tells anyone else they check in instead.
+ */
+export const MY_TIMESHEET = MY_TIMESHEET_PATH;
+
+/**
  * The company's assets the employee holds and their custody records (app/(app)/my-custody; owner, 31 October 2026:
  * "every employee sees his assets").
  */
@@ -381,6 +391,9 @@ export const myAttendanceInMenu = (user: NavUser): boolean => !!user.employeeId 
  */
 export const myAssetsInMenu = (user: NavUser): boolean => !!user.employeeId && !isSelfService(user);
 
+/** Whether the user menu links to My Timesheet (4 November 2026): as My Attendance, for those whose sidebar doesn't list it. */
+export const myTimesheetInMenu = (user: NavUser): boolean => !!user.employeeId && !isSelfService(user);
+
 /**
  * The sidebar of someone who is only an employee and/or a direct manager (isSelfService), as the owner suggested it (17
  * October 2026: "my suggestion for the employee side bar is 1- Dashboard 2- My Profile 3- My Requests"): their
@@ -398,6 +411,8 @@ function selfServiceNav(user: NavUser): NavItem[] {
     ...(profile ? [{ href: profile, label: 'My Profile', section: profile }] : []),
     { href: MY_REQUESTS, label: 'My Requests', section: MY_REQUESTS },
     ...(profile ? [{ href: MY_ATTENDANCE, label: 'My Attendance', section: MY_ATTENDANCE }] : []),
+    // their week of hours, for those HR switched to timesheets (owner, 4 November 2026: "Timesheet in app/website")
+    ...(profile ? [{ href: MY_TIMESHEET, label: 'My Timesheet', section: MY_TIMESHEET }] : []),
     // the company's assets they hold (owner, 31 October 2026: "every employee sees his assets")
     ...(profile ? [{ href: MY_ASSETS, label: 'My Assets', section: MY_ASSETS }] : []),
     // their KPIs (owner, 21 October 2026): My KPIs with their profile, Team KPIs for whoever scores a team's

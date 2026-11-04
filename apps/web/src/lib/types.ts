@@ -410,6 +410,11 @@ export interface Employment {
    * API from before it.
    */
   checkInWithoutLocation?: boolean;
+  /**
+   * "Works on timesheets" (owner, 4 November 2026: "Only those HR switches on"): they log each day's hours against a client
+   * or a task and send the week for approval, instead of checking in. Left out by an API from before it.
+   */
+  worksOnTimesheets?: boolean;
   jdAcknowledgedAt: string | null;
   /** The last working day; null while current. */
   endDate: string | null;

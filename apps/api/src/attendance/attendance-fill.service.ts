@@ -116,6 +116,8 @@ export class AttendanceFillService {
       }),
     ]);
     const fromZohoFetch = new Set(fetched.map((f) => f.employeeId));
+    // the month's approved timesheet hours of those on timesheets (owner, 4 November 2026: "Direct manager, weekly")
+    const approvedHours = await this.approvedTimesheetHours(month, [...people.values()].filter((p) => p.employment?.worksOnTimesheets).map((p) => p.employeeId));
     const allowance = setup?.permissionHoursPerMonth.toNumber() ?? PERMISSION_RULE_DEFAULTS.hoursPerMonth;
     const rules = run.rules as unknown as PayrollRules;
     const law = runLawRates(run);
@@ -132,7 +134,16 @@ export class AttendanceFillService {
       // compensatory day over Zoho's Excel-imported rows too), or Zoho People's fetched each night (owner, 25 October
       // 2026: "Yes, daily + backfill": "Draft payroll runs for those months are refilled for the people changed"): filled
       // from the month's days
-      if (person && (person.own || fromZohoFetch.has(line.employeeId))) {
+      if (person?.employment?.worksOnTimesheets) {
+        // someone on timesheets (owner, 4 November 2026): paid by the hour, the month's approved hours ("only approved
+        // hours reach payroll"); on a monthly salary, the full salary ("Full salary, hours tracked"): no attendance figures
+        const fields: ImportedInput[] = ['workedHours', 'noShowDays', 'permissionHours', 'flexDaysOff', 'noRecordDays'];
+        const filled: Partial<PayrollInputs> = { workedHours: line.payBasis === 'hourly' ? (approvedHours.get(line.employeeId) ?? 0) : null, noShowDays: null, permissionHours: null, flexDaysOff: null, noRecordDays: null };
+        inputs = { ...EMPTY_PAYROLL_INPUTS, ...was, ...filled };
+        if (mark?.source === 'timesheet' && unchanged(was, inputs)) continue;
+        next = { source: 'timesheet', at, fields, before: figuresBefore(fields, was, mark) };
+        result.filled++;
+      } else if (person && (person.own || fromZohoFetch.has(line.employeeId))) {
         const hourly = line.payBasis === 'hourly';
         const filled = attendanceLineInputs(person.days, {
           systemPermissionHours: permissions.find((p) => p.employeeId === line.employeeId)?._sum.hours?.toNumber() ?? 0,
@@ -207,6 +218,18 @@ export class AttendanceFillService {
       });
     }
     return result;
+  }
+
+  /** Each person's approved timesheet hours dated in the month (owner, 4 November 2026), to the quarter hour. */
+  private async approvedTimesheetHours(month: string, employeeIds: readonly string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (!employeeIds.length) return out;
+    const rows = await this.prisma.timesheetEntry.findMany({
+      where: { date: { gte: toDateOnly(firstDay(month)), lte: toDateOnly(lastDay(month)) }, week: { status: 'approved', employeeId: { in: [...employeeIds] } } },
+      select: { hours: true, week: { select: { employeeId: true } } },
+    });
+    for (const r of rows) out.set(r.week.employeeId, Math.round(((out.get(r.week.employeeId) ?? 0) + r.hours.toNumber()) * 100) / 100);
+    return out;
   }
 }
 

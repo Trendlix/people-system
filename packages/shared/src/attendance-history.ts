@@ -97,7 +97,8 @@ export const HISTORY_MODE_LABELS: Record<HistoryMode, string> = {
   rest: 'Rest day',
   // as the person's month says them (owner, 3 November 2026: "still showing rest days on all day per week")
   day_off: 'Day off (any days a week)',
-  not_counted: 'Not counted (freelance)',
+  // a freelancer's, or someone's on timesheets (4 November 2026)
+  not_counted: 'Not counted',
   no_check_in: 'Present, no check-in',
   zoho_leave: 'Leave in Zoho only',
   // a working day nothing was kept for, shown so no date is hidden (owner, 4 November 2026: "just record nothing but dont hide the dates")

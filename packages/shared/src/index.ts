@@ -325,6 +325,7 @@ export * from './payroll.js';
 // client accounts and the accounts allowance (owner, 25 October 2026: "if an employee has an allowance per account, how
 // can we deal with it?"): the assignments' days held in a month, the month's sum by days, the rules of an assignment
 export * from './client-accounts.js';
+export * from './timesheets.js';
 
 // attendance's rules, for the attendance module: the most hours counted a day
 export * from './attendance.js';

@@ -53,6 +53,9 @@ import { seesAllWfh, WFH_PATH } from '../attendance/wfh/wfh';
 import { loadWaitingOd } from '../attendance/official-duty/data';
 import { OdTable } from '../attendance/official-duty/ui';
 import { OD_PATH, seesAllOd } from '../attendance/official-duty/od';
+import { loadWaitingTimesheets } from '../timesheets/data';
+import { timesheetsHref } from '../timesheets/timesheets';
+import { TimesheetTable } from '../timesheets/ui';
 import { shownCode } from '@/lib/hidden';
 import { Hidden } from '@/components/hidden';
 
@@ -430,6 +433,27 @@ async function PendingWfh({ all }: { all: boolean }) {
   );
 }
 
+// ---------- timesheets ----------
+
+/**
+ * The weeks of hours waiting for the caller (owner, 4 November 2026: "Direct manager, weekly"): HR's, those with nobody to
+ * approve them (a C-level person's for the CEO); a manager's are on My Team.
+ */
+async function PendingTimesheets() {
+  // read quietly, like working from home: an API from before timesheets must not take the endings down with it
+  const waiting = await loadWaitingTimesheets();
+  if (waiting.kind === 'unavailable') return <Empty>Timesheets aren&apos;t available yet.</Empty>;
+  if (waiting.kind !== 'ok') return <Empty>Timesheets couldn&apos;t load.</Empty>;
+  const every = <Link href={timesheetsHref({ status: 'all' })}>See every timesheet</Link>;
+  if (waiting.value.length === 0) return <Empty>No timesheets are waiting for you. {every}</Empty>;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm">{every}</p>
+      <TimesheetTable weeks={waiting.value} />
+    </div>
+  );
+}
+
 // ---------- compensatory days ----------
 
 /** The compensatory day requests waiting for the caller (owner, 26 October 2026: "Manager, then HR"): HR's stage, a C-level person's for the CEO. */
@@ -494,7 +518,9 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
   const od = seesAllOd(user) || hasRole(user, 'admin');
   // compensatory days the same way (26 October 2026)
   const compensatory = seesAllCompensatory(user) || hasRole(user, 'admin');
-  if (!endings && !raises && !changes && !homes && !kpis && !wfh && !od && !compensatory) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
+  // the weeks of hours of those on timesheets (4 November 2026): HR and the CEO
+  const timesheets = hasRole(user, 'hr', 'ceo');
+  if (!endings && !raises && !changes && !homes && !kpis && !wfh && !od && !compensatory && !timesheets) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
 
   return (
@@ -549,6 +575,11 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
       {od && (
         <Section title="Official Duty" id="official-duty">
           <PendingOd all={seesAllOd(user)} />
+        </Section>
+      )}
+      {timesheets && (
+        <Section title="Timesheets" id="timesheets">
+          <PendingTimesheets />
         </Section>
       )}
     </div>

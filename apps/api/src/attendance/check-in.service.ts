@@ -158,6 +158,8 @@ const EMPLOYMENT = {
   officeDays: true,
   checkInAnywhere: true,
   checkInWithoutLocation: true,
+  // they log hours on a timesheet instead (owner, 4 November 2026)
+  worksOnTimesheets: true,
   shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true } },
 } satisfies Prisma.EmploymentSelect;
 

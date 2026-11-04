@@ -205,7 +205,7 @@ export function fromImport(mark: { fields: readonly string[] } | null | undefine
  * 2026: "Check-in through the system (phone or web with the office location check, or a device) to replace Zoho"; those
  * who check in on the system, or whose day was corrected). A mark from before it says none: Zoho's.
  */
-export type ImportSource = 'zoho' | 'attendance';
+export type ImportSource = 'zoho' | 'attendance' | 'timesheet';
 
 /** What a cell filled from Zoho, or from the attendance days, says when pointed at: when, and how to change it. */
 export function importTitle(at: string, source: ImportSource | null | undefined = 'zoho'): string {
@@ -213,11 +213,15 @@ export function importTitle(at: string, source: ImportSource | null | undefined 
   if (source === 'attendance') {
     return `Filled from the month's attendance days on ${day}. They change with the attendance: a correction approved, or Refresh from attendance.`;
   }
+  // someone on timesheets (owner, 4 November 2026): the approved hours, or none on a monthly salary
+  if (source === 'timesheet') {
+    return `Filled from their approved timesheets on ${day}. They change when a week is approved, or on Refresh from attendance.`;
+  }
   return `Filled from Zoho People's attendance, applied on ${day}. To change it, import the month again, or undo that import on its review.`;
 }
 
-/** The mark under such a cell: "from Zoho", or "from attendance". */
-export const importMarkText = (source: ImportSource | null | undefined): string => (source === 'attendance' ? 'from attendance' : 'from Zoho');
+/** The mark under such a cell: "from Zoho", "from attendance", or "from timesheets" (4 November 2026). */
+export const importMarkText = (source: ImportSource | null | undefined): string => (source === 'attendance' ? 'from attendance' : source === 'timesheet' ? 'from timesheets' : 'from Zoho');
 
 /**
  * The expected hours a row counts, as its Expected hours cell shows them (owner, 17 October 2026: "prefill the expected

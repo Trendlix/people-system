@@ -30,6 +30,8 @@ import { loadWaitingWfh, loadWfhCalendar, loadWfhOnDay } from '../attendance/wfh
 import { loadCompensatoryCalendar, loadWaitingCompensatory } from '../attendance/compensatory/data';
 import { CompensatoryTable } from '../attendance/compensatory/ui';
 import { WfhTable } from '../attendance/wfh/ui';
+import { loadWaitingTimesheets } from '../timesheets/data';
+import { TimesheetTable } from '../timesheets/ui';
 import { homeOn } from '../attendance/wfh/wfh';
 import { loadOdCalendar, loadOdOnDay, loadWaitingOd } from '../attendance/official-duty/data';
 import { awayOn } from '../attendance/official-duty/od';
@@ -309,6 +311,24 @@ async function OdToApprove() {
   );
 }
 
+/**
+ * The weeks of hours waiting for the manager (owner, 4 November 2026: "Direct manager, weekly"; GET
+ * /timesheets?status=waiting): who, the week and the hours, each with Decide. Shown only with one waiting: most teams
+ * don't log hours.
+ */
+async function TimesheetsToApprove() {
+  const waiting = await loadWaitingTimesheets();
+  if (waiting.kind !== 'ok' || waiting.value.length === 0) return null;
+  return (
+    <section aria-labelledby="timesheets-to-approve" className="space-y-3">
+      <h2 id="timesheets-to-approve" className="text-lg font-semibold">
+        Timesheets to Approve
+      </h2>
+      <TimesheetTable weeks={waiting.value} />
+    </section>
+  );
+}
+
 /** Who of the team is on an approved official duty today (owner, 23 October 2026: "Official duty (OD) requests"). */
 async function OnDutyToday() {
   // the signed-in user first (the request's own data), then the clock: Next reads the clock only after it
@@ -458,6 +478,9 @@ export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
         </Suspense>
         <Suspense fallback={null}>
           <CompensatoryToApprove />
+        </Suspense>
+        <Suspense fallback={null}>
+          <TimesheetsToApprove />
         </Suspense>
         <Suspense fallback={null}>
           <ToApprove />

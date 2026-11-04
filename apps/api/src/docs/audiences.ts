@@ -138,6 +138,13 @@ export const APP_ENDPOINTS: readonly string[] = [
   'GET /api/me/notifications',
   'GET /api/me/notifications/unread-count',
   'POST /api/me/notifications/read-all',
+  // timesheets (4 November 2026): one's own week, and the weeks to approve
+  'GET /api/me/timesheet',
+  'PUT /api/me/timesheet',
+  'POST /api/me/timesheet/submit',
+  'GET /api/timesheets',
+  'GET /api/timesheets/{x}',
+  'POST /api/timesheets/{x}/decide',
   // the changes made by hand by someone the person manages, in a popup until seen (4 November 2026)
   'GET /api/me/manual-changes',
   'POST /api/me/manual-changes/seen',

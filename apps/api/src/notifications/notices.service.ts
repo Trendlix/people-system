@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { cairoDay, decidesConfidentialStage, movesToStandIn, type PayrollStatus, type Role, type WhatsAppRequestWhat, type WhatsAppSpan } from '@trendlix/shared';
+import { cairoDay, decidesConfidentialStage, movesToStandIn, timesheetHoursText, timesheetWeekText, totalHours, type PayrollStatus, type Role, type WhatsAppRequestWhat, type WhatsAppSpan } from '@trendlix/shared';
 import { actsAs } from '../auth/roles.js';
 import { fromDateOnly } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
@@ -20,6 +20,8 @@ import {
   leaveEditedText,
   leaveRestoredText,
   manualChangeText,
+  timesheetDecidedText,
+  timesheetWaitingText,
   type ManualAction,
   payRaiseDecidedText,
   payRaiseWaitingText,
@@ -232,6 +234,32 @@ export class NoticesService {
     if (event === 'decided' && (r.status === 'approved' || r.status === 'rejected')) {
       await this.toEmployee(r.employeeId, { ...decidedText(kind, r.status, r.when, r.link), ...(kind !== 'compensatory' && { whatsapp: updateOf(kind, r.span, r.status) }) });
     }
+  }
+
+  // ---------- timesheets (owner, 4 November 2026) ----------
+
+  /** A week of hours sent: its approver told (none: HR, the CEO for a C-level person), never its person. */
+  async timesheetSent(weekId: string): Promise<void> {
+    await this.safely('timesheet', async () => {
+      const w = await this.prisma.timesheetWeek.findUnique({
+        where: { id: weekId },
+        select: { employeeId: true, approverId: true, weekStart: true, employee: { select: { fullNameEn: true } }, entries: { select: { hours: true } } },
+      });
+      if (!w) return;
+      const total = totalHours(w.entries.map((e) => ({ hours: e.hours.toNumber() })));
+      const to = w.approverId ? [...(await this.usersOf([w.approverId])).values()] : await this.stageDeciders('hr', w.employeeId);
+      await this.notifications.notify(to, timesheetWaitingText(w.employee.fullNameEn, timesheetWeekText(fromDateOnly(w.weekStart)), timesheetHoursText(total), `/timesheets/${weekId}`));
+    });
+  }
+
+  /** A week approved or rejected: its person told. */
+  async timesheetDecided(weekId: string): Promise<void> {
+    await this.safely('timesheet', async () => {
+      const w = await this.prisma.timesheetWeek.findUnique({ where: { id: weekId }, select: { employeeId: true, status: true, weekStart: true } });
+      if (!w || (w.status !== 'approved' && w.status !== 'rejected')) return;
+      const week = fromDateOnly(w.weekStart);
+      await this.toEmployee(w.employeeId, timesheetDecidedText(w.status === 'approved', timesheetWeekText(week), `/my-timesheet?week=${week}`));
+    });
   }
 
   // ---------- a change made by hand for an employee (owner, 4 November 2026) ----------

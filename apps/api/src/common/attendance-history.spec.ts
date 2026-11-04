@@ -131,7 +131,7 @@ describe('a day a flexible week didn’t need, and a freelancer’s day not coun
     expect(historyDay(input('2026-11-06', { status: 'rest', place: null, flexOff: true }))).toMatchObject({ mode: 'day_off', expected: false });
     expect(historyDay(input('2026-11-06', { status: 'rest', place: null, notCounted: true }))).toMatchObject({ mode: 'not_counted', expected: false });
     expect(historyDay(input('2026-11-06', { status: 'rest', place: null }))).toMatchObject({ mode: 'rest' });
-    expect([HISTORY_MODE_LABELS.day_off, HISTORY_MODE_LABELS.not_counted]).toEqual(['Day off (any days a week)', 'Not counted (freelance)']);
+    expect([HISTORY_MODE_LABELS.day_off, HISTORY_MODE_LABELS.not_counted]).toEqual(['Day off (any days a week)', 'Not counted']);
   });
 });
 

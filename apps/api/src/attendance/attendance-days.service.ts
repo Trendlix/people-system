@@ -82,8 +82,9 @@ export type DayRow = Prisma.AttendanceDayGetPayload<{ select: typeof DAY_SELECT 
 export const EMPLOYMENT_SELECT = {
   id: true,
   employeeId: true,
-  // a freelancer's days are never absent (31 October 2026: freelanceDays)
+  // a freelancer's days are never absent (31 October 2026: freelanceDays), nor those of someone on timesheets (4 November 2026)
   employmentType: true,
+  worksOnTimesheets: true,
   joinDate: true,
   endDate: true,
   // an approved ending's last working day ends the employment for the month (owner's report, 27 October 2026)
@@ -308,7 +309,8 @@ export class AttendanceDaysService {
       // a freelancer has no working hours to be absent from (owner, 31 October 2026: "if no checkin required, why is it
       // showing him absent?"): the days Zoho kept as absent aren't counted
       // and a long day on their shift counted as it says (owner, 3 November 2026: "if more than N Hours Count as Y Hours")
-      const days = employment?.employmentType === 'freelance' ? freelanceDays(read, longDayOfShift(employment.shift)) : read;
+      // and someone on timesheets logs hours instead of checking in (owner, 4 November 2026): never absent either
+      const days = employment?.employmentType === 'freelance' || employment?.worksOnTimesheets ? freelanceDays(read, longDayOfShift(employment.shift)) : read;
       if (!employment && !days.length) continue;
       out.set(id, {
         employeeId: id,

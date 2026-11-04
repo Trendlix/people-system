@@ -13,6 +13,9 @@ import '../today/check_in_words.dart';
 import '../today/press_flow.dart';
 import '../today/today_controller.dart';
 import '../today/work_clock.dart';
+import '../timesheet/timesheet_data.dart';
+import '../timesheet/timesheet_words.dart';
+import 'package:go_router/go_router.dart';
 
 /// The Dashboard's "Today's shift" (the phone design, 30 October 2026): the one dark card (light on the dark look) with
 /// where the day stands, the shift, the time large (the clock before checking in, the time worked after), where, and the
@@ -57,7 +60,8 @@ class _ShiftCardState extends ConsumerState<ShiftCard> with CheckInPress {
             action: CheckInWords.tryAgain,
             onAction: () => ref.invalidate(todayProvider),
           ),
-          data: (t) => _Card(today: t, busy: pressing, onPress: press),
+          // someone on timesheets logs hours instead (owner, 4 November 2026): Log hours in the card's place of the button
+          data: (t) => _Card(today: t, busy: pressing, onPress: press, logsHours: t.refusal != null && ref.watch(logsHoursProvider).value == true),
         ),
         if (notice case final n?) ...[const SizedBox(height: 12), Notice(text: n.text, ok: n.ok, action: n.action, onAction: n.onAction)],
       ],
@@ -87,11 +91,14 @@ class _Frame extends StatelessWidget {
 }
 
 class _Card extends StatelessWidget {
-  const _Card({required this.today, required this.busy, required this.onPress});
+  const _Card({required this.today, required this.busy, required this.onPress, this.logsHours = false});
 
   final Today today;
   final bool busy;
   final VoidCallback onPress;
+
+  /// They log hours on a timesheet instead of checking in: the card offers Log hours.
+  final bool logsHours;
 
   @override
   Widget build(BuildContext context) {
@@ -142,9 +149,13 @@ class _Card extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 30),
-          if (today.refusal != null)
-            Text(today.refusal!, style: text.bodyLarge?.copyWith(color: p.onInverse))
-          else ...[
+          if (today.refusal != null) ...[
+            Text(logsHours ? TimesheetWords.logHoursLine : today.refusal!, style: text.bodyLarge?.copyWith(color: p.onInverse)),
+            if (logsHours) ...[
+              const SizedBox(height: 22),
+              _CardButton(label: TimesheetWords.logHours, icon: CupertinoIcons.timer, busy: false, onTap: () => context.go('/dashboard/timesheet')),
+            ],
+          ] else ...[
             if (today.shiftStart != null && today.shiftEnd != null) Text(CheckInWords.shift(today.shiftStart!, today.shiftEnd!), style: muted),
             const SizedBox(height: 4),
             if (last != null) Text(CheckInWords.workedToday, style: muted),
@@ -179,11 +190,28 @@ class _PressButton extends StatelessWidget {
   final VoidCallback onPress;
 
   @override
+  Widget build(BuildContext context) => _CardButton(
+    label: next == PunchKind.checkIn ? CheckInWords.checkInForWork : CheckInWords.checkOut,
+    icon: next == PunchKind.checkIn ? CupertinoIcons.clock : CupertinoIcons.square_arrow_left,
+    busy: busy,
+    onTap: onPress,
+  );
+}
+
+/// A button light on the dark card: its icon, its words and an arrow; "Finding you…" while [busy].
+class _CardButton extends StatelessWidget {
+  const _CardButton({required this.label, required this.icon, required this.busy, required this.onTap});
+
+  final String label;
+  final IconData icon;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final text = Theme.of(context).textTheme;
     final fg = p.inverse;
-    final label = next == PunchKind.checkIn ? CheckInWords.checkInForWork : CheckInWords.checkOut;
     return Semantics(
       button: true,
       label: busy ? CheckInWords.findingYou : label,
@@ -192,7 +220,7 @@ class _PressButton extends StatelessWidget {
         color: p.onInverse,
         borderRadius: BorderRadius.circular(15),
         child: InkWell(
-          onTap: busy ? null : onPress,
+          onTap: busy ? null : onTap,
           borderRadius: BorderRadius.circular(15),
           child: SizedBox(
             height: 58,
@@ -200,10 +228,7 @@ class _PressButton extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 18),
               child: Row(
                 children: [
-                  if (busy)
-                    SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: fg))
-                  else
-                    Icon(next == PunchKind.checkIn ? CupertinoIcons.clock : CupertinoIcons.square_arrow_left, size: 19, color: fg),
+                  if (busy) SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: fg)) else Icon(icon, size: 19, color: fg),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(busy ? CheckInWords.findingYou : label, style: text.labelLarge?.copyWith(color: fg)),

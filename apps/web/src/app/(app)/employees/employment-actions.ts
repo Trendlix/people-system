@@ -79,6 +79,8 @@ function employmentBody(fd: FormData, errors: string[], withStatus: boolean) {
     // someone HR lets press on the website without a location (owner, 20 October 2026: "Company switch + exceptions"),
     // sent with its marker when the form has it, unticked as no
     ...(fd.has('checkInWithoutLocationSent') && { checkInWithoutLocation: fd.has('checkInWithoutLocation') }),
+    // logging hours on a timesheet instead of checking in (owner, 4 November 2026), sent with its marker, unticked as no
+    ...(fd.has('worksOnTimesheetsSent') && { worksOnTimesheets: fd.has('worksOnTimesheets') }),
   };
 }
 

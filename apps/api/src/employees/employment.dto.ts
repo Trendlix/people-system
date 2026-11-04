@@ -98,6 +98,14 @@ class EmploymentFieldsDto {
    */
   @Sent() @IsBoolean({ message: 'Send whether they can check in without a location as true or false.' })
   checkInWithoutLocation?: boolean;
+
+  /**
+   * "Works on timesheets" (owner, 4 November 2026: "Only those HR switches on"; packages/shared timesheets.ts): they log
+   * each day's hours against a client or a task and send the week for approval, instead of checking in; their days are
+   * never absent, and paid by the hour their approved hours are what they are paid for. Off unless sent.
+   */
+  @Sent() @IsBoolean({ message: 'Send whether they work on timesheets as true or false.' })
+  worksOnTimesheets?: boolean;
 }
 
 /**

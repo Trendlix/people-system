@@ -122,6 +122,9 @@ export const NOTIFICATION_KINDS = [
   // a change made by hand for an employee (owner, 4 November 2026: "when HR corrects something manually, her manager has
   // to be notified in a popup"): the direct manager of whoever made it, on the bell and in a popup until marked seen
   'manual_change',
+  // timesheets (owner, 4 November 2026; timesheets.ts): a week sent, for the one who approves it; decided, for its person
+  'timesheet_waiting',
+  'timesheet_decided',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -143,6 +146,8 @@ export const WAITING_KINDS = [
   'compensatory_waiting',
   // a stand-in's requests waiting (25 October 2026)
   'stand_in',
+  // a week of hours to approve (4 November 2026)
+  'timesheet_waiting',
 ] as const satisfies readonly NotificationKind[];
 
 /** Where the phone pages open a notification's request: To approve for what the person decides, else their own requests. */
@@ -209,6 +214,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   photo_request_decided: 'Photo',
   hr_message: 'Message from HR',
   manual_change: 'Manual change',
+  timesheet_waiting: 'Timesheet',
+  timesheet_decided: 'Timesheet',
 };
 
 // ---------- the reminders and the person's switches ----------

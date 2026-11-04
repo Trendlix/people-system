@@ -16,6 +16,7 @@ import 'features/performance/performance_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_tab.dart';
 import 'features/requests/requests_tab.dart';
+import 'features/timesheet/timesheet_screen.dart';
 import 'models/me.dart';
 import 'shell/app_shell.dart';
 import 'features/sign_in/sign_in_screen.dart';
@@ -73,6 +74,8 @@ class _PeopleAppState extends ConsumerState<PeopleApp> {
                     // perform the KPI's from the mobile app"), from the More menu
                     routes: [GoRoute(path: 'team', builder: (context, state) => const TeamKpisScreen(back: KpiWords.myTitle))],
                   ),
+                  // their hours, for those on timesheets (owner, 4 November 2026), from the Dashboard and the More menu
+                  GoRoute(path: 'timesheet', builder: (context, state) => TimesheetScreen(week: state.uri.queryParameters['week'])),
                 ],
               ),
             ],

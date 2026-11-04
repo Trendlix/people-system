@@ -503,7 +503,7 @@ export interface AttendanceImportMark {
    * like the Zoho cells"), for someone who checks in on the system or whose day was corrected (`sources`: the days'
    * sources).
    */
-  source: 'zoho' | 'attendance';
+  source: 'zoho' | 'attendance' | 'timesheet';
   /** The Zoho import, for 'zoho'. */
   importId?: string;
   at: string;
@@ -555,6 +555,10 @@ export function importedInputRefusal(field: ImportedInput, name: string, at: str
   const day = Number.isNaN(moment.getTime()) ? at : CAIRO_DAY.format(moment);
   if (source === 'attendance') {
     return `${IMPORTED_INPUT_LABELS[field]} for ${name} come from the attendance days (filled ${day}): they change with the attendance itself, by a correction approved or Refresh from attendance.`;
+  }
+  // someone on timesheets (owner, 4 November 2026): the approved hours, or none on a monthly salary
+  if (source === 'timesheet') {
+    return `${IMPORTED_INPUT_LABELS[field]} for ${name} come from their approved timesheets (filled ${day}): they change when a week is approved, or on Refresh from attendance.`;
   }
   return `${IMPORTED_INPUT_LABELS[field]} for ${name} came from the Zoho import of ${day}: import the month again to change them, or undo that import on its review.`;
 }

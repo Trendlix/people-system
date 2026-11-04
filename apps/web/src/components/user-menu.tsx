@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarDays, ChevronDown, KeyRound, LogOut, MonitorSmartphone, PackageCheck, Video } from 'lucide-react';
+import { CalendarClock, CalendarDays, ChevronDown, ClipboardList, KeyRound, LogOut, MonitorSmartphone, PackageCheck, Video } from 'lucide-react';
 import Link from 'next/link';
 import { logout } from '@/app/login/actions';
 import { ApiError } from '@/lib/api';
@@ -10,7 +10,7 @@ import { modeSwitch } from '@/lib/session-mode';
 import { canViewAs, type Session } from '@/lib/view-as';
 import { MenuPopover } from './menu-popover';
 import { ModeSwitch } from './mode-switch';
-import { MY_ASSETS, MY_ATTENDANCE, myAssetsInMenu, myAttendanceInMenu } from './nav';
+import { MY_ASSETS, MY_ATTENDANCE, MY_TIMESHEET, myAssetsInMenu, myAttendanceInMenu, myTimesheetInMenu } from './nav';
 import { PushTokenField } from './push-token-field';
 import { ViewAsButton } from './view-as';
 
@@ -66,6 +66,13 @@ export async function UserMenu() {
               <Link href={MY_ATTENDANCE} className={item}>
                 <CalendarDays aria-hidden="true" className="size-4 text-muted" strokeWidth={1.6} />
                 My attendance
+              </Link>
+            )}
+            {/* their week of hours (4 November 2026), for those whose sidebar doesn't list it */}
+            {myTimesheetInMenu(user) && (
+              <Link href={MY_TIMESHEET} className={item}>
+                <ClipboardList aria-hidden="true" className="size-4 text-muted" strokeWidth={1.6} />
+                My timesheet
               </Link>
             )}
             {/* the company's assets they hold (owner, 31 October 2026: "every employee sees his assets"), for those whose

@@ -74,6 +74,9 @@ class PeopleClient {
 
   Future<Object?> post(String path, [Object? body]) async => _bodyOf(await _send('POST', path, body: body));
 
+  /// A thing replaced as a whole (a week of timesheet lines, 4 November 2026).
+  Future<Object?> put(String path, [Object? body]) async => _bodyOf(await _send('PUT', path, body: body));
+
   /// Signing in (a password, or the phone's credential): the session People sets in its cookie, and the answer. Sent
   /// without any session the app still holds.
   Future<SignInAnswer> signIn(String path, Object body) async {

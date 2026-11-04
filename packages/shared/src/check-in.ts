@@ -637,6 +637,8 @@ export function punchMessages(
 export interface CheckInEmployment {
   employmentType: string;
   shiftId: string | null;
+  /** They log hours on a timesheet instead (owner, 4 November 2026; timesheets.ts). */
+  worksOnTimesheets?: boolean;
 }
 
 /**
@@ -648,6 +650,8 @@ export function checkInRefusal(profile: boolean, employment: CheckInEmployment |
   if (!profile) return 'Your sign-in has no employee profile, so there is nothing to check in to. Ask HR to add your work email to your profile.';
   if (!employment) return 'You have no current employment, so there is nothing to check in to.';
   if (employment.employmentType === 'freelance') return 'A freelancer doesn’t check in: freelance work is outside the labour law and its working hours.';
+  // those HR switched to timesheets (owner, 4 November 2026: "Only those HR switches on")
+  if (employment.worksOnTimesheets) return 'You log your hours on your timesheet instead of checking in.';
   if (!employment.shiftId) return 'Your employment has no shift yet, so checking in isn’t on for you. Ask HR to set your shift.';
   return null;
 }

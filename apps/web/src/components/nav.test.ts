@@ -21,6 +21,8 @@ import {
   MY_TEAM,
   myAssetsInMenu,
   myAttendanceInMenu,
+  myTimesheetInMenu,
+  MY_TIMESHEET,
   NAV,
   navFor,
   ORGANIZATION_NAV,
@@ -94,6 +96,8 @@ describe('the sidebar', () => {
       ['Leave Requests', '/leave'],
       // the work from home days, after Leave Requests (owner, 26 October 2026: "Show it with leave"), at their old address
       ['Work From Home', '/attendance/wfh'],
+      // the weeks of hours of those on timesheets (4 November 2026)
+      ['Timesheets', '/timesheets'],
     ]);
     expect([RAISE_REQUESTS_PATH, DETAILS_CHANGES_PATH, REIMBURSEMENTS_PATH, LEAVE_PATH]).toEqual(['/raise-requests', '/requests/details-changes', '/reimbursements', '/leave']);
     // each page for its own roles; the heading for whoever sees one of them
@@ -102,6 +106,7 @@ describe('the sidebar', () => {
       ['hr', 'ceo', 'finance'],
       ['hr', 'admin', 'ceo'],
       ['hr', 'finance', 'ceo'],
+      ['hr', 'ceo'],
       ['hr', 'ceo'],
       ['hr', 'ceo'],
     ]);
@@ -269,11 +274,14 @@ describe('the sidebar of an employee or a manager', () => {
       ['My Profile', `/employees/${ME}`],
       ['My Requests', MY_REQUESTS],
       ['My Attendance', MY_ATTENDANCE],
+      ['My Timesheet', MY_TIMESHEET],
       ['My Assets', MY_ASSETS],
       // the KPIs heading, with My KPIs (owner, 21 October 2026)
       ['KPIs', '/kpis'],
     ]);
     expect(MY_ATTENDANCE).toBe('/my-attendance');
+    // their week of hours (4 November 2026)
+    expect(MY_TIMESHEET).toBe('/my-timesheet');
     expect(MY_ASSETS).toBe('/my-custody');
   });
 
@@ -283,6 +291,7 @@ describe('the sidebar of an employee or a manager', () => {
       ['My Profile', `/employees/${ME}`],
       ['My Requests', MY_REQUESTS],
       ['My Attendance', MY_ATTENDANCE],
+      ['My Timesheet', MY_TIMESHEET],
       ['My Assets', MY_ASSETS],
       ['KPIs', '/kpis'],
       ['My Team', MY_TEAM],
@@ -296,6 +305,7 @@ describe('the sidebar of an employee or a manager', () => {
       ['My Profile', `/employees/${ME}`],
       ['My Requests', MY_REQUESTS],
       ['My Attendance', MY_ATTENDANCE],
+      ['My Timesheet', MY_TIMESHEET],
       ['My Assets', MY_ASSETS],
       ['KPIs', '/kpis'],
       ['My Team', MY_TEAM],
@@ -315,6 +325,8 @@ describe('the sidebar of an employee or a manager', () => {
   it('links My Attendance from the user menu for HR, Finance, the CEO and Admins with a profile, who check in too (19 October 2026)', () => {
     for (const role of ['hr', 'finance', 'ceo', 'admin', 'super_admin'] as const) {
       expect(myAttendanceInMenu({ roles: [role], employeeId: ME })).toBe(true);
+      expect(myTimesheetInMenu({ roles: [role], employeeId: ME })).toBe(true);
+      expect(myTimesheetInMenu({ roles: [role], employeeId: null })).toBe(false);
       expect(myAttendanceInMenu({ roles: [role], employeeId: null })).toBe(false);
       expect(myAttendanceInMenu({ roles: [role] })).toBe(false);
     }
@@ -488,14 +500,14 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     const pages = (...roles: Role[]) => requestsFor(...roles)?.items?.map((i) => i.label) ?? null;
 
     it('has Raise Requests, Details Changes, Reimbursements, Leave Requests and Work From Home for HR, and links to Raise Requests', () => {
-      expect(pages('hr')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests', 'Work From Home']);
-      expect(pages('employee', 'hr', 'manager')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests', 'Work From Home']);
+      expect(pages('hr')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests', 'Work From Home', 'Timesheets']);
+      expect(pages('employee', 'hr', 'manager')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests', 'Work From Home', 'Timesheets']);
       expect(requestsFor('hr')?.href).toBe('/raise-requests');
     });
 
     it('has Raise Requests and Reimbursements for Finance, who doesn’t decide details changes, and all four for the CEO, who decides C-level people’s (19 October 2026)', () => {
       expect(pages('finance')).toEqual(['Raise Requests', 'Reimbursements']);
-      expect(pages('ceo')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests', 'Work From Home']);
+      expect(pages('ceo')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests', 'Work From Home', 'Timesheets']);
       expect(requestsFor('finance')?.href).toBe('/raise-requests');
       expect(requestsFor('ceo')?.href).toBe('/raise-requests');
     });
@@ -537,8 +549,8 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       navFor({ roles: ['admin'], employeeId: 'x' });
       const requests = NAV.find((n) => n.label === 'Requests')!;
       expect(requests.href).toBe('/raise-requests');
-      // Work From Home after Leave Requests since 26 October 2026
-      expect(requests.items).toHaveLength(5);
+      // Work From Home after Leave Requests since 26 October 2026, Timesheets after it since 4 November 2026
+      expect(requests.items).toHaveLength(6);
     });
   });
 
@@ -619,7 +631,8 @@ describe('the KPIs (owner, 21 October 2026: "lets start with the KPI’s First")
   it('is after My Attendance (and My Assets, 31 October 2026) in an employee’s or a manager’s sidebar, before My Team', () => {
     const labels = navFor({ roles: ['employee', 'manager'], employeeId: ME }).map((n) => n.label);
     expect(labels.indexOf('KPIs')).toBe(labels.indexOf('My Assets') + 1);
-    expect(labels.indexOf('My Assets')).toBe(labels.indexOf('My Attendance') + 1);
+    expect(labels.indexOf('My Assets')).toBe(labels.indexOf('My Timesheet') + 1);
+    expect(labels.indexOf('My Timesheet')).toBe(labels.indexOf('My Attendance') + 1);
     expect(labels.indexOf('My Team')).toBe(labels.indexOf('KPIs') + 1);
   });
 

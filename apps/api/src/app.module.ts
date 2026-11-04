@@ -7,6 +7,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { AuditLogModule } from './audit/audit-log.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ClientAccountsModule } from './client-accounts/client-accounts.module.js';
+import { TimesheetsModule } from './timesheets/timesheets.module.js';
 import { CompanyModule } from './company/company.module.js';
 import { ConnectorModule } from './connector/connector.module.js';
 import { ConfirmationsModule } from './confirmations/confirmations.module.js';
@@ -78,6 +79,7 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
     AllowancesModule,
     // Clients → Client Accounts and the accounts allowance (owner, 25 October 2026)
     ClientAccountsModule,
+    TimesheetsModule,
     EmployeesModule,
     // the Employees list's bulk actions (owner, 1 November 2026: "i want to select and create bulk actions")
     EmployeeBulkModule,

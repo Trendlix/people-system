@@ -34,6 +34,7 @@ export function isRecordedRefusal(method: string, status: number, path: string |
 const PATH_MODULES: readonly (readonly [prefix: string, module: AuditModule])[] = [
   ['me/attendance', 'attendance'],
   ['me/wfh', 'attendance'],
+  ['me/timesheet', 'attendance'],
   ['me/official-duty', 'attendance'],
   ['me/home-locations', 'attendance'],
   ['me/leave', 'leave'],
@@ -70,6 +71,7 @@ const PATH_MODULES: readonly (readonly [prefix: string, module: AuditModule])[] 
   ['shifts', 'attendance'],
   ['home-locations', 'attendance'],
   ['wfh', 'attendance'],
+  ['timesheets', 'attendance'],
   ['official-duty', 'attendance'],
   ['zoho-people', 'attendance'],
   ['leave', 'leave'],

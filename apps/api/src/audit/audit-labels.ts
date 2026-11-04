@@ -168,6 +168,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   onboarding_defaults: 'Onboarding checklist defaults',
   // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
   wfh_request: 'Work from home request',
+  // a week of someone's hours (owner, 4 November 2026)
+  timesheet_week: 'Timesheet',
   // an employee's resignation request (owner, 26 October 2026)
   resignation_request: 'Resignation request',
   resignation_letter: 'Resignation letter',
@@ -538,6 +540,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // refusing presses without a location (20 October 2026)
   refuseWithoutLocation: 'Refuse check-ins and check-outs without a location',
   checkInWithoutLocation: 'Can check in without a location',
+  worksOnTimesheets: 'Works on timesheets',
   // home locations (20 October 2026)
   radiusMetres: 'Radius (metres)',
   // the main office and its sub-locations (20 October 2026)

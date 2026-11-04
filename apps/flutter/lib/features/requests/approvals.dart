@@ -4,6 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/people_client.dart';
 import '../../models/requests.dart';
+import '../../models/timesheet.dart';
+import '../timesheet/timesheet_data.dart';
+import '../timesheet/timesheet_week_page.dart';
+import '../timesheet/timesheet_words.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
 import 'history.dart';
@@ -17,6 +21,7 @@ import 'sheet_parts.dart' show refusalOf;
 // official duty, compensatory days, attendance corrections and expense claims, oldest first, each approved in one tap or
 // rejected with why; Approve all for the lot; each opening its page, which has the same two buttons. People checks who
 // may decide again, and says why not in its words. A claim is approved for its amount (another amount on the website).
+// Weeks of hours too (owner, 4 November 2026: timesheets), after the requests, each opening the week.
 
 abstract final class ApproveWords {
   static const title = 'To approve';
@@ -35,6 +40,7 @@ abstract final class ApproveWords {
   static const someNotLoaded = 'Some requests waiting for you couldn’t be loaded. Pull to refresh.';
   static const decideTitle = 'Your decision';
   static const sending = 'Sending…';
+  static String weekLine(String start, String end, double hours) => 'Hours · ${TimesheetWords.week(start, end)} · ${TimesheetWords.total(hours)}';
 }
 
 /// The card at the top of the Requests tab: nothing when nothing waits.
@@ -50,6 +56,7 @@ class _ToApproveCardState extends ConsumerState<ToApproveCard> {
   bool _all = false;
 
   String _key(PeopleRequest r) => '${r.kind.name}:${r.id}';
+  String _weekKey(TimesheetListItem w) => 'timesheet:${w.id}';
 
   void _say(String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
@@ -74,12 +81,34 @@ class _ToApproveCardState extends ConsumerState<ToApproveCard> {
     }
   }
 
-  Future<void> _approveAll(List<PeopleRequest> items) async {
+  Future<void> _decideWeek(TimesheetListItem w, {required bool approve}) async {
+    String? why;
+    if (!approve) {
+      why = await askWhyRejected(context);
+      if (why == null || !mounted) return;
+    }
+    setState(() => _busy.add(_weekKey(w)));
+    try {
+      await decideTimesheet(ref, w.id, approve: approve, reason: why);
+      if (!mounted) return;
+      _say(approve ? ApproveWords.approved(w.employeeName) : ApproveWords.rejected(w.employeeName));
+    } on ApiException catch (e) {
+      if (mounted) _say(refusalOf(e).join(' '));
+    } finally {
+      if (mounted) {
+        setState(() => _busy.remove(_weekKey(w)));
+        timesheetsChanged(ref);
+      }
+    }
+  }
+
+  Future<void> _approveAll(List<PeopleRequest> items, List<TimesheetListItem> weeks) async {
+    final n = items.length + weeks.length;
     final yes = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: Text(ApproveWords.approveAll(items.length)),
-        content: Text(ApproveWords.approveAllAsk(items.length)),
+        title: Text(ApproveWords.approveAll(n)),
+        content: Text(ApproveWords.approveAllAsk(n)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text(ApproveWords.cancel)),
           FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text(ApproveWords.approve)),
@@ -98,19 +127,32 @@ class _ToApproveCardState extends ConsumerState<ToApproveCard> {
         failed++;
       }
     }
+    for (final w in weeks) {
+      try {
+        await decideTimesheet(ref, w.id, approve: true);
+        done++;
+      } on ApiException {
+        failed++;
+      }
+    }
     if (!mounted) return;
     setState(() => _all = false);
     requestsChanged(ref);
+    timesheetsChanged(ref);
     _say(ApproveWords.allDone(done, failed));
   }
 
   @override
   Widget build(BuildContext context) {
     final waiting = ref.watch(waitingRequestsProvider).value;
-    if (waiting == null || (waiting.items.isEmpty && !waiting.failed)) return const SizedBox.shrink();
+    final weeksRead = ref.watch(waitingTimesheetsProvider);
+    final weeks = weeksRead.value ?? const <TimesheetListItem>[];
+    final failed = (waiting?.failed ?? false) || weeksRead.hasError;
+    final items = waiting?.items ?? const <PeopleRequest>[];
+    if (waiting == null || (items.isEmpty && weeks.isEmpty && !failed)) return const SizedBox.shrink();
     final p = context.palette;
     final text = Theme.of(context).textTheme;
-    final items = waiting.items;
+    final n = items.length + weeks.length;
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: SurfaceCard(
@@ -121,25 +163,44 @@ class _ToApproveCardState extends ConsumerState<ToApproveCard> {
             Row(
               children: [
                 Expanded(child: Text(ApproveWords.title, style: text.titleLarge)),
-                if (items.isNotEmpty) Pill(ApproveWords.count(items.length), strong: true),
+                if (n > 0) Pill(ApproveWords.count(n), strong: true),
               ],
             ),
-            if (waiting.failed) ...[const SizedBox(height: 10), Text(ApproveWords.someNotLoaded, style: text.bodySmall?.copyWith(color: p.muted))],
+            if (failed) ...[const SizedBox(height: 10), Text(ApproveWords.someNotLoaded, style: text.bodySmall?.copyWith(color: p.muted))],
             for (final (i, r) in items.indexed) ...[
               if (i > 0) Divider(height: 1, color: p.line),
               _WaitingRow(
-                request: r,
+                icon: kindIcons[r.kind] ?? CupertinoIcons.doc_text,
+                name: r.employeeName,
+                line: () {
+                  final row = historyRowOf(r);
+                  return [row.title, if (row.when.isNotEmpty) row.when].join(' · ');
+                }(),
+                onOpen: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => RequestPage(kind: r.kind, id: r.id, initial: r))),
                 busy: _all || _busy.contains(_key(r)),
                 onApprove: () => _decide(r, approve: true),
                 onReject: () => _decide(r, approve: false),
               ),
             ],
-            if (items.length > 1) ...[
+            // weeks of hours (4 November 2026)
+            for (final (i, w) in weeks.indexed) ...[
+              if (i > 0 || items.isNotEmpty) Divider(height: 1, color: p.line),
+              _WaitingRow(
+                icon: CupertinoIcons.timer,
+                name: w.employeeName,
+                line: ApproveWords.weekLine(w.weekStart, w.weekEnd, w.totalHours),
+                onOpen: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TimesheetWeekPage(id: w.id))),
+                busy: _all || _busy.contains(_weekKey(w)),
+                onApprove: () => _decideWeek(w, approve: true),
+                onReject: () => _decideWeek(w, approve: false),
+              ),
+            ],
+            if (n > 1) ...[
               const SizedBox(height: 6),
               FilledButton(
-                onPressed: _all || _busy.isNotEmpty ? null : () => _approveAll(items),
+                onPressed: _all || _busy.isNotEmpty ? null : () => _approveAll(items, weeks),
                 style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(Tokens.tapTarget)),
-                child: Text(_all ? ApproveWords.sending : ApproveWords.approveAll(items.length)),
+                child: Text(_all ? ApproveWords.sending : ApproveWords.approveAll(n)),
               ),
               const SizedBox(height: 8),
             ],
@@ -150,11 +211,14 @@ class _ToApproveCardState extends ConsumerState<ToApproveCard> {
   }
 }
 
-/// One request waiting: whose, what and when; Reject and Approve; tapping it opens its page.
+/// One thing waiting: whose, what and when; Reject and Approve; tapping it opens its page.
 class _WaitingRow extends StatelessWidget {
-  const _WaitingRow({required this.request, required this.busy, required this.onApprove, required this.onReject});
+  const _WaitingRow({required this.icon, required this.name, required this.line, required this.onOpen, required this.busy, required this.onApprove, required this.onReject});
 
-  final PeopleRequest request;
+  final IconData icon;
+  final String name;
+  final String line;
+  final VoidCallback onOpen;
   final bool busy;
   final VoidCallback onApprove;
   final VoidCallback onReject;
@@ -163,22 +227,21 @@ class _WaitingRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = context.palette;
     final text = Theme.of(context).textTheme;
-    final row = historyRowOf(request);
     return InkWell(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => RequestPage(kind: request.kind, id: request.id, initial: request))),
+      onTap: onOpen,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Row(
           children: [
-            IconTile(kindIcons[request.kind] ?? CupertinoIcons.doc_text),
+            IconTile(icon),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(request.employeeName, style: text.labelMedium),
+                  Text(name, style: text.labelMedium),
                   const SizedBox(height: 2),
-                  Text([row.title, if (row.when.isNotEmpty) row.when].join(' · '), style: text.bodySmall),
+                  Text(line, style: text.bodySmall),
                 ],
               ),
             ),

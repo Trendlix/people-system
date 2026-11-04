@@ -34,7 +34,7 @@ import { OD_DAY_BADGE, odDayTitle, odHref } from './official-duty/od';
 export const FLEX_DAY_OFF = 'Day off (any days a week)';
 
 /** A freelancer's day kept as absent (owner, 31 October 2026): freelance work has no working hours to be absent from. */
-export const FREELANCE_NOT_COUNTED = 'Not counted (freelance)';
+export const FREELANCE_NOT_COUNTED = 'Not counted';
 
 /** A freelancer's long day, counted as its shift says (owner, 3 November 2026: "if more than N Hours Count as Y Hours"). */
 export const LONG_DAY_BADGE = 'Long day';

@@ -59,6 +59,16 @@ export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh' | 'od' | 
   return { kind: `${kind}_decided`, title: CANCELLED_BY_HR[kind], body: when, link };
 }
 
+/** A week of hours sent, for the one who approves it (owner, 4 November 2026: timesheets): "Hours to approve: Omar Adel". */
+export function timesheetWaitingText(name: string, week: string, total: string, link: string): NotificationInput {
+  return { kind: 'timesheet_waiting', title: `Hours to approve: ${name}`, body: `${week} · ${total}`, link };
+}
+
+/** The person's week decided: "Your timesheet was approved". */
+export function timesheetDecidedText(approved: boolean, week: string, link: string): NotificationInput {
+  return { kind: 'timesheet_decided', title: approved ? 'Your timesheet was approved' : 'Your timesheet was rejected: correct it and send it again', body: week, link };
+}
+
 /** What was done by hand for an employee (owner, 4 November 2026): recorded (corrected, for attendance), cancelled, changed or restored. */
 export type ManualAction = 'recorded' | 'cancelled' | 'edited' | 'restored';
 

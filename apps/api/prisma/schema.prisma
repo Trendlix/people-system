@@ -229,6 +229,7 @@ model User {
   // until when they put it off, and the month's round (YYYY-MM) they did it for: once a round
   kpiReminderPostponedUntil DateTime?                  @map("kpi_reminder_postponed_until") @db.Timestamptz
   kpiReminderPostponedRound String?                    @map("kpi_reminder_postponed_round")
+  timesheetDecisions        TimesheetWeek[] // the weeks of hours they approved or rejected (4 November 2026)
 
   @@map("users")
 }
@@ -1234,6 +1235,8 @@ model Employee {
   checkInExemptions          CheckInExemption[] // their periods exempt from check-in (owner, 25 October 2026)
   zohoPeopleExclusion        ZohoPeopleExclusion? // left out of Zoho People's fetch (owner, 31 October 2026)
   clientAccounts             ClientAccountAssignment[] // the client accounts they were assigned to (25 October 2026)
+  timesheetWeeks             TimesheetWeek[]            @relation("TimesheetWeeks") // their weeks of hours (4 November 2026)
+  timesheetsToApprove        TimesheetWeek[]            @relation("TimesheetApprover") // the weeks they approve
 
   @@map("employees")
 }
@@ -1276,6 +1279,8 @@ model Employment {
   // "Refuse check-ins and check-outs without a location" on, HR lets this person press on the website without one (the
   // app always needs it)
   checkInWithoutLocation Boolean                   @default(false) @map("check_in_without_location")
+  // logs hours on a timesheet instead of checking in (owner, 4 November 2026: "Only those HR switches on")
+  worksOnTimesheets      Boolean                   @default(false) @map("works_on_timesheets")
   shift                  Shift?                    @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   jdAcknowledgedAt       DateTime?                 @map("jd_acknowledged_at") @db.Date
   endDate                DateTime?                 @map("end_date") @db.Date // empty while current
@@ -2011,6 +2016,7 @@ model ClientAccount {
   createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime                  @updatedAt @map("updated_at") @db.Timestamptz
   assignments   ClientAccountAssignment[]
+  timesheetEntries TimesheetEntry[] // the hours logged against it (4 November 2026)
 
   @@index([departmentId])
   @@index([tierId])
@@ -5408,4 +5414,50 @@ model EmailTemplate {
   updatedBy   User?    @relation("EmailTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@map("email_templates")
+}
+
+// ---------- timesheets (owner, 4 November 2026) ----------
+
+// A week of someone's hours (packages/shared timesheets.ts): someone HR switched to "Works on timesheets" logs each
+// day's hours against a client account or a task, Sunday to Saturday, and sends the week; the one who approves their
+// leave (approver_id; none: HR, the CEO for a C-level person) approves it or rejects it with why. One row a person a week.
+model TimesheetWeek {
+  id           String           @id @default(uuid()) @db.Uuid
+  employeeId   String           @map("employee_id") @db.Uuid
+  employee     Employee         @relation("TimesheetWeeks", fields: [employeeId], references: [id], onDelete: Cascade)
+  weekStart    DateTime         @map("week_start") @db.Date // a Sunday
+  status       String           @default("draft") // TIMESHEET_STATUSES: draft, submitted, approved, rejected
+  approverId   String?          @map("approver_id") @db.Uuid // set when sent
+  approver     Employee?        @relation("TimesheetApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  submittedAt  DateTime?        @map("submitted_at") @db.Timestamptz
+  decidedById  String?          @map("decided_by_id") @db.Uuid
+  decidedBy    User?            @relation(fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt    DateTime?        @map("decided_at") @db.Timestamptz
+  rejectReason String?          @map("reject_reason")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  entries      TimesheetEntry[]
+
+  @@unique([employeeId, weekStart])
+  @@index([approverId, status])
+  @@index([status, weekStart])
+  @@map("timesheet_weeks")
+}
+
+// A line of a week: a day's hours against a client account or a task (or both), with a note.
+model TimesheetEntry {
+  id              String         @id @default(uuid()) @db.Uuid
+  weekId          String         @map("week_id") @db.Uuid
+  week            TimesheetWeek  @relation(fields: [weekId], references: [id], onDelete: Cascade)
+  date            DateTime       @db.Date
+  clientAccountId String?        @map("client_account_id") @db.Uuid
+  clientAccount   ClientAccount? @relation(fields: [clientAccountId], references: [id], onDelete: Restrict)
+  task            String?
+  hours           Decimal        @db.Decimal(5, 2)
+  note            String?
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([weekId])
+  @@index([clientAccountId, date])
+  @@map("timesheet_entries")
 }

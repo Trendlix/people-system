@@ -89,6 +89,7 @@ export const AUDIT_ENTITY_MODULES: Readonly<Record<string, AuditModule>> = {
   shift: 'attendance',
   holiday: 'attendance',
   wfh_request: 'attendance',
+  timesheet_week: 'attendance',
   od_request: 'attendance',
   zoho_people_connection: 'attendance',
   zoho_people_run: 'attendance',
