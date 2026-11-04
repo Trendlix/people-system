@@ -53,14 +53,14 @@ describe('candidates on the site', () => {
       id: 'a',
       reference: 'APP-2026-0001',
       title: 'Video editor',
-      stage: 'shortlisted',
+      stage: 'review_1',
       filteredOut: false,
       generalStatus: null,
       source: 'Careers page',
       at: '2026-10-22T10:00:00Z',
       ...l,
     });
-    expect(latestText(latest({}))).toBe('Shortlisted');
+    expect(latestText(latest({}))).toBe('Review 1');
     expect(latestText(latest({ filteredOut: true, stage: 'applied' }))).toBe('Filtered out');
     expect(latestText(latest({ kind: 'general_cv', stage: null, generalStatus: 'new' }))).toBe('General CV: New');
     expect(latestText(null)).toBe('—');

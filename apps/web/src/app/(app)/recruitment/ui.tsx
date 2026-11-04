@@ -2,8 +2,7 @@ import {
   APPLICATION_STAGE_LABELS,
   applicationSourceText,
   CV_UPDATED_LABEL,
-  HIRING_STEP_LABELS,
-  HIRING_STEPS,
+  HOLD_OUTCOMES,
   VACANCY_STATUS_LABELS,
   VERDICT_FILTER_LABELS,
   VERDICT_FILTERS,
@@ -12,7 +11,7 @@ import {
   type CandidateBadge,
   type CvListFacts,
   type EarlierCvView,
-  type HiringStep,
+  type HoldOutcome,
   type ScreeningVerdict,
   type VacancyStatus,
   type VerdictFilter,
@@ -26,10 +25,11 @@ import { experienceCell, latestRoleOf } from './cv-reading';
 import { exAgencyChip } from './agency';
 import { skipperChip } from './career';
 import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
+import { HOLD_LABELS } from './tree';
+import { HoldBadge } from './tree-ui';
 import {
   applicantHref,
   earlierCvHref,
-  hiringStepBadge,
   minYearsOptions,
   nextSort,
   skillGroups,
@@ -129,33 +129,18 @@ export function VerdictSelect({ id, value }: { id: string; value: VerdictFilter 
   );
 }
 
-/**
- * Where a shortlisted applicant stands in the hiring steps (owner, 29 October 2026: "Manager view the shortlisted and
- * accept or reject them - HR Screening and scheduling"): "Waiting for the manager", "Screening call due", "Ready to
- * interview"…; nothing at another stage.
- */
-export function HiringStepBadge({ step, className = '' }: { step: HiringStep | null | undefined; className?: string }) {
-  const badge = hiringStepBadge(step);
-  if (!badge) return null;
-  return (
-    <span className={`badge ${badge.className} ${className}`} title="Where they stand in the hiring steps">
-      {badge.label}
-    </span>
-  );
-}
-
-/** The Hiring step filter (29 October 2026): any, or one of the steps of a shortlisted applicant. */
-export function HiringStepSelect({ id, value }: { id: string; value: HiringStep | '' }) {
+/** The Hold filter (the recruitment tree, 3 November 2026): any, or those kept at their step as Unreachable or Pending. */
+export function HoldSelect({ id, value }: { id: string; value: HoldOutcome | '' }) {
   return (
     <div>
       <label htmlFor={id} className="label">
-        Hiring step
+        Kept at their step
       </label>
-      <Select id={id} name="step" defaultValue={value} className="input min-w-48">
+      <Select id={id} name="hold" defaultValue={value} className="input min-w-40">
         <option value="">Any</option>
-        {HIRING_STEPS.map((s) => (
-          <option key={s} value={s}>
-            {HIRING_STEP_LABELS[s]}
+        {HOLD_OUTCOMES.map((h) => (
+          <option key={h} value={h}>
+            {HOLD_LABELS[h]}
           </option>
         ))}
       </Select>
@@ -321,7 +306,7 @@ function SortTitle({ column, label, right = false, sorting }: { column: Applican
  * 2026) where the Vacancy column isn't: a vacancy's own applicants (its group, its page), so the table is no wider.
  * `deletes`: a Super Admin's Delete applicant on each row (owner, 25 October 2026: "applicant alone - superadmin only").
  * `sorting`: each title sorts the list by its column (28 October 2026), the rows here put in that order.
- * `ticks`: a tick box first on the rows ShortlistSelection may tick, and "Select all" on its title (owner, 29 October 2026:
+ * `ticks`: a tick box first on the rows VacancySelection may tick, and "Select all" on its title (owner, 29 October 2026:
  * "Tick several at once"; shortlist-ui.tsx).
  */
 export function ApplicantsTable({
@@ -405,10 +390,10 @@ export function ApplicantsTable({
               </td>
               <td>
                 <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
-                {/* where a shortlisted applicant stands in the hiring steps (29 October 2026: "HR Screening and scheduling") */}
-                {a.hiringStep && (
+                {/* kept at their step: Unreachable, Pending (the recruitment tree, 3 November 2026) */}
+                {a.hold && (
                   <span className="mt-1 block">
-                    <HiringStepBadge step={a.hiringStep} />
+                    <HoldBadge hold={a.hold} />
                   </span>
                 )}
                 {/* the latest screening verdict (24 October 2026) */}

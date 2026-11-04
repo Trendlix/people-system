@@ -691,6 +691,7 @@ export * from './social-insurance-report.js';
 export * from './marketing-agencies.js';
 export * from './career.js';
 export * from './hiring-steps.js';
+export * from './recruitment-tree.js';
 export * from './attendance-records.js';
 export * from './audit-log.js';
 export * from './employee-bulk.js';

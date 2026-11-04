@@ -28,7 +28,7 @@ import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { CvReadingsService } from '../src/recruitment/cv-readings.service.js';
 import { RecruitmentSchedulerService } from '../src/recruitment/recruitment-scheduler.service.js';
 import { VacancySuggestionsService } from '../src/recruitment/vacancy-suggestions.service.js';
-import { createApp, createUser, signIn } from './helpers.js';
+import { createApp, createUser, signIn, walkTo } from './helpers.js';
 
 // The CV fit (owner, 25 October 2026, on the Marketing Manager vacancy's applicants added from Suggested From Earlier
 // CVs, CV match "—" for all: "aren't you supposed to match the candidate to the job based on the CV and ATS?"; asked,
@@ -354,7 +354,8 @@ describe('CV fit and other open positions (e2e)', () => {
   });
 
   it('the hiring manager never sees them; a developer sees them masked, without Add, and adds nothing', async () => {
-    ok(await post('hr', `/recruitment/applications/${apps.layla}/stage`, { to: 'shortlisted' }));
+    // at the hiring manager's Final Review (the recruitment tree, 3 November 2026)
+    await walkTo(app, sessions.superAdmin, apps.layla, 'final_review');
     const hm = await appOf('manager', apps.layla);
     expect(hm.openPositions).toBeNull();
     const card = (ok(await get('manager', `/recruitment/vacancies/${v.manager.id}/board`)).body as VacancyBoard).columns.flatMap((c) => c.cards).find((c) => c.id === apps.layla)!;

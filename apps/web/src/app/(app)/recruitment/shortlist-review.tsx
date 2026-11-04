@@ -1,58 +1,66 @@
 import Link from 'next/link';
-import type { ReviewGroup } from '@trendlix/shared';
+import { APPLICATION_STAGE_LABELS, type ReviewApplicant, type ReviewGroup, type ReviewStage } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import { shownCode } from '@/lib/hidden';
 import { FitPercent, MatchValue } from './cv-fit-ui';
-import { boardHref } from './hiring';
 import { applicantHref } from './recruitment';
-import { reviewBadge } from './shortlist';
 import { BatchTick, BatchTickAll, ReviewSelection } from './shortlist-ui';
 import { ExperienceCell, LatestRoleCell } from './ui';
 
-// My Hiring's Shortlist to Review (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them";
-// asked, "Tick several at once"): each vacancy the person hires for with its shortlisted applicants, those not reviewed
-// yet first (the API's order), with their CV match, match, experience (the Ex-agency and Skipper flags under it) and
-// latest role, when they were shortlisted and their review so far; ticked, then accepted or rejected together with a
-// note for HR (shortlist-ui.tsx ReviewSelection).
+// My Hiring's reviews waiting (the recruitment tree, owner, 3 November 2026: "HR1 (Recruter) - HR2 (Her MAnager if there
+// is) - then Manager"; "Tick several at once"): the Review 2 of the vacancies whose recruiter the person manages, and the
+// Final Review of those they hire for; a card per vacancy and review, the longest waiting first (the API's order), with
+// their CV match, match, experience (the Ex-agency and Skipper flags under it), latest role and since when they wait;
+// ticked, then passed or rejected together with the reasons and the feedback (shortlist-ui.tsx ReviewSelection).
 
-/** The shortlists to review; `hires`: the person hires for a vacancy (else the section isn't shown). */
-export function ShortlistToReview({ groups, hires }: { groups: readonly ReviewGroup[]; hires: boolean }) {
-  if (!hires && !groups.length) return null;
+/** A vacancy's applicants split by the review they wait for (Review 2 first). */
+export function reviewCards(groups: readonly ReviewGroup[]): { vacancy: ReviewGroup['vacancy']; stage: ReviewStage; applicants: ReviewApplicant[] }[] {
+  return groups.flatMap((g) =>
+    (['review_1', 'review_2', 'final_review'] as const)
+      .map((stage) => ({ vacancy: g.vacancy, stage, applicants: g.applicants.filter((a) => a.stage === stage) }))
+      .filter((c) => c.applicants.length > 0),
+  );
+}
+
+/** The reviews waiting; `reviews`: the person takes a review (else the section isn't shown when nothing waits). */
+export function ShortlistToReview({ groups, reviews }: { groups: readonly ReviewGroup[]; reviews: boolean }) {
+  if (!reviews && !groups.length) return null;
+  const cards = reviewCards(groups);
   return (
-    <section aria-labelledby="my-shortlist" className="space-y-3">
-      <h2 id="my-shortlist" className="text-lg font-semibold">
-        Shortlist to Review
+    <section aria-labelledby="my-reviews" className="space-y-3">
+      <h2 id="my-reviews" className="text-lg font-semibold">
+        Waiting for Your Review
       </h2>
-      {groups.length === 0 ? (
+      {cards.length === 0 ? (
         <div className="card px-6 py-8 text-center text-sm text-muted">Nothing to review.</div>
       ) : (
-        groups.map((g) => <ReviewCard key={g.vacancy.id} group={g} />)
+        cards.map((c) => <ReviewCard key={`${c.vacancy.id}-${c.stage}`} card={c} />)
       )}
     </section>
   );
 }
 
-function ReviewCard({ group }: { group: ReviewGroup }) {
-  const { vacancy, applicants } = group;
-  const headingId = `review-${vacancy.id}`;
+function ReviewCard({ card }: { card: ReturnType<typeof reviewCards>[number] }) {
+  const { vacancy, stage, applicants } = card;
+  const headingId = `review-${vacancy.id}-${stage}`;
   return (
     <section aria-labelledby={headingId} className="card overflow-hidden">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4">
         <h3 id={headingId} className="font-semibold">
-          <Link href={boardHref(vacancy.id)}>{vacancy.title}</Link>
+          {vacancy.title} · {APPLICATION_STAGE_LABELS[stage]}
         </h3>
         <p className="text-xs text-muted">
           {shownCode(vacancy.number) && `${vacancy.number} · `}
-          {applicants.length} shortlisted
+          {applicants.length} waiting
         </p>
       </div>
-      <ReviewSelection vacancyId={vacancy.id} ids={applicants.map((a) => a.id)}>
+      <ReviewSelection vacancyId={vacancy.id} stage={stage} ids={applicants.map((a) => a.id)}>
         <div className="overflow-x-auto">
           <table className="table">
             <thead>
               <tr>
                 <th scope="col" className="w-11 px-1">
-                  <BatchTickAll label={`Select all shortlisted for ${vacancy.title}`} />
+                  <BatchTickAll label={`Select all waiting for ${APPLICATION_STAGE_LABELS[stage]} of ${vacancy.title}`} />
                 </th>
                 <th scope="col">Applicant</th>
                 <th scope="col" className="text-right">
@@ -65,13 +73,11 @@ function ReviewCard({ group }: { group: ReviewGroup }) {
                   Experience
                 </th>
                 <th scope="col">Latest role</th>
-                <th scope="col">Shortlisted</th>
-                <th scope="col">Your review</th>
+                <th scope="col">Waiting since</th>
               </tr>
             </thead>
             <tbody>
               {applicants.map((a) => {
-                const badge = reviewBadge(a.suggestion);
                 return (
                   <tr key={a.id}>
                     <td className="w-11 px-1">
@@ -92,17 +98,7 @@ function ReviewCard({ group }: { group: ReviewGroup }) {
                     {/* the years typed, else the CV's; the Ex-agency and Skipper flags under them */}
                     <ExperienceCell typed={a.yearsTyped} fromCv={a.fromCv} />
                     <LatestRoleCell fromCv={a.fromCv} />
-                    <td className="text-sm whitespace-nowrap">{a.shortlistedAt ? formatDate(a.shortlistedAt) : '—'}</td>
-                    <td className="text-sm">
-                      <span className={`badge ${badge.className}`} title={badge.title}>
-                        {badge.label}
-                      </span>
-                      {a.note && (
-                        <span className="mt-1 block max-w-64 text-xs text-muted" dir="auto">
-                          {a.note}
-                        </span>
-                      )}
-                    </td>
+                    <td className="text-sm whitespace-nowrap">{a.since ? formatDate(a.since) : '—'}</td>
                   </tr>
                 );
               })}

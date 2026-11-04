@@ -13,14 +13,17 @@ const form = (entries: [string, string][]) => {
 describe('the board', () => {
   it('links a vacancy’s board, and says what a drop does', () => {
     expect(boardHref('abc')).toBe('/recruitment/vacancies/abc?view=board');
-    const card = { stage: 'shortlisted' as const, filteredOut: false, openOffer: false, interviewsDone: 1 };
-    expect(dropOn(card, 'interview')).toEqual({ kind: 'move', to: 'interview', needsReason: false });
+    // the recruitment tree (3 November 2026): Applicants to Review 1 by hand, any step to Rejected, the rest by decisions
+    const card = { stage: 'applied' as const, filteredOut: false, openOffer: false, interviewsDone: 0 };
+    expect(dropOn(card, 'review_1')).toEqual({ kind: 'move', to: 'review_1', needsReason: false });
     expect(dropOn(card, 'rejected')).toEqual({ kind: 'move', to: 'rejected', needsReason: true });
-    expect(dropOn(card, 'offer')).toEqual({ kind: 'offer' });
-    // an offer only after an interview marked done (owner, 1 November 2026: "Offer only after interview")
-    expect(dropOn({ ...card, interviewsDone: 0 }, 'offer')).toEqual({ kind: 'refused', reason: 'Interview them first: a job offer comes once an interview of theirs is marked done.' });
+    expect(dropOn({ ...card, stage: 'review_1' }, 'review_2')).toEqual({ kind: 'refused', reason: 'Review 2 follows a decision at Review 1: open their page to decide it.' });
+    expect(dropOn({ ...card, stage: 'screening' }, 'review_1')).toEqual({ kind: 'refused', reason: 'They are at HR Screening: only Applicants are sent to Review 1.' });
+    expect(dropOn({ ...card, stage: 'interview' }, 'rejected')).toEqual({ kind: 'move', to: 'rejected', needsReason: true });
+    // a job offer once the Technical Interview accepts them, at Offer
+    expect(dropOn({ ...card, stage: 'interview', interviewsDone: 1 }, 'offer')).toEqual({ kind: 'refused', reason: 'They are at Technical Interview: a job offer comes once the Technical Interview accepts them.' });
     expect(dropOn(card, 'hired').kind).toBe('refused');
-    expect(dropOn({ ...card, openOffer: true }, 'offer').kind).toBe('refused');
+    expect(dropOn({ ...card, stage: 'offer', openOffer: true }, 'rejected').kind).toBe('refused');
   });
 
   it('counts the days at a stage in words', () => {

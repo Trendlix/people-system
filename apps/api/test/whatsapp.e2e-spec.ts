@@ -33,7 +33,7 @@ import { WhatsAppHttp } from '../src/whatsapp/whatsapp-http.js';
 import { WhatsAppSenderService } from '../src/whatsapp/whatsapp-sender.service.js';
 import { WhatsAppService } from '../src/whatsapp/whatsapp.service.js';
 import { fakeWhatsAppGraph, type FakeGraph } from './fake-whatsapp.js';
-import { createApp, createUser, signIn } from './helpers.js';
+import { createApp, createUser, signIn, walkTo } from './helpers.js';
 
 // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; asked, "Employees and
 // candidates", "Approvals waiting, Request decisions, Check-in reminders, Interviews", "Directly to Meta"). Meta's Graph
@@ -491,10 +491,8 @@ describe('WhatsApp notifications (e2e)', () => {
     });
 
     it('the interview’s invitation (and the interviewer’s), its change, and the reminder the day before', async () => {
-      // the hiring steps first (owner, 29 October 2026: "HR Screening and scheduling"; hiring-steps.ts): shortlisted, and
-      // HR's screening call passed (the vacancy has no hiring manager to accept them)
-      await as('hr').post(`/recruitment/applications/${applicationId}/stage`, { to: 'shortlisted' }).expect(200);
-      await as('hr').post(`/recruitment/applications/${applicationId}/screening-call`, { result: 'passed' }).expect(200);
+      // the recruitment tree first (3 November 2026): HR takes each step (no recruiter nor hiring manager named here)
+      await walkTo(app, sessions.hr, applicationId, 'interview');
       const saved = await as('hr').post(`/recruitment/applications/${applicationId}/interviews`, { date: addDays(TODAY, 7), time: '10:30', minutes: 45, kind: 'in_person', interviewerIds: [ids.ivy], note: 'Bring your reel.' }).expect(201);
       interviewId = saved.body.interview.id;
       await round();

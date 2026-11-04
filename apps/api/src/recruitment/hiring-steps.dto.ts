@@ -1,31 +1,37 @@
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { HIRING_BATCH_MAX, HIRING_SUGGESTIONS, SUGGESTION_NOTE_MAX, type HiringSuggestion } from '@trendlix/shared';
+import { DECISION_STEPS, FEEDBACK_MAX, HIRING_BATCH_MAX, STEP_OUTCOMES, type DecisionStep, type StepOutcome } from '@trendlix/shared';
 import { TrimOrNull } from '../common/transforms.js';
 
-// The hiring steps' batches (owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the shortlisted and
-// accept or reject them"; "Tick several at once"): the applicants ticked, and the hiring manager's Accept or Reject with
-// a note. What each applicant's turn is the service's (hiring-batches.ts), said in words.
+// The batches (owner, 29 October 2026: "Tick several at once"; the recruitment tree, 3 November 2026): the applicants
+// ticked, sent to Review 1, or decided at their step with one outcome, its reasons and feedback. What each applicant's
+// turn is the service's (hiring-batches.ts), said in words.
 
-/** HR's shortlist: the applicants ticked on the vacancy's list. */
-export class ShortlistBatchDto {
-  @IsArray({ message: 'Send the applicants to shortlist as a list of their ids.' })
-  @ArrayMinSize(1, { message: 'Tick at least one applicant to shortlist.' })
-  @ArrayMaxSize(HIRING_BATCH_MAX, { message: `Shortlist at most ${HIRING_BATCH_MAX} applicants at a time.` })
+/** HR's Send to Review 1: the applicants ticked on the vacancy's list. */
+export class SendToReviewBatchDto {
+  @IsArray({ message: 'Send the applicants as a list of their ids.' })
+  @ArrayMinSize(1, { message: 'Tick at least one applicant to send to Review 1.' })
+  @ArrayMaxSize(HIRING_BATCH_MAX, { message: `Send at most ${HIRING_BATCH_MAX} applicants at a time.` })
   @IsUUID('all', { each: true, message: 'Send each applicant as their application’s id.' })
   applicationIds: string[] = [];
 }
 
-/** The hiring manager's review of the shortlist: Accept (`next`) or Reject, the same for each ticked, with a note. */
-export class ReviewBatchDto {
-  @IsArray({ message: 'Send the applicants to review as a list of their ids.' })
-  @ArrayMinSize(1, { message: 'Tick at least one applicant to accept or reject.' })
-  @ArrayMaxSize(HIRING_BATCH_MAX, { message: `Accept or reject at most ${HIRING_BATCH_MAX} applicants at a time.` })
+/** A step decided for several at once: the step they are at, the outcome, a rejection's reasons, the feedback. */
+export class DecideBatchDto {
+  @IsArray({ message: 'Send the applicants as a list of their ids.' })
+  @ArrayMinSize(1, { message: 'Tick at least one applicant.' })
+  @ArrayMaxSize(HIRING_BATCH_MAX, { message: `Decide at most ${HIRING_BATCH_MAX} applicants at a time.` })
   @IsUUID('all', { each: true, message: 'Send each applicant as their application’s id.' })
   applicationIds: string[] = [];
 
-  @IsIn(HIRING_SUGGESTIONS, { message: 'Choose Accept or Reject.' })
-  decision!: HiringSuggestion;
+  @IsIn(DECISION_STEPS, { message: 'Choose the step they are at.' })
+  stage!: DecisionStep;
 
-  @IsOptional() @TrimOrNull() @IsString({ message: 'Write the note as text.' }) @MaxLength(SUGGESTION_NOTE_MAX, { message: `Keep the note to ${SUGGESTION_NOTE_MAX} characters or fewer.` })
-  note?: string | null;
+  @IsIn(STEP_OUTCOMES, { message: 'Choose the outcome.' })
+  outcome!: StepOutcome;
+
+  @IsOptional() @IsArray({ message: 'Send the reasons as a list.' }) @ArrayMaxSize(12) @IsString({ each: true })
+  reasons?: string[];
+
+  @IsOptional() @TrimOrNull() @IsString({ message: 'Write the feedback as text.' }) @MaxLength(FEEDBACK_MAX, { message: `Keep the feedback to ${FEEDBACK_MAX} characters or fewer.` })
+  feedback?: string | null;
 }

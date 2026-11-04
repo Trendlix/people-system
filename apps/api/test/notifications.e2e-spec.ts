@@ -482,7 +482,7 @@ describe('Notifications (e2e)', () => {
       expect(await sentRow('rami')).toMatchObject({ count: 4, lastSentAt: at('09:31') });
       expect(await sentRow('cleo')).toMatchObject({ count: 4, lastSentAt: at('09:35') });
       // two rounds at once: the step goes once
-      await Promise.all([reminders.runOnce(at('09:40')), reminders.runOnce(at('09:40')), reminders.tick(at('09:41'))]);
+      await Promise.all([reminders.runOnce(at('09:40')), reminders.runOnce(at('09:40')), reminders.tick(at('09:40'))]);
       expect(await sentRow('rami')).toMatchObject({ count: 5, lastSentAt: at('09:40') });
       expect(await prisma.notification.count({ where: { userId: users.rami } })).toBe(1);
     });

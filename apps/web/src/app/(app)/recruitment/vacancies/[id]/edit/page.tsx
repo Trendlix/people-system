@@ -46,6 +46,7 @@ async function EditVacancy({ params, searchParams }: PageProps<'/recruitment/vac
           title: v.title,
           gradeId: v.grade?.id ?? '',
           hiringManagerId: v.hiringManager?.id ?? '',
+          recruiterId: v.recruiter?.id ?? '',
           headcount: v.headcount,
           employmentType: v.employmentType,
           workArrangement: v.workArrangement,

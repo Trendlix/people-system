@@ -118,7 +118,7 @@ describe('Screening comments (e2e)', () => {
         consentAt: new Date(),
         candidateId: cand,
         cv: { create: { fileName: cv.fileName, mimeType: cv.mimeType, sizeBytes: cv.data.length, data: new Uint8Array(cv.data) } },
-        steps: { create: [{ event: 'applied', stage: 'applied' }, ...(stage === 'applied' ? [] : [{ event: 'shortlisted', stage: 'shortlisted' }])] },
+        steps: { create: [{ event: 'applied', stage: 'applied' }, ...(stage === 'applied' ? [] : [{ event: 'decided', stage }])] },
       },
       select: { id: true },
     });
@@ -156,10 +156,10 @@ describe('Screening comments (e2e)', () => {
         .expect(201)
     ).body.id;
     candidateId = (await prisma.generalCv.findUniqueOrThrow({ where: { id: generalCvId }, select: { candidateId: true } })).candidateId!;
-    apps.mine = await application(mine, 'Sara', 'shortlisted', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV.pdf' });
-    apps.other = await application(other, 'Sara', 'shortlisted', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV 2.pdf' });
-    apps.chief = await application(chief, 'Sara', 'shortlisted', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV 3.pdf' });
-    apps.adam = await application(mine, 'Adam', 'shortlisted', null, { data: DOCX, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fileName: 'Adam CV.docx' });
+    apps.mine = await application(mine, 'Sara', 'final_review', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV.pdf' });
+    apps.other = await application(other, 'Sara', 'final_review', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV 2.pdf' });
+    apps.chief = await application(chief, 'Sara', 'final_review', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV 3.pdf' });
+    apps.adam = await application(mine, 'Adam', 'final_review', null, { data: DOCX, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fileName: 'Adam CV.docx' });
     // Ivan interviews Sara for the Video Editor
     await prisma.interview.create({ data: { applicationId: apps.mine, startsAt: new Date(Date.now() + 7 * DAY), minutes: 45, kind: 'in_person', interviewers: { create: [{ employeeId: people.iv }] } } });
   });
@@ -239,7 +239,7 @@ describe('Screening comments (e2e)', () => {
       expect(cvs.map((c) => [c.id, c.verdict])).toEqual([[generalCvId, 'not_a_fit']]);
       expect(((await get('hr', `/recruitment/general-cvs?q=${RUN}&verdict=none`).expect(200)).body as GeneralCvListItem[]).map((c) => c.id)).toEqual([]);
       // the verdict moves no stage
-      expect((await get('hr', `/recruitment/applications/${apps.mine}`).expect(200)).body.stage).toBe('shortlisted');
+      expect((await get('hr', `/recruitment/applications/${apps.mine}`).expect(200)).body.stage).toBe('final_review');
     });
 
     it('edits their own comment within 24 hours ("edited"), never someone else’s, nor after', async () => {

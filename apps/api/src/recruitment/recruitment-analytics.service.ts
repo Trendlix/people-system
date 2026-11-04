@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import {
+  FUNNEL_STAGES,
   APPLICATION_SOURCE_LABELS,
   APPLICATION_SOURCES,
   APPLICATION_STAGE_LABELS,
@@ -65,7 +66,7 @@ export class RecruitmentAnalyticsService {
       select: { id: true, headcount: true, applications: { where: { stage: 'hired' }, select: { id: true } } },
     });
     const activeCandidates = await this.prisma.jobApplication.count({
-      where: { vacancyId: { in: open.map((v) => v.id) }, filteredOut: false, stage: { in: ['applied', 'shortlisted', 'interview', 'offer'] } },
+      where: { vacancyId: { in: open.map((v) => v.id) }, filteredOut: false, stage: { in: ['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer'] } },
     });
 
     // the year's applicants
@@ -74,11 +75,12 @@ export class RecruitmentAnalyticsService {
       select: { source: true, stage: true, steps: { select: { stage: true } } },
     });
     const furthest = applied.map((a) => furthestStage([a.stage, ...a.steps.map((s) => s.stage)]));
-    const rank = (f: FunnelStage) => ['applied', 'shortlisted', 'interview', 'offer', 'hired'].indexOf(f);
+    const rank = (f: FunnelStage) => FUNNEL_STAGES.indexOf(f);
     // each source as kept: a general CV's, the suggested ones' and an invitation's too (24 October 2026)
     const sources = APPLICATION_SOURCES.map((source: ApplicationSource) => {
       const of = applied.map((a, i) => ({ source: applicationSourceOf(a.source), f: furthest[i] })).filter((x) => x.source === source);
-      return { source, applicants: of.length, shortlisted: of.filter((x) => rank(x.f) >= 1).length, hired: of.filter((x) => x.f === 'hired').length };
+      // reviewed: reached Review 1 or further (the recruitment tree, 3 November 2026)
+      return { source, applicants: of.length, reviewed: of.filter((x) => rank(x.f) >= 1).length, hired: of.filter((x) => x.f === 'hired').length };
     }).filter((s) => s.applicants > 0);
 
     // the year's hires
@@ -221,7 +223,7 @@ export class RecruitmentAnalyticsService {
       [
         { header: 'Source', width: 18, value: (s) => APPLICATION_SOURCE_LABELS[s.source] },
         { header: 'Applicants', width: 12, numFmt: '0', value: (s) => s.applicants },
-        { header: 'Shortlisted', width: 12, numFmt: '0', value: (s) => s.shortlisted },
+        { header: 'Reviewed', width: 12, numFmt: '0', value: (s) => s.reviewed },
         { header: 'Hired', width: 10, numFmt: '0', value: (s) => s.hired },
       ],
       r.sources,

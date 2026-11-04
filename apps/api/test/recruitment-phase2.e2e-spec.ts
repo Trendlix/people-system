@@ -6,7 +6,7 @@ import { addDays, todayInCairo } from '../src/common/date-only.js';
 import { MailService } from '../src/mail/mail.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { RecruitmentSchedulerService } from '../src/recruitment/recruitment-scheduler.service.js';
-import { createApp, createUser, signIn, interviewDone } from './helpers.js';
+import { createApp, createUser, signIn, walkTo } from './helpers.js';
 
 // Recruitment, Phase 2 (owner, 22 October 2026: "where will we include the ATS?"; "interview invites go by email through
 // the owner's SMTP settings"). A Video Editor vacancy with Hana as its hiring manager: the pipeline board (HR's in full,
@@ -84,11 +84,12 @@ describe('Recruitment, Phase 2 (e2e)', () => {
   }
 
   /** An applicant as the careers page makes one, at a stage (its history to it). */
-  async function applicant(key: string, stage: 'applied' | 'shortlisted' | 'interview', extra: { filteredOut?: boolean; expectedSalary?: number } = {}) {
+  async function applicant(key: string, stage: 'applied' | 'final_review' | 'interview', extra: { filteredOut?: boolean; expectedSalary?: number } = {}) {
     const n = Object.keys(apps).length + 1;
+    // its way there through the recruitment tree (3 November 2026)
     const steps = [{ event: 'applied', stage: 'applied' }];
-    if (stage !== 'applied') steps.push({ event: 'shortlisted', stage: 'shortlisted' });
-    if (stage === 'interview') steps.push({ event: 'interview', stage: 'interview' });
+    if (stage !== 'applied') steps.push({ event: 'to_review', stage: 'review_1' }, { event: 'decided', stage: 'final_review' });
+    if (stage === 'interview') steps.push({ event: 'decided', stage: 'screening' }, { event: 'decided', stage: 'interview' });
     const a = await prisma.jobApplication.create({
       data: {
         // a year the careers page never numbers, so the numbering of real applications never meets it
@@ -116,17 +117,9 @@ describe('Recruitment, Phase 2 (e2e)', () => {
 
   const interviewBody = (extra: object = {}) => ({ date: addDays(TODAY, 7), time: '10:30', minutes: 45, kind: 'in_person', interviewerIds: [people.iv1, people.iv2], note: 'Bring your reel.', ...extra });
 
-  /**
-   * The hiring steps before a first interview (owner, 29 October 2026: "Manager view the shortlisted and accept or reject
-   * them - HR Screening and scheduling"; hiring-steps.ts): shortlisted by HR, accepted by Hana (the vacancy's hiring
-   * manager), and HR's screening call passed.
-   */
+  /** The recruitment tree before the interview (3 November 2026): each step taken, by a Super Admin, who takes any. */
   async function readyToInterview(key: string) {
-    const id = apps[key];
-    const a = (await get('hr', `/recruitment/applications/${id}`).expect(200)).body as ApplicationView;
-    if (a.stage === 'applied') await post('hr', `/recruitment/applications/${id}/stage`, { to: 'shortlisted' }).expect(200);
-    if (a.hasHiringManager) await post('hm', `/recruitment/applications/${id}/suggest`, { suggestion: 'next' }).expect(200);
-    await post('hr', `/recruitment/applications/${id}/screening-call`, { result: 'passed' }).expect(200);
+    await walkTo(app, sessions.superAdmin, apps[key], 'interview');
   }
 
   beforeAll(async () => {
@@ -149,7 +142,7 @@ describe('Recruitment, Phase 2 (e2e)', () => {
     vacancyIds.push(made.body.id);
     await post('hr', `/recruitment/vacancies/${made.body.id}/submit`).expect(200);
     v = (await post('ceo', `/recruitment/vacancies/${made.body.id}/approve`).expect(200)).body as VacancyView;
-    await applicant('Sara', 'shortlisted');
+    await applicant('Sara', 'final_review');
     await applicant('Adam', 'applied');
     await applicant('Fady', 'applied', { filteredOut: true });
     await applicant('Nour', 'interview');
@@ -182,17 +175,17 @@ describe('Recruitment, Phase 2 (e2e)', () => {
     it('shows HR every applicant by stage, those filtered out counted apart, with the days at their stage', async () => {
       const b = (await get('hr', `/recruitment/vacancies/${v.id}/board`).expect(200)).body as VacancyBoard;
       expect(b).toMatchObject({ viewer: 'manages', canMove: true, filteredOut: 1, vacancy: { id: v.id } });
-      expect(b.columns.map((c) => c.stage)).toEqual(['applied', 'shortlisted', 'interview', 'offer', 'hired', 'rejected']);
+      expect(b.columns.map((c) => c.stage)).toEqual(['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer', 'hired', 'rejected']);
       expect(b.columns.find((c) => c.stage === 'applied')!.cards.map((c) => c.id)).toEqual([apps.Adam]);
-      const sara = b.columns.find((c) => c.stage === 'shortlisted')!.cards[0];
+      const sara = b.columns.find((c) => c.stage === 'final_review')!.cards[0];
       expect(sara).toMatchObject({ id: apps.Sara, fullName: `Sara Applicant ${RUN}`, source: 'careers', daysInStage: 1, openOffer: false, upcomingInterviews: 0, suggestion: null });
       expect((await get('ceo', `/recruitment/vacancies/${v.id}/board`).expect(200)).body).toMatchObject({ viewer: 'reads', canMove: false });
     });
 
-    it('shows the hiring manager their vacancy from Shortlisted on, read only; nobody else', async () => {
+    it('shows the hiring manager their vacancy from their Final Review on, read only; nobody else', async () => {
       const b = (await get('hm', `/recruitment/vacancies/${v.id}/board`).expect(200)).body as VacancyBoard;
       expect(b).toMatchObject({ viewer: 'hiring_manager', canMove: false, filteredOut: 0 });
-      expect(b.columns.map((c) => c.stage)).toEqual(['shortlisted', 'interview', 'offer', 'hired', 'rejected']);
+      expect(b.columns.map((c) => c.stage)).toEqual(['final_review', 'screening', 'interview', 'offer', 'hired', 'rejected']);
       expect(b.columns.flatMap((c) => c.cards.map((x) => x.id)).sort()).toEqual([apps.Nour, apps.Sara].sort());
       await get('outsider', `/recruitment/vacancies/${v.id}/board`).expect(404);
       await get('iv1', `/recruitment/vacancies/${v.id}/board`).expect(404);
@@ -200,12 +193,13 @@ describe('Recruitment, Phase 2 (e2e)', () => {
   });
 
   describe('the hiring manager', () => {
-    it('opens the vacancy without its salary range, and its applicants from Shortlisted on without the expected salary or HR’s notes', async () => {
+    it('opens the vacancy without its salary range, and its applicants from their Final Review on without the expected salary or HR’s notes', async () => {
       const mine = (await get('hm', `/recruitment/vacancies/${v.id}`).expect(200)).body as VacancyView;
       expect(mine).toMatchObject({ viewer: 'hiring_manager', salaryMin: null, salaryMax: null, can: { edit: false, approve: false, close: false } });
       expect((await get('hr', `/recruitment/vacancies/${v.id}`).expect(200)).body).toMatchObject({ viewer: 'manages', salaryMin: 15000 });
       const a = (await get('hm', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView;
-      expect(a).toMatchObject({ viewer: 'hiring_manager', expectedSalary: null, notes: null, can: { suggest: true, scheduleInterview: false, reject: false, makeOffer: false } });
+      // at her Final Review (the recruitment tree, 3 November 2026): hers to decide, nothing to suggest
+      expect(a).toMatchObject({ viewer: 'hiring_manager', expectedSalary: null, notes: null, can: { suggest: false, decide: { stage: 'final_review' }, scheduleInterview: false, reject: false, makeOffer: false } });
       expect(JSON.stringify(a)).not.toContain('18000');
       await get('hm', `/recruitment/applications/${apps.Sara}/cv`).expect(200);
       // not one still at Applied, nor one filtered out
@@ -228,7 +222,7 @@ describe('Recruitment, Phase 2 (e2e)', () => {
       expect(await notices('hr', 'hiring_suggestion')).toEqual([{ title: 'Hiring manager suggests: Reject', body: `Nour Applicant ${RUN} · Video Editor ${RUN}`, link: `/recruitment/applicants/${apps.Nour}` }]);
       const b = (await get('hr', `/recruitment/vacancies/${v.id}/board`).expect(200)).body as VacancyBoard;
       expect(b.columns.find((c) => c.stage === 'interview')!.cards[0].suggestion).toBe('reject');
-      await post('hr', `/recruitment/applications/${apps.Nour}/stage`, { to: 'shortlisted' }).expect(200);
+      await post('hr', `/recruitment/applications/${apps.Nour}/decide`, { outcome: 'pending' }).expect(200);
       expect((await get('hr', `/recruitment/applications/${apps.Nour}`).expect(200)).body.suggestion).toBeNull();
       expect(said(await post('hm', `/recruitment/applications/${apps.Nour}/suggest`, { suggestion: 'maybe' }).expect(400))).toEqual(['Suggest the next step or a rejection.']);
     });
@@ -248,7 +242,7 @@ describe('Recruitment, Phase 2 (e2e)', () => {
       expect(interview.emailedAt).not.toBeNull();
       const a = (await get('hr', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView;
       expect(a.stage).toBe('interview');
-      expect(a.history.at(-1)).toMatchObject({ event: 'interview', note: `Interview on ${addDays(TODAY, 7)}` });
+      expect(a.history.at(-1)).toMatchObject({ event: 'decided', stage: 'interview' });
       expect(a.interviews.map((i) => i.id)).toEqual([interview.id]);
       // the candidate's email, English then Arabic, with the invitation
       const sent = mail.outbox.slice(before);
@@ -278,9 +272,9 @@ describe('Recruitment, Phase 2 (e2e)', () => {
         'Give the meeting’s link in full, starting with https://.',
       ]);
       await post('hm', `/recruitment/applications/${apps.Sara}/interviews`, interviewBody()).expect(403);
-      // Adam is still at Applied (29 October 2026: shortlisted, accepted by the hiring manager, the screening call passed)
+      // Adam is still at Applicants (the recruitment tree, 3 November 2026: the interview once HR Screening accepts them)
       expect(said(await post('hr', `/recruitment/applications/${apps.Adam}/interviews`, interviewBody()).expect(409))).toEqual([
-        'Shortlist them first: the hiring manager accepts them, then HR’s screening call.',
+        'They are at Applicants: the interview comes once HR Screening accepts them.',
       ]);
       expect(said(await post('hr', `/recruitment/applications/${apps.Fady}/interviews`, interviewBody()).expect(409))).toEqual([
         'They failed a must-have question and were filtered out: restore them first.',
@@ -323,7 +317,6 @@ describe('Recruitment, Phase 2 (e2e)', () => {
     it('take a scorecard from each interviewer once it started; an interviewer sees the others’ once they gave theirs', async () => {
       // Nour's interview took place yesterday: HR scheduled it, it is put back a day as if it had
       await readyToInterview('Nour');
-      await post('hr', `/recruitment/applications/${apps.Nour}/stage`, { to: 'interview' }).expect(200);
       const nour = ((await post('hr', `/recruitment/applications/${apps.Nour}/interviews`, interviewBody()).expect(201)).body as InterviewSaved).interview;
       await prisma.interview.update({ where: { id: nour.id }, data: { startsAt: new Date(Date.now() - 26 * 3_600_000) } });
       const card = { ratings: { skills: 4, experience: 3, communication: 5, culture: 4 }, recommendation: 'yes', notes: 'Good eye' };
@@ -360,7 +353,6 @@ describe('Recruitment, Phase 2 (e2e)', () => {
     });
 
     it('remind each interviewer of a scorecard not given the day after, once', async () => {
-      await post('hr', `/recruitment/applications/${apps.Adam}/stage`, { to: 'shortlisted' }).expect(200);
       await readyToInterview('Adam');
       const adam = ((await post('hr', `/recruitment/applications/${apps.Adam}/interviews`, interviewBody({ interviewerIds: [people.iv2] })).expect(201)).body as InterviewSaved).interview;
       await prisma.interview.update({ where: { id: adam.id }, data: { startsAt: new Date(Date.now() - 30 * 3_600_000) } });
@@ -396,11 +388,11 @@ describe('Recruitment, Phase 2 (e2e)', () => {
   describe('the rejection email', () => {
     it('goes only when ticked, with the standard words, then with HR’s', async () => {
       const before = mail.outbox.length;
-      const quiet = (await post('hr', `/recruitment/applications/${apps.Adam}/stage`, { to: 'rejected', reason: 'Too junior' }).expect(200)).body;
+      const quiet = (await post('hr', `/recruitment/applications/${apps.Adam}/stage`, { to: 'rejected', reasons: ['underqualified'], feedback: 'Too junior' }).expect(200)).body;
       expect(quiet.emailed).toBe('not_sent');
       expect(mail.outbox.length).toBe(before);
       await post('hr', `/recruitment/applications/${apps.Adam}/restore`).expect(200);
-      const sent = (await post('hr', `/recruitment/applications/${apps.Adam}/stage`, { to: 'rejected', reason: 'Too junior', email: true }).expect(200)).body;
+      const sent = (await post('hr', `/recruitment/applications/${apps.Adam}/stage`, { to: 'rejected', reasons: ['underqualified'], feedback: 'Too junior', email: true }).expect(200)).body;
       expect(sent.emailed).toBe('sent');
       const m = mail.outbox.at(-1)!;
       expect(m).toMatchObject({ to: `adam.${RUN}@mail.test`, subject: `Your application for Video Editor ${RUN} · طلبك لوظيفة Video Editor ${RUN}` });
@@ -412,7 +404,7 @@ describe('Recruitment, Phase 2 (e2e)', () => {
       expect(s.rejection).toEqual({ subject: 'About {job}', en: 'Hello {name}, thank you from {company}.', ar: null });
       expect((await get('ceo', '/recruitment/settings').expect(200)).body.standard.subject).toContain('{job}');
       await post('hr', `/recruitment/applications/${apps.Adam}/restore`).expect(200);
-      await post('hr', `/recruitment/applications/${apps.Adam}/stage`, { to: 'rejected', reason: 'Too junior', email: true }).expect(200);
+      await post('hr', `/recruitment/applications/${apps.Adam}/stage`, { to: 'rejected', reasons: ['underqualified'], feedback: 'Too junior', email: true }).expect(200);
       expect(mail.outbox.at(-1)).toMatchObject({ subject: `About Video Editor ${RUN}` });
       expect(mail.outbox.at(-1)!.text.startsWith(`Hello Adam Applicant ${RUN}, thank you from`)).toBe(true);
       // back to the standard
@@ -425,7 +417,8 @@ describe('Recruitment, Phase 2 (e2e)', () => {
 
     it('opens on a hire through an accepted job offer, with the system’s three items and HR’s defaults', async () => {
       // a job offer only after an interview marked done (1 November 2026)
-      if (!(await prisma.interview.count({ where: { applicationId: apps.Sara, status: 'done' } }))) await interviewDone(prisma, apps.Sara);
+      // the Technical Interview accepted her (the recruitment tree, 3 November 2026)
+      await walkTo(app, sessions.superAdmin, apps.Sara, 'offer');
       const offer = (await post('hr', '/offers', {
         fullNameEn: `Sara Hired ${RUN}`,
         fullNameAr: 'سارة',
@@ -503,13 +496,14 @@ describe('Recruitment, Phase 2 (e2e)', () => {
       expect(r).toMatchObject({ year: Number(TODAY.slice(0, 4)), departmentId, applicants: 4, hires: 1, openVacancies: 1, openPositions: 1 });
       expect(r.funnel.map((f) => [f.stage, f.reached])).toEqual([
         ['applied', 4],
-        ['shortlisted', 3],
-        // Sara (hired), Adam (interviewed, then rejected) and Nour
+        // Sara (hired), Adam (interviewed, then rejected) and Nour reviewed, screened and interviewed
+        ['review_1', 3],
+        ['screening', 3],
         ['interview', 3],
         ['offer', 1],
         ['hired', 1],
       ]);
-      expect(r.sources).toEqual([{ source: 'careers', applicants: 4, shortlisted: 3, hired: 1 }]);
+      expect(r.sources).toEqual([{ source: 'careers', applicants: 4, reviewed: 3, hired: 1 }]);
       expect(r.offers).toMatchObject({ made: 1, accepted: 1, declined: 0, acceptanceRate: 100 });
       expect(r.timeToHireDays).not.toBeNull();
       expect(r.hiresByMonth).toHaveLength(12);

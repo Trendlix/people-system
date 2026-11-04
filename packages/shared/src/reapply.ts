@@ -19,7 +19,7 @@ import type { ApplicationStage } from './recruitment.js';
 export const APPLICATION_CLOSED = 'Your application for this job is closed. You can apply for other jobs.';
 
 /** The stages at which applying again updates the application. */
-export const REAPPLY_OPEN_STAGES = ['applied', 'shortlisted', 'interview', 'offer'] as const satisfies readonly ApplicationStage[];
+export const REAPPLY_OPEN_STAGES = ['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer'] as const satisfies readonly ApplicationStage[];
 
 /** An application as the rule reads it: its stage, the profile made from it, its job offers' statuses. */
 export interface ReapplyTarget {

@@ -4,7 +4,7 @@ import { Select } from '@/components/select';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { APPLICATION_SOURCE_LABELS, APPLICATION_STAGE_LABELS, HIRING_SUGGESTION_LABELS, RECRUITMENT_LIMITS, type ApplicationStage, type BoardCard, type VacancyBoard } from '@trendlix/shared';
+import { APPLICATION_SOURCE_LABELS, APPLICATION_STAGE_LABELS, HIRING_SUGGESTION_LABELS, type ApplicationStage, type BoardCard, type VacancyBoard } from '@trendlix/shared';
 import { FormErrors, useFieldIds } from '@/components/form';
 import type { FormState } from '@/lib/types';
 import { candidateBadges } from './candidates';
@@ -12,46 +12,57 @@ import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
 import { DeleteApplicantButton } from './delete-ui';
 import { daysText, dropOn } from './hiring';
 import { applicantHref, makeOfferHref, STAGE_STYLE } from './recruitment';
-import { boardInterviewProblem } from './screening-call';
-import { CvUpdatedBadge, HiringStepBadge, VerdictBadge } from './ui';
+import { decisionOf, rejectReasonsAt } from './tree';
+import { FeedbackField, HoldBadge, ReasonPicker } from './tree-ui';
+import { CvUpdatedBadge, VerdictBadge } from './ui';
 
 // A vacancy's pipeline board (Phase 2, owner, 22 October 2026; the brief: "a board with a column per stage, and cards with
 // name, match %, source and days in stage"; "drag between columns (keyboard-accessible too), with the same rules as the
 // stage actions: Reject asks for a reason; Offer goes through Make offer; Hired only by an accepted offer"). HR drags a
 // card, or picks its column in the card's "Move to"; the hiring manager and the CEO read it.
-// The hiring steps (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them - HR Screening and
-// scheduling"): each shortlisted card says where it stands, and one the hiring manager hasn't accepted, or without a
-// passed screening call, isn't moved to Interview: the reason is said instead.
+// The recruitment tree (owner, 3 November 2026: "Recrutment tree"): a card from Applicants is dropped on Review 1, any
+// card on Rejected (with its step's reasons and the feedback); every other step follows its decision on their page, and
+// the board says so instead. Each card kept at its step shows its hold (Unreachable, Pending).
 
-type Move = (id: string, to: 'shortlisted' | 'interview' | 'rejected', reason: string | null, email: boolean) => Promise<FormState>;
+type Rejection = { reasons: string[]; feedback: string | null };
+type Move = (id: string, to: 'review_1' | 'rejected', rejection: Rejection | null, email: boolean) => Promise<FormState>;
 
-/** The reason to reject, asked before a card goes to Rejected, with the "Email the candidate" tick. */
-function RejectPrompt({ card, onSend, onCancel, pending }: { card: BoardCard; onSend: (reason: string, email: boolean) => void; onCancel: () => void; pending: boolean }) {
+/** Why a card is rejected, asked before it goes to Rejected: its step's reasons, the feedback, the "Email the candidate" tick. */
+function RejectPrompt({ card, onSend, onCancel, pending }: { card: BoardCard; onSend: (rejection: Rejection, email: boolean) => void; onCancel: () => void; pending: boolean }) {
   const fid = useFieldIds();
-  const [reason, setReason] = useState('');
-  const [email, setEmail] = useState(false);
+  const [errors, setErrors] = useState<string[] | undefined>();
   return (
-    <div role="dialog" aria-labelledby={fid('title')} className="space-y-2 rounded-lg border border-danger/40 bg-card p-4">
+    <form
+      role="dialog"
+      aria-labelledby={fid('title')}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const { body, errors } = decisionOf(new FormData(e.currentTarget), 'rejected');
+        if (!body) return setErrors(errors);
+        setErrors(undefined);
+        onSend({ reasons: body.reasons, feedback: body.feedback }, body.email === true);
+      }}
+      className="space-y-3 rounded-lg border border-danger/40 bg-card p-4"
+    >
       <p id={fid('title')} className="font-semibold">
         Reject {card.fullName}
       </p>
-      <label htmlFor={fid('reason')} className="label">
-        Reason
-      </label>
-      <textarea id={fid('reason')} rows={2} maxLength={RECRUITMENT_LIMITS.reason} value={reason} onChange={(e) => setReason(e.target.value)} className="input" />
+      <FormErrors errors={errors} />
+      <ReasonPicker reasons={rejectReasonsAt(card.stage)} />
+      <FeedbackField id={fid('feedback')} />
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} />
+        <input type="checkbox" name="email" />
         Email the candidate
       </label>
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={pending || !reason.trim()} onClick={() => onSend(reason.trim(), email)} className="btn btn-danger">
+        <button type="submit" disabled={pending} className="btn btn-danger">
           {pending ? 'Rejecting…' : 'Reject'}
         </button>
         <button type="button" onClick={onCancel} className="btn btn-secondary">
           Cancel
         </button>
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -70,10 +81,7 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
     if (what.kind === 'refused') return setState({ errors: [what.reason] });
     if (what.kind === 'offer') return router.push(makeOfferHref(card.id));
     if (what.needsReason) return setRejecting(card);
-    // to Interview only once the hiring manager accepted them and they passed the screening call (29 October 2026)
-    const gate = what.to === 'interview' ? boardInterviewProblem(card) : null;
-    if (gate) return setState({ errors: [`${card.fullName}: ${gate}`] });
-    start(async () => setState(await move(card.id, what.to as 'shortlisted' | 'interview', null, false)));
+    start(async () => setState(await move(card.id, what.to, null, false)));
   }
 
   return (
@@ -89,9 +97,9 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
           card={rejecting}
           pending={pending}
           onCancel={() => setRejecting(null)}
-          onSend={(reason, email) =>
+          onSend={(rejection, email) =>
             start(async () => {
-              setState(await move(rejecting.id, 'rejected', reason, email));
+              setState(await move(rejecting.id, 'rejected', rejection, email));
               setRejecting(null);
             })
           }
@@ -147,14 +155,14 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
                     </div>
                   )}
                   <div className="flex flex-wrap gap-1">
-                    {/* where a shortlisted applicant stands in the hiring steps (29 October 2026: "HR Screening and scheduling") */}
-                    <HiringStepBadge step={card.hiringStep} />
+                    {/* kept at their step: Unreachable, Pending (the recruitment tree, 3 November 2026) */}
+                    <HoldBadge hold={card.hold} />
                     {/* another open vacancy the CV fits better (25 October 2026: "and if it recomended to another position based on the CV") */}
                     {card.betterFit && <BetterFitLink badge={card.betterFit} />}
                     {card.upcomingInterviews > 0 && <span className={`badge ${STAGE_STYLE.interview}`}>Interview booked</span>}
                     {card.openOffer && <span className={`badge ${STAGE_STYLE.offer}`}>Offer open</span>}
-                    {/* at Shortlisted the hiring step's badge says it ("Waiting for the manager", "Rejected by the manager" …; 29 October 2026) */}
-                    {card.suggestion && card.stage !== 'shortlisted' && <span className="badge bg-warn-soft text-warn">Suggested: {HIRING_SUGGESTION_LABELS[card.suggestion]}</span>}
+                    {/* the hiring manager's suggestion at the Technical Interview or the Offer */}
+                    {card.suggestion && <span className="badge bg-warn-soft text-warn">Suggested: {HIRING_SUGGESTION_LABELS[card.suggestion]}</span>}
                     {/* the latest screening verdict (24 October 2026: "Yes: Good fit / Maybe / Not a fit") */}
                     <VerdictBadge verdict={card.verdict} />
                     {/* they applied again with a new CV in the last 7 days (25 October 2026: "Update their application") */}
@@ -179,8 +187,9 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
                         className="input min-h-8 py-1 text-xs"
                       >
                         <option value="">Move to…</option>
+                        {/* only the moves allowed: Review 1 from Applicants, Rejected, an Offer (the tree, 3 November 2026) */}
                         {board.columns
-                          .filter((c) => c.stage !== card.stage)
+                          .filter((c) => dropOn(card, c.stage).kind !== 'refused')
                           .map((c) => (
                             <option key={c.stage} value={c.stage}>
                               {APPLICATION_STAGE_LABELS[c.stage]}

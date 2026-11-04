@@ -386,13 +386,13 @@ export const EMAIL_TEMPLATES: Readonly<Record<EmailTemplateKey, EmailTemplateKin
   shortlist_review: {
     key: 'shortlist_review',
     group: 'team',
-    label: 'Shortlist to review',
-    when: 'To a vacancy’s hiring manager when HR shortlists applicants for them to accept or reject.',
+    label: 'Applicants to review',
+    when: 'To the recruiter’s manager (Review 2) or the vacancy’s hiring manager (Final Review) when applicants reach their review.',
     fields: [JOB, f('count', 'How many, in words', '3 applicants'), f('names', 'Their names, one a line', '- Mona Ali\n- Omar Said\n- Sara Adel'), f('link', 'My Hiring', 'https://people.trendlix.com/recruitment/my-hiring')],
     required: [],
     start: {
-      subject: '{{count}} shortlisted for {{job}}: please accept or reject them',
-      body: ['HR shortlisted {{count}} for {{job}}:', '', '{{names}}', '', 'Please accept or reject them on My Hiring: {{link}}'].join('\n'),
+      subject: '{{count}} for {{job}} wait for your review',
+      body: ['{{count}} for {{job}} wait for your review:', '', '{{names}}', '', 'Please pass or reject them on My Hiring: {{link}}'].join('\n'),
     },
   },
   interviewer_notice: {

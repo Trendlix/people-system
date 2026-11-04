@@ -8,7 +8,7 @@ import { careersSiteFrom } from '@/lib/careers-base';
 import { setsUpEmail } from '@/lib/email-setup';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { isHidden, shownCode } from '@/lib/hidden';
-import { canDelete } from '@/lib/roles';
+import { canDelete, isSuperAdmin } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { moveOnBoard, moveVacancy } from '../../actions';
@@ -42,15 +42,15 @@ import { ApplicantsTable, VacancyStatusBadge, VerdictBadge } from '../../ui';
 import { vacancyPortfolioText } from '../../portfolio';
 import { agencyBackgroundText } from '../../agency';
 import { experienceBasisText } from '../../career';
-import { shortlistable } from '../../shortlist';
-import { ShortlistSelection } from '../../shortlist-ui';
+import { tickable, vacancyCaller } from '../../shortlist';
+import { VacancySelection } from '../../shortlist-ui';
 
 // A vacancy (owner, 22 October 2026: "where will we include the ATS?"): where it stands and what can be done (HR sends it
 // to the CEO, holds, reopens, closes it; the CEO approves it or sends it back with a reason), its position and internal
 // salary range, the links to share on each channel while it is published, the careers page's text, its screening
 // questions, and its applicants by stage (those filtered out by a must-have apart, a good match from 70%).
 // Phase 2 (22 October 2026): the applicants as a list or as the pipeline board (?view=board); the vacancy's hiring manager
-// sees it without the salary range, with its board from Shortlisted on.
+// sees it without the salary range, with its board from the Final Review on.
 // Suggested From Earlier CVs (owner, 24 October 2026: "does the system automatically add recomended general cv's to the
 // opened posts?"; "Suggest; HR adds", "Yes, HR presses 'Invite to apply'"): a third view (?view=suggested) for HR, the CEO
 // and a Super Admin, never the hiring manager: the earlier CVs that match, each with its reasons, its CV in the CV window,
@@ -107,8 +107,10 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
   const cvFirst = q.sort === 'cv' && sortDirOf(q) === 'desc';
   const yearsFirst = q.sort === 'years' && sortDirOf(q) === 'desc';
   const total = Object.values(v.stageCounts).reduce((a, b) => a + b, 0);
-  // HR's ticks (owner, 29 October 2026: "HR Filteration and shortlisting"): those at Applied, never one filtered out
-  const shortlistIds = v.viewer === 'manages' && loaded.kind === 'ok' ? loaded.value.filter(shortlistable).map((a) => a.id) : [];
+  // the ticks (owner, 29 October 2026: "Tick several at once"; the tree, 3 November 2026): those at Applicants for HR, and
+  // those at a step the caller decides, never one filtered out
+  const caller = vacancyCaller(v, { employeeId: user.employeeId ?? null, superAdmin: isSuperAdmin(user) });
+  const tickRows = loaded.kind === 'ok' ? loaded.value.filter((a) => tickable(a, caller)).map((a) => ({ id: a.id, stage: a.stage })) : [];
   return (
     <section aria-labelledby="vacancy-applicants" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -171,9 +173,9 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
           ))}
         </p>
       )}
-      {/* HR ticks those at Applied and shortlists them together (owner, 29 October 2026: "Tick several at once"); what was
-          done stays said above the list once it is read again, even when nobody is left in it */}
-      <ShortlistSelection vacancyId={v.id} ids={shortlistIds}>
+      {/* ticked and sent to Review 1, or decided, together (owner, 29 October 2026: "Tick several at once"); what was done
+          stays said above the list once it is read again, even when nobody is left in it */}
+      <VacancySelection vacancyId={v.id} rows={tickRows}>
         {loaded.kind !== 'ok' ? (
           <Empty>{recruitmentNotLoaded(loaded, 'applicants')}</Empty>
         ) : loaded.value.length === 0 ? (
@@ -181,9 +183,9 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
         ) : (
           // Delete applicant on each row, a Super Admin's only (owner, 25 October 2026: "applicant alone - superadmin only"); each
           // title sorts by its column (owner, 28 October 2026: "i want to activate sorting by from the titles")
-          <ApplicantsTable rows={loaded.value} withVacancy={false} deletes={canDelete(user)} ticks={shortlistIds.length > 0} sorting={{ q, href: (next) => applicantsHref(base, { ...q, ...next }) }} />
+          <ApplicantsTable rows={loaded.value} withVacancy={false} deletes={canDelete(user)} ticks={tickRows.length > 0} sorting={{ q, href: (next) => applicantsHref(base, { ...q, ...next }) }} />
         )}
-      </ShortlistSelection>
+      </VacancySelection>
     </section>
   );
 }
@@ -356,6 +358,13 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
             {v.hired} hired of {v.headcount}
           </Fact>
           <Fact label="Hiring manager">{v.hiringManager?.name ?? '—'}</Fact>
+          {/* the recruitment tree (3 November 2026): the recruiter takes Review 1, their manager Review 2 */}
+          {v.recruiter !== undefined && (
+            <Fact label="Recruiter">
+              {v.recruiter ? v.recruiter.name : 'None: HR takes Review 1'}
+              {v.recruiterManager && <span className="block text-xs text-muted">Review 2: {v.recruiterManager.name}</span>}
+            </Fact>
+          )}
           <Fact label="Grade">{v.grade ? `${v.grade.code} · ${v.grade.levelEn}` : '—'}</Fact>
           <Fact label="Shift">{v.shift?.code ?? '—'}</Fact>
           <Fact label="Contract length">{v.durationMonths ? `${v.durationMonths} months` : '—'}</Fact>

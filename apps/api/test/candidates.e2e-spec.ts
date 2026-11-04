@@ -29,7 +29,7 @@ import { addDays, todayInCairo } from '../src/common/date-only.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { CandidatesService } from '../src/recruitment/candidates.service.js';
 import { CvReadingsService } from '../src/recruitment/cv-readings.service.js';
-import { createApp, createUser, signIn, interviewDone } from './helpers.js';
+import { createApp, createUser, signIn, walkTo } from './helpers.js';
 
 // Candidate profiles (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
 // duplication? even if the same candidate applied for 2 jobs"; asked, "Email or mobile" and "Link and show rehire"; then
@@ -404,9 +404,8 @@ describe('Candidate profiles (e2e)', () => {
     it('an accepted offer: the profile made from it linked', async () => {
       status(await apply(C, 'yara'), 201);
       const a = await appOf(C, 'yara');
-      await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'shortlisted' }).expect(200);
-      // a job offer only after an interview marked done (1 November 2026)
-      await interviewDone(prisma, a.id);
+      // a job offer at the Offer: the recruitment tree's steps taken (3 November 2026)
+      await walkTo(app, sessions.superAdmin, a.id, 'offer');
       const offer = (
         await post('hr', '/offers', {
           fullNameEn: nameOf('yara'),
@@ -575,7 +574,8 @@ describe('Candidate profiles (e2e)', () => {
   describe('who sees it', () => {
     it('HR, the CEO and a Super Admin; a hiring manager is refused the profile and sees no other applications', async () => {
       const mona = await appOf(A, 'mona');
-      await post('hr', `/recruitment/applications/${mona.id}/stage`, { to: 'shortlisted' }).expect(200);
+      // at the hiring manager's Final Review (the recruitment tree, 3 November 2026)
+      await walkTo(app, sessions.superAdmin, mona.id, 'final_review');
       for (const who of ['hm', 'outsider']) {
         await get(who, '/recruitment/candidates').expect(403);
         await get(who, `/recruitment/candidates/${mona.candidateId}`).expect(403);

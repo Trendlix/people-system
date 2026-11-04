@@ -186,7 +186,7 @@ export function AddCvForm({ action, positions }: { action: Action; positions: re
 
 // ---------- Add to a vacancy ----------
 
-/** Adds a general CV to an open (or on hold) vacancy at Applied or Shortlisted. */
+/** Adds a general CV to an open (or on hold) vacancy at Applicants or Review 1. */
 export function MoveForm({ action, vacancies }: { action: Action; vacancies: { id: string; label: string }[] }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();

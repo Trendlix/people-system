@@ -75,6 +75,7 @@ model User {
   interviewsMarked          Interview[]                @relation("InterviewOutcome")
   suggestionsMade           JobApplication[]           @relation("ApplicationSuggestion")
   screeningCallsMade        JobApplication[]           @relation("ApplicationScreeningCall")
+  applicationDecisions      JobApplicationDecision[]   @relation("ApplicationDecision") // the recruitment tree's decisions they took (3 November 2026)
   recruitmentSettingsSet    RecruitmentSettings[]      @relation("RecruitmentSettingsChange")
   cvPositionChoicesSet      CvPositionChoice[]         @relation("CvPositionChoiceChange")
   portfolioSettingsSet      PortfolioSetting[]         @relation("PortfolioSettingChange") // a job title's portfolio on the careers forms (25 October 2026)
@@ -1165,6 +1166,7 @@ model Employee {
   offers                     JobOffer[]                 @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
   offersManaging             JobOffer[]                 @relation("OfferManager") // offers whose position reports to this person
   vacanciesManaging          Vacancy[]                  @relation("VacancyHiringManager") // the vacancies they hire for (22 October 2026)
+  vacanciesRecruiting        Vacancy[]                  @relation("VacancyRecruiter") // the vacancies they recruit for (3 November 2026)
   interviewing               InterviewInterviewer[] // the interviews they sit on (22 October 2026)
   interviewFeedback          InterviewFeedback[] // their scorecards
   applications               JobApplication[] // the applications they were hired from
@@ -2162,6 +2164,10 @@ model Vacancy {
   grade            Grade?              @relation(fields: [gradeId], references: [id], onDelete: Restrict)
   hiringManagerId  String?             @map("hiring_manager_id") @db.Uuid
   hiringManager    Employee?           @relation("VacancyHiringManager", fields: [hiringManagerId], references: [id], onDelete: SetNull)
+  // its recruiter (owner, 3 November 2026: "A Recruiter field"; packages/shared recruitment-tree.ts): an HR person who
+  // takes Review 1, their manager Review 2; none: HR takes Review 1
+  recruiterId      String?             @map("recruiter_id") @db.Uuid
+  recruiter        Employee?           @relation("VacancyRecruiter", fields: [recruiterId], references: [id], onDelete: SetNull)
   headcount        Int                 @default(1)
   employmentType   EmploymentType      @map("employment_type")
   workArrangement  WorkArrangement     @default(office) @map("work_arrangement")
@@ -2264,6 +2270,10 @@ model JobApplication {
   screeningCallById String?                   @map("screening_call_by") @db.Uuid
   screeningCallBy   User?                     @relation("ApplicationScreeningCall", fields: [screeningCallById], references: [id], onDelete: SetNull)
   screeningCallAt   DateTime?                 @map("screening_call_at") @db.Timestamptz
+  // the recruitment tree (3 November 2026): kept at its step, Unreachable or Pending (HOLD_OUTCOMES), until the step
+  // changes; and every decision taken on it
+  hold              String?
+  decisions         JobApplicationDecision[]
   // the consent HR recorded (22 October 2026: a bulk upload's CV, a general CV moved here): who, and why ("LinkedIn
   // Easy Apply"); none: the applicant's own on the careers page
   consentById       String?                   @map("consent_by") @db.Uuid
@@ -2379,6 +2389,25 @@ model JobApplicationStep {
 
   @@index([applicationId, at])
   @@map("job_application_steps")
+}
+
+// A decision on an application in the recruitment tree (owner, 3 November 2026: "Recrutment tree"; packages/shared
+// recruitment-tree.ts): its step (Applicants, a review, HR Screening, the Technical Interview), its outcome, a
+// rejection's reasons, the written feedback, who and when. Kept with the application, never changed.
+model JobApplicationDecision {
+  id            String         @id @default(uuid()) @db.Uuid
+  applicationId String         @map("application_id") @db.Uuid
+  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  stage         String // applied, review_1, review_2, final_review, screening, interview
+  outcome       String // STEP_OUTCOMES
+  reasons       String[]       @default([])
+  feedback      String?
+  byId          String?        @map("by_id") @db.Uuid
+  by            User?          @relation("ApplicationDecision", fields: [byId], references: [id], onDelete: SetNull)
+  at            DateTime       @default(now()) @db.Timestamptz
+
+  @@index([applicationId, at])
+  @@map("job_application_decisions")
 }
 
 // A general CV (owner, 22 October 2026: "what came out of the posted jobs and what cam on randomly"; "Both"; packages/

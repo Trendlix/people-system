@@ -110,7 +110,8 @@ export const NOTIFICATION_KINDS = [
   // October 2026: allowed, never silent): HR and Finance told to correct it by hand; the person and the month, never the reason
   'payroll_locked_change',
   // the hiring steps (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them"): the hiring
-  // manager told once a batch of applicants is shortlisted for them to review
+  // manager told once a batch of applicants is shortlisted for them to review; since the recruitment tree (3 November
+  // 2026) the recruiter's manager and the hiring manager when applicants reach their Review 2 or Final Review
   'shortlist_review',
   // a new photo of themself the employee sends HR (owner, 31 October 2026: "allow them to upload a new photo as a request
   // and approved from the HR"): those who decide it told one waits, and the employee told it was approved or rejected

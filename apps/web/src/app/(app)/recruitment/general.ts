@@ -55,7 +55,7 @@ export const tabHref = (tab: ApplicantsTab) => (tab === 'general' ? `${APPLICANT
 
 /** Whether a filter narrows the posted jobs' list (then a vacancy without a match is left out). */
 export const filtering = (q: ApplicantsQuery): boolean =>
-  !!(q.vacancyId || q.stage || q.source || q.q || q.skill || q.verdict || q.step || q.minMatch !== null || q.minYears !== null || q.minCvMatch !== null || q.filtered !== 'hide');
+  !!(q.vacancyId || q.stage || q.source || q.q || q.skill || q.verdict || q.hold || q.minMatch !== null || q.minYears !== null || q.minCvMatch !== null || q.filtered !== 'hide');
 
 /**
  * The posted jobs' applicants grouped by vacancy, in the summary's order (open first, then on hold, closed, filled):
@@ -405,7 +405,8 @@ export function addCvApiForm(fd: FormData): FormData {
 export function stageCountsText(group: VacancyApplicantsGroup, labels: Readonly<Record<string, string>>): string {
   const parts = Object.entries(group.byStage)
     .filter(([, n]) => n > 0)
-    .map(([stage, n]) => `${labels[stage] ?? stage} ${n}`);
-  if (group.filteredOut) parts.push(`Filtered out ${group.filteredOut}`);
+    // "Review 1: 2", so a step's number never runs into its count (the tree, 3 November 2026)
+    .map(([stage, n]) => `${labels[stage] ?? stage}: ${n}`);
+  if (group.filteredOut) parts.push(`Filtered out: ${group.filteredOut}`);
   return parts.join(' · ');
 }

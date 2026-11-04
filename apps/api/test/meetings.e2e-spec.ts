@@ -125,9 +125,9 @@ describe('Online interview meetings (e2e)', () => {
    * screening call passed.
    */
   async function readyToInterview(id: string) {
+    // made at the Technical Interview here (the recruitment tree, 3 November 2026): nothing left to take
     const a = (await as('hr').get(`/recruitment/applications/${id}`).expect(200)).body as { stage: string; hasHiringManager?: boolean };
-    expect(a).toMatchObject({ stage: 'shortlisted', hasHiringManager: false });
-    await as('hr').post(`/recruitment/applications/${id}/screening-call`, { result: 'passed' }).expect(200);
+    expect(a).toMatchObject({ stage: 'interview', hasHiringManager: false });
   }
 
   const interviewOf = async (id: string) => (await as('hr').get(`/recruitment/applications/${applicationId}`).expect(200)).body.interviews.find((i: InterviewView) => i.id === id) as InterviewView;
@@ -161,13 +161,13 @@ describe('Online interview meetings (e2e)', () => {
         data: {
           number: `APP-1999-${String(Date.now()).slice(-7)}9`,
           vacancyId: v.id,
-          stage: 'shortlisted',
+          stage: 'interview',
           fullName: `Sara Applicant ${RUN}`,
           email: candidateEmail(),
           mobile: '+20 100 123 4567',
           consentAt: new Date(),
           cv: { create: { fileName: 'cv.pdf', mimeType: 'application/pdf', sizeBytes: 10, data: Buffer.from('%PDF-1.4\n%%EOF\n') } },
-          steps: { create: [{ event: 'applied', stage: 'applied' }, { event: 'shortlisted', stage: 'shortlisted' }] },
+          steps: { create: [{ event: 'applied', stage: 'applied' }, { event: 'decided', stage: 'interview' }] },
         },
         select: { id: true },
       })

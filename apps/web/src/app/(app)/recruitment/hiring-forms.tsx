@@ -536,8 +536,8 @@ export function FeedbackForm({ action, mine }: { action: Action; mine: FeedbackV
 }
 
 /**
- * The hiring manager's suggestion to HR: the next step or a rejection, with a note; at Shortlisted, their review: Accept
- * or Reject (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them").
+ * The hiring manager's suggestion to HR at the Technical Interview or the Offer: the next step or a rejection, with a
+ * note (their own review is the Final Review's decision since the tree, 3 November 2026).
  */
 export function SuggestForm({ action, stage }: { action: Action; stage: ApplicationStage }) {
   const [state, formAction, pending] = useActionState(action, {});

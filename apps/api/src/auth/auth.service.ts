@@ -158,13 +158,16 @@ export class AuthService {
     const standIn = own ? await standInViewOf(this.prisma, own.id, { roles: [] }) : null;
     const standingInFor = [...(standIn?.for ?? new Map())].map(([id, e]) => ({ id, fullNameEn: e.fullNameEn, until: e.until }));
     // hiring for an open vacancy, or on an interview to come or of the last 60 days (recruitment, Phase 2, 22 October 2026);
-    // or the hiring manager of one of those, who gives a scorecard on it too (29 October 2026: "Score Card for each of them")
+    // or the hiring manager of one of those, who gives a scorecard on it too (29 October 2026: "Score Card for each of them");
+    // or the manager of a recruiter, for their Review 2
     const since = new Date(Date.now() - 60 * 86_400_000);
     const hiring = own
       ? (await this.prisma.vacancy.count({ where: { hiringManagerId: own.id, status: { in: ['open', 'on_hold'] } } })) +
           (await this.prisma.interviewInterviewer.count({ where: { employeeId: own.id, interview: { startsAt: { gte: since } } } })) >
           0 ||
-        (await this.prisma.interview.count({ where: { startsAt: { gte: since }, application: { vacancy: { hiringManagerId: own.id } } } })) > 0
+        (await this.prisma.interview.count({ where: { startsAt: { gte: since }, application: { vacancy: { hiringManagerId: own.id } } } })) > 0 ||
+        // the manager of an open vacancy's recruiter, who takes its Review 2 (the recruitment tree, 3 November 2026)
+        (await this.prisma.vacancy.count({ where: { status: { in: ['open', 'on_hold'] }, recruiter: { employments: { some: { endDate: null, managerId: own.id } } } } })) > 0
       : false;
     return {
       ...user,

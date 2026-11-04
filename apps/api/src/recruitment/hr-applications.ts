@@ -7,13 +7,14 @@ import { attachCandidate, findCandidates, foundIds, refreshCandidate, type Attac
 // An application HR makes rather than the applicant (owner, 22 October 2026; packages/shared general-cvs.ts): a general
 // CV moved to a vacancy, or a CV of a bulk upload (LinkedIn's Easy Apply). The vacancy's screening questions weren't
 // asked, so it has no answers and no match ("—") and is never filtered out; its consent is HR's, with who and why; its
-// history starts with "Applied" (and "Shortlisted" when HR chose that), noting where it came from.
+// history starts with "Applied" (and "Sent to Review 1" when HR chose that: the recruitment tree, 3 November 2026), noting
+// where it came from.
 
 export interface HrApplicationInput {
   /** A general CV's own reference, kept for the application made from it; none: the series' next. */
   number?: string;
   vacancyId: string;
-  stage: 'applied' | 'shortlisted';
+  stage: 'applied' | 'review_1';
   fullName: string;
   email: string;
   mobile: string;
@@ -96,7 +97,7 @@ export async function createHrApplication(tx: Prisma.TransactionClient, a: HrApp
         steps: {
           create: [
             { event: 'applied', stage: 'applied', note: a.note, byId: a.byId, at: now },
-            ...(a.stage === 'shortlisted' ? [{ event: 'shortlisted', stage: 'shortlisted', byId: a.byId, at: new Date(now.getTime() + 1) }] : []),
+            ...(a.stage === 'review_1' ? [{ event: 'to_review', stage: 'review_1', byId: a.byId, at: new Date(now.getTime() + 1) }] : []),
           ],
         },
       },

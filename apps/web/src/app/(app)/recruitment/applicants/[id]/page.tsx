@@ -12,6 +12,8 @@ import {
   RECOMMENDATION_LABELS,
   RECORDED_EARLIER_MARK,
   applicationKey,
+  applicationStageLabel,
+  SCREENING_CALL_LABELS,
   type ApplicationAnswerView,
   type ApplicationView,
   type InterviewView,
@@ -31,7 +33,7 @@ import { MatchValue, OpenPositions } from '../../cv-fit-ui';
 import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
 import { DeleteApplicantButton } from '../../delete-ui';
 import { APPLICANT_GONE } from '../../deletes';
-import { cancelInterview, giveFeedback, markInterview, moveApplicant, rescheduleInterview, restoreApplicant, scheduleInterview, suggestNext } from '../../actions';
+import { cancelInterview, decideApplicant, giveFeedback, markInterview, moveApplicant, rescheduleInterview, restoreApplicant, scheduleInterview, suggestNext } from '../../actions';
 import { loadApplicant, loadApplicantComments, recruitmentNotLoaded } from '../../data';
 import { ActionButton, ReasonButton } from '../../forms';
 import { interviewWhen, MY_HIRING_PATH } from '../../hiring';
@@ -42,10 +44,9 @@ import { commentsOfRecord, kb, ownCv } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
 import { ScorecardRoleBadge, ScorecardSummary } from '../../scorecard-ui';
 import { ownScorecardRole, scorecardHeading } from '../../scorecards';
-import { CvUpdatedBadge, EarlierCvList, HiringStepBadge, StageBadge, VerdictBadge } from '../../ui';
-import { screeningCallCard } from '../../screening-call';
-import { saveScreeningCall } from '../../screening-call-actions';
-import { ScreeningCallCard } from '../../screening-call-ui';
+import { CvUpdatedBadge, EarlierCvList, StageBadge, VerdictBadge } from '../../ui';
+import { decisionLine, rejectReasonsAt } from '../../tree';
+import { DecideForm, HoldBadge, RejectButton } from '../../tree-ui';
 import { applicantPortfolioHref, portfolioLinksOf } from '../../portfolio';
 import { LinkedInMark, PortfolioSent } from '../../portfolio-chips';
 import { shownCode } from '@/lib/hidden';
@@ -57,7 +58,7 @@ import { MeetingJoin } from '../../meeting-ui';
 import { NO_MEETING_CHOICES } from '../../meetings';
 
 // An applicant (owner, 22 October 2026: "where will we include the ATS?"): who they are, their match and how each answer
-// did (a must-have failed filters them out: kept, restorable), their CV, HR's notes, what can be done now (shortlist,
+// did (a must-have failed filters them out: kept, restorable), their CV, HR's notes, what can be done now (Send to Review 1,
 // move to interview, reject with a reason, restore, Make offer: the job offer form filled in from them and the vacancy),
 // the job offers made to them and their history. A warning when they worked here before (offboarding's rehire check).
 // Phase 2 (22 October 2026): their interviews (HR schedules, moves, cancels and marks them; the candidate is emailed the
@@ -80,10 +81,11 @@ import { NO_MEETING_CHOICES } from '../../meetings';
 // for HR and hiring manager"; asked, "Score Card for each of them"): they give theirs on an interview as its interviewers
 // do, even when not among them ("Give your scorecard as HR"); each scorecard shows whose it is, and a line above them sums
 // them up for choosing the candidate (then Make offer).
-// The hiring steps (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them - HR Screening and
-// scheduling"; asked, "Screening call + result"): where a shortlisted applicant stands beside the stage, HR's Screening
-// Call card (Passed or Failed with a comment, once the hiring manager accepted them), and the interview scheduled (or
-// Move to interview) only for one who passed it: why not yet is said in its place.
+// The recruitment tree (owner, 3 November 2026: "Recrutment tree"): Applicants, Review 1 (the recruiter), Review 2 (the
+// recruiter's manager), Final Review (the hiring manager), HR Screening, Technical Interview, Offer. HR sends them to
+// Review 1; whoever takes their step decides it here (its outcomes; a rejection's reasons, ticked, and the feedback); HR
+// rejects from any step. Beside the stage, their hold (Unreachable, Pending); the Decisions card lists each step decided
+// and says who takes the step now. Interviews are scheduled at the Technical Interview and the Offer.
 
 export const metadata: Metadata = { title: 'Applicant · People System' };
 
@@ -111,27 +113,69 @@ function Actions({ a }: { a: ApplicationView }) {
           Make offer
         </Link>
       )}
-      {/* a job offer only after an interview marked done (owner, 1 November 2026: "Offer only after interview") */}
-      {!c.makeOffer && c.scheduleInterview && (a.stage === 'shortlisted' || a.stage === 'interview') && !a.interviews.some((i) => i.status === 'done') && (
-        <p className="hint w-full">An offer needs an interview marked done first.</p>
-      )}
-      {c.shortlist && <ActionButton action={moveApplicant.bind(null, a.id, 'shortlisted')} label={a.stage === 'interview' ? 'Back to shortlisted' : 'Shortlist'} pendingLabel="Saving…" kind={a.stage === 'applied' ? 'primary' : 'secondary'} />}
-      {c.interview && !a.interviewBlocked && <ActionButton action={moveApplicant.bind(null, a.id, 'interview')} label="Move to interview" pendingLabel="Saving…" />}
+      {c.sendToReview && <ActionButton action={moveApplicant.bind(null, a.id, 'review_1')} label="Send to Review 1" pendingLabel="Sending…" kind="primary" />}
       {c.restore && <ActionButton action={restoreApplicant.bind(null, a.id)} label="Restore" pendingLabel="Restoring…" kind="primary" />}
-      {c.reject && (
-        <ReasonButton
-          action={moveApplicant.bind(null, a.id, 'rejected')}
-          label="Reject"
-          pendingLabel="Rejecting…"
-          reasonLabel="Why (never sent)"
-          required
-          kind="danger"
+      {c.reject && <RejectButton action={moveApplicant.bind(null, a.id, 'rejected')} reasons={rejectReasonsAt(a.stage)} emailOption={c.emailOnReject} />}
+      {/* a Super Admin's, never a developer's (owner, 25 October 2026: "applicant alone - superadmin only"): then its vacancy */}
+      {c.delete && <DeleteApplicantButton id={a.id} number={a.number} back={{ vacancyId: a.vacancy.id }} />}
+      {/* their step, decided by whoever takes it (the tree, 3 November 2026) */}
+      {c.decide && (
+        <DecideForm
+          action={decideApplicant.bind(null, a.id)}
+          stageLabel={applicationStageLabel(c.decide.stage)}
+          outcomes={c.decide.outcomes}
+          reasons={c.decide.reasons}
           emailOption={c.emailOnReject}
         />
       )}
-      {/* a Super Admin's, never a developer's (owner, 25 October 2026: "applicant alone - superadmin only"): then its vacancy */}
-      {c.delete && <DeleteApplicantButton id={a.id} number={a.number} back={{ vacancyId: a.vacancy.id }} />}
     </div>
+  );
+}
+
+/**
+ * Each step decided (the tree, 3 November 2026): "Review 1: Rejected (Culture Fit)", who and when, the feedback; the
+ * screening call of before the tree when they had one; and who takes their step now.
+ */
+function Decisions({ a }: { a: ApplicationView }) {
+  const decisions = a.decisions ?? [];
+  if (!decisions.length && !a.screeningCall && !a.nextBy) return null;
+  return (
+    <section aria-labelledby="applicant-decisions" className="card space-y-3 p-6">
+      <h2 id="applicant-decisions" className="text-lg font-semibold">
+        Decisions
+      </h2>
+      {a.nextBy && <p className="text-sm">Now with {a.nextBy}</p>}
+      {(decisions.length > 0 || a.screeningCall) && (
+        <ul className="divide-y divide-line">
+          {decisions.map((d) => (
+            <li key={d.id} className="space-y-1 py-2 text-sm">
+              <p>
+                <span className={`font-semibold ${d.outcome === 'rejected' || d.outcome === 'declined' ? 'text-danger' : ''}`}>{decisionLine(d)}</span>
+                <span className="text-muted">
+                  {' · '}
+                  {d.by ? `${d.by.name ?? d.by.email}, ` : ''}
+                  {formatDateTime(d.at)}
+                </span>
+              </p>
+              {d.feedback && <p className="whitespace-pre-line text-muted">{d.feedback}</p>}
+            </li>
+          ))}
+          {a.screeningCall && (
+            <li className="space-y-1 py-2 text-sm">
+              <p>
+                <span className="font-semibold">Screening call (before the tree): {SCREENING_CALL_LABELS[a.screeningCall.result]}</span>
+                <span className="text-muted">
+                  {' · '}
+                  {a.screeningCall.by ? `${a.screeningCall.by.name ?? a.screeningCall.by.email}, ` : ''}
+                  {formatDateTime(a.screeningCall.at)}
+                </span>
+              </p>
+              {a.screeningCall.note && <p className="whitespace-pre-line text-muted">{a.screeningCall.note}</p>}
+            </li>
+          )}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -316,15 +360,9 @@ async function Interviews({ a }: { a: ApplicationView }) {
           ))}
         </ul>
       )}
-      {a.can.scheduleInterview &&
-        // the hiring manager's acceptance, then a passed screening call (29 October 2026): why not yet, in its place
-        (a.interviewBlocked ? (
-          <p role="note" className="rounded-lg bg-canvas px-4 py-3 text-sm text-muted">
-            {a.interviewBlocked}
-          </p>
-        ) : (
-          <ScheduleInterview action={scheduleInterview.bind(null, a.id)} people={people} defaultInterviewerIds={a.position.hiringManagerId ? [a.position.hiringManagerId] : []} meetings={meetings} />
-        ))}
+      {a.can.scheduleInterview && (
+        <ScheduleInterview action={scheduleInterview.bind(null, a.id)} people={people} defaultInterviewerIds={a.position.hiringManagerId ? [a.position.hiringManagerId] : []} meetings={meetings} />
+      )}
     </section>
   );
 }
@@ -343,9 +381,7 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
   }
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'applicant')}</Empty>;
   const a = loaded.value;
-  const participant = a.viewer === 'hiring_manager' || a.viewer === 'interviewer';
-  // HR's screening call (29 October 2026: "Screening call + result"): the call made, and HR's form at Shortlisted
-  const screening = screeningCallCard(a);
+  const participant = a.viewer === 'hiring_manager' || a.viewer === 'interviewer' || a.viewer === 'reviewer';
   // the screening comments and the CVs the window opens (24 October 2026); the page shows without them if they fail
   const comments = commentsLoaded.kind === 'ok' ? commentsLoaded.value : null;
   const commentsNotLoaded = commentsLoaded.kind === 'ok' ? '' : recruitmentNotLoaded(commentsLoaded, 'screening comments');
@@ -354,12 +390,12 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        {a.viewer === 'interviewer' ? <BackLink href={MY_HIRING_PATH}>My Hiring</BackLink> : <BackLink href={vacancyHref(a.vacancy.id)}>{a.vacancy.title}</BackLink>}
+        {a.viewer === 'interviewer' || a.viewer === 'reviewer' ? <BackLink href={MY_HIRING_PATH}>My Hiring</BackLink> : <BackLink href={vacancyHref(a.vacancy.id)}>{a.vacancy.title}</BackLink>}
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="page-title">{a.fullName}</h1>
           <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
-          {/* where a shortlisted applicant stands in the hiring steps (29 October 2026) */}
-          <HiringStepBadge step={a.hiringStep} />
+          {/* kept at their step: Unreachable, Pending (the tree, 3 November 2026) */}
+          <HoldBadge hold={a.hold} />
           {/* the latest screening verdict of this application's comments (24 October 2026) */}
           <VerdictBadge verdict={a.verdict} />
           {/* they applied again with a new CV in the last 7 days (25 October 2026) */}
@@ -382,9 +418,9 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
 
       {a.candidateProfile?.employee && <EmployeeCard link={a.candidateProfile.employee} />}
 
-      {/* at Shortlisted, their review (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them"): "Accepted by the hiring manager" */}
+      {/* the hiring manager's suggestion at the Technical Interview or the Offer */}
       {a.suggestion && (
-        <div role="note" className={`rounded-lg px-4 py-3 text-sm ${a.stage === 'shortlisted' && a.suggestion.kind === 'next' ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'}`}>
+        <div role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
           <p className="font-semibold">
             {suggestionShown(a.suggestion.kind, a.stage)}
             {a.suggestion.by ? ` (${a.suggestion.by.name ?? a.suggestion.by.email}, ${formatDateTime(a.suggestion.at)})` : ''}
@@ -511,8 +547,7 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
         </section>
       )}
 
-      {/* HR's screening call before the interview (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call + result") */}
-      {screening && <ScreeningCallCard card={screening} action={saveScreeningCall.bind(null, a.id)} />}
+      <Decisions a={a} />
 
       <Suspense fallback={<Loading />}>
         <Interviews a={a} />

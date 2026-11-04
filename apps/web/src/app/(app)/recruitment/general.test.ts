@@ -48,7 +48,7 @@ const AREA = '00000000-0000-4000-8000-000000000001';
 const group = (id: string, total: number, extra: Partial<VacancyApplicantsGroup> = {}): VacancyApplicantsGroup => ({
   vacancy: { id, number: 'VAC-2026-0001', title: 'Video editor', status: 'open' },
   total,
-  byStage: { applied: total, shortlisted: 0, interview: 0, offer: 0, hired: 0, rejected: 0 },
+  byStage: { applied: total, review_1: 0, review_2: 0, final_review: 0, screening: 0, interview: 0, offer: 0, hired: 0, rejected: 0 },
   filteredOut: 0,
   bySource: {},
   ...extra,
@@ -82,8 +82,8 @@ describe('the Applicants page’s tabs', () => {
     expect(filtering(readApplicantsQuery({}))).toBe(false);
     expect(filtering(readApplicantsQuery({ source: 'linkedin' }))).toBe(true);
     expect(filtering(readApplicantsQuery({ filtered: 'only' }))).toBe(true);
-    // the Hiring step filter (29 October 2026)
-    expect(filtering(readApplicantsQuery({ step: 'ready' }))).toBe(true);
+    // the hold filter (the tree, 3 November 2026)
+    expect(filtering(readApplicantsQuery({ hold: 'pending' }))).toBe(true);
   });
 
   it('links a source’s count to its applicants, those filtered out too', () => {
@@ -91,8 +91,8 @@ describe('the Applicants page’s tabs', () => {
   });
 
   it('says a vacancy’s stages in a line, those with none left out', () => {
-    const g = group(V1, 6, { byStage: { applied: 3, shortlisted: 2, interview: 0, offer: 0, hired: 0, rejected: 0 }, filteredOut: 1 });
-    expect(stageCountsText(g, APPLICATION_STAGE_LABELS)).toBe('Applied 3 · Shortlisted 2 · Filtered out 1');
+    const g = group(V1, 6, { byStage: { applied: 3, review_1: 2, review_2: 0, final_review: 0, screening: 0, interview: 0, offer: 0, hired: 0, rejected: 0 }, filteredOut: 1 });
+    expect(stageCountsText(g, APPLICATION_STAGE_LABELS)).toBe('Applicants: 3 · Review 1: 2 · Filtered out: 1');
   });
 });
 

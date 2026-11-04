@@ -12,10 +12,12 @@
 // - The careers page (owner: "i dont know how to decide it for now", so people.trendlix.com/careers, made so
 //   careers.trendlix.com can point at it later): open vacancies, a job's page and its application form, with the CV
 //   (PDF or Word, at most 5 MB). Each channel's link is the same with ?src= (LinkedIn, Facebook groups, job boards …).
-// - Applicants: applied, shortlisted, interview, offer, hired, rejected. HR shortlists, rejects (with a reason) and
-//   restores; Make offer opens the job offer form filled in from the applicant and the vacancy, and the offer's answer
-//   moves the application on: accepted, hired (the vacancy filled at its headcount); declined or withdrawn, back to
-//   shortlisted.
+// - Applicants: the recruitment tree since 3 November 2026 (recruitment-tree.ts): Applicants, Review 1 (the vacancy's
+//   recruiter), Review 2 (the recruiter's manager), Final Review (the hiring manager), HR Screening, Technical Interview,
+//   Offer, then hired; or rejected. HR sends to Review 1, rejects (with its reasons) and restores; each step is decided
+//   with its outcome; Make offer opens the job offer form filled in from the applicant and the vacancy, and the offer's
+//   answer moves the application on: accepted, hired (the vacancy filled at its headcount); declined or withdrawn, back
+//   to Offer.
 // Phase 2 (recruitment-hiring.ts, onboarding.ts): the pipeline board, interviews with their invitations, the hiring
 // manager's and the interviewers' feedback, the rejection email, onboarding and recruitment analytics.
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/recruitment.spec.ts.
@@ -27,7 +29,8 @@ import type { CvListFacts, CvReadingView } from './cv-analysis.js';
 import type { BetterFitBadge, CvFit, OpenPositionFit } from './cv-fit.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
-import type { HiringStep, ScreeningCallView } from './hiring-steps.js';
+import type { ScreeningCallView } from './hiring-steps.js';
+import type { DecisionStep, HoldOutcome, RejectReason, StepDecisionView, StepOutcome } from './recruitment-tree.js';
 import { phoneOk, phoneTidy } from './phone.js';
 import type { ApplicationCandidate, CandidateBadge } from './candidates.js';
 import type { ScreeningVerdict } from './screening.js';
@@ -138,6 +141,8 @@ export interface VacancyInput {
   title: string;
   gradeId?: string | null;
   hiringManagerId?: string | null;
+  /** Its recruiter (owner, 3 November 2026: "A Recruiter field"): an HR person's employee profile; Review 1 is theirs. */
+  recruiterId?: string | null;
   headcount: number;
   employmentType: EmploymentType;
   workArrangement: WorkArrangement;
@@ -690,57 +695,65 @@ export const APPLY_CONSENT_TEXT =
 
 // ---------- applicants ----------
 
-export const APPLICATION_STAGES = ['applied', 'shortlisted', 'interview', 'offer', 'hired', 'rejected'] as const;
+/** The recruitment tree's stages (owner, 3 November 2026: "Recrutment tree"; recruitment-tree.ts), in order. */
+export const APPLICATION_STAGES = ['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer', 'hired', 'rejected'] as const;
 export type ApplicationStage = (typeof APPLICATION_STAGES)[number];
 
 export const APPLICATION_STAGE_LABELS: Record<ApplicationStage, string> = {
-  applied: 'Applied',
-  shortlisted: 'Shortlisted',
-  interview: 'Interview',
+  applied: 'Applicants',
+  review_1: 'Review 1',
+  review_2: 'Review 2',
+  final_review: 'Final Review',
+  screening: 'HR Screening',
+  interview: 'Technical Interview',
   offer: 'Offer',
   hired: 'Hired',
   rejected: 'Rejected',
 };
 
+/** A stage in words, those of before the tree too ("Shortlisted", kept in the histories). */
+export const applicationStageLabel = (stage: string): string => (stage in APPLICATION_STAGE_LABELS ? APPLICATION_STAGE_LABELS[stage as ApplicationStage] : stage === 'shortlisted' ? 'Shortlisted' : stage);
+
 export const isApplicationStage = (value: unknown): value is ApplicationStage => (APPLICATION_STAGES as readonly unknown[]).includes(value);
 
-/** The stages HR moves an applicant to by hand; the offer and hired follow the job offer, and restore undoes. */
-export const HAND_STAGES = ['shortlisted', 'interview', 'rejected'] as const;
+/**
+ * The stages HR moves an applicant to by hand (the tree, 3 November 2026): Review 1 from Applicants ("Send to Review 1"),
+ * and Rejected (with its reasons) from any step; every other step follows a decision (recruitment-tree.ts), the offer
+ * and hired follow the job offer, and restore undoes.
+ */
+export const HAND_STAGES = ['review_1', 'rejected'] as const;
 export type HandStage = (typeof HAND_STAGES)[number];
 
 /**
- * Why an applicant can't be moved to `to` by hand, in words; null when they can. Shortlisted from applied (or back from
- * interview), never one filtered out (restore them first); interview from shortlisted; rejected from any stage before
- * hired, but not while a job offer to them is open (withdraw it first).
+ * Why an applicant can't be moved to `to` by hand, in words; null when they can. Review 1 from Applicants only, never
+ * one filtered out (restore them first); rejected from any stage before hired, but not while a job offer to them is open
+ * (withdraw it first).
  */
 export function stageMoveProblem(from: ApplicationStage, to: HandStage, state: { filteredOut: boolean; openOffer: boolean }): string | null {
   if (from === 'hired') return 'They were hired: their application stays as it is.';
-  if (from === to) return `They are ${APPLICATION_STAGE_LABELS[to].toLowerCase()} already.`;
+  if (from === to) return `They are at ${APPLICATION_STAGE_LABELS[to]} already.`;
   if (to === 'rejected') {
     if (state.openOffer) return 'A job offer to them is open: withdraw it first.';
     return null;
   }
   if (from === 'rejected') return 'They were rejected: restore them first.';
   if (state.filteredOut) return 'They failed a must-have question and were filtered out: restore them first.';
-  if (to === 'shortlisted') return from === 'applied' || from === 'interview' ? null : `They are at ${APPLICATION_STAGE_LABELS[from]}: they can't go back to shortlisted.`;
-  return from === 'shortlisted' ? null : 'Shortlist them first.';
+  return from === 'applied' ? null : `They are at ${APPLICATION_STAGE_LABELS[from]}: only Applicants are sent to Review 1.`;
 }
 
 /** Whether an applicant can be restored: one filtered out, or one rejected. */
 export const restorable = (a: { stage: ApplicationStage; filteredOut: boolean }): boolean => a.filteredOut || a.stage === 'rejected';
 
 /**
- * Why a job offer can't be made from an application now (null: it can). Only after an interview of theirs is marked done
- * (owner, 1 November 2026, of the hiring steps: "i dont think this workflow is applied"; asked, "Offer only after
- * interview"), so the hiring manager's acceptance and HR's screening call, which come before the interview, come first
- * too: at Shortlisted, Interview, or back at Offer after one was declined; never one filtered out.
+ * Why a job offer can't be made from an application now (null: it can). At Offer only (the tree, 3 November 2026: the
+ * Technical Interview accepted them, or back there after an offer was declined or withdrawn), so every review, HR
+ * Screening and the interview come first; never one filtered out.
  */
 export function offerProblem(a: { stage: ApplicationStage; filteredOut: boolean; interviewsDone?: number | null }): string | null {
   if (a.filteredOut) return 'They failed a must-have question and were filtered out: restore them first.';
   if (a.stage === 'hired') return 'They were hired already.';
   if (a.stage === 'rejected') return 'They were rejected: restore them first.';
-  if (a.stage === 'applied') return 'Shortlist them first: a job offer comes after their interview.';
-  if (!((a.interviewsDone ?? 0) > 0)) return 'Interview them first: a job offer comes once an interview of theirs is marked done.';
+  if (a.stage !== 'offer') return `They are at ${APPLICATION_STAGE_LABELS[a.stage]}: a job offer comes once the Technical Interview accepts them.`;
   return null;
 }
 
@@ -748,7 +761,7 @@ export function offerProblem(a: { stage: ApplicationStage; filteredOut: boolean;
 export const offerable = (a: { stage: ApplicationStage; filteredOut: boolean; interviewsDone?: number | null }): boolean => offerProblem(a) === null;
 
 /** What happened to an application, as its history lists it. */
-export const APPLICATION_EVENTS = ['applied', 'filtered_out', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'restored', 'offer_declined', 'offer_withdrawn', 'updated'] as const;
+export const APPLICATION_EVENTS = ['applied', 'filtered_out', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'restored', 'offer_declined', 'offer_withdrawn', 'updated', 'to_review', 'decided'] as const;
 export type ApplicationEvent = (typeof APPLICATION_EVENTS)[number];
 
 export const APPLICATION_EVENT_LABELS: Record<ApplicationEvent, string> = {
@@ -764,6 +777,9 @@ export const APPLICATION_EVENT_LABELS: Record<ApplicationEvent, string> = {
   offer_withdrawn: 'Job offer withdrawn',
   // applying again for the same job while it is open (owner, 25 October 2026: "Update their application"; reapply.ts)
   updated: 'Updated by the candidate',
+  // the recruitment tree (3 November 2026): sent to Review 1, and a step decided (its outcome in the note)
+  to_review: 'Sent to Review 1',
+  decided: 'Decided',
 };
 
 // ---------- the API's answers ----------
@@ -822,6 +838,12 @@ export interface VacancyCan {
 export interface VacancyView extends VacancyListItem {
   grade: { id: string; code: string; levelEn: string } | null;
   hiringManager: { id: string; name: string } | null;
+  /**
+   * Its recruiter (3 November 2026; recruitment-tree.ts), who takes Review 1, and their manager, who takes Review 2;
+   * null: none named (HR takes Review 1). Left out by an API from before it.
+   */
+  recruiter?: { id: string; name: string } | null;
+  recruiterManager?: { id: string; name: string } | null;
   workArrangement: WorkArrangement;
   shift: { id: string; code: string } | null;
   durationMonths: number | null;
@@ -930,8 +952,11 @@ export interface ApplicationListItem {
    */
   cvUpdatedAt?: string | null;
   cvUpdated?: boolean;
-  /** Where a shortlisted applicant stands in the hiring steps (29 October 2026, hiring-steps.ts); null at another stage. */
-  hiringStep?: HiringStep | null;
+  /**
+   * Kept at their step (the tree, 3 November 2026; recruitment-tree.ts): Unreachable or Pending at HR Screening or the
+   * Technical Interview; null otherwise (or left out by an API from before it).
+   */
+  hold?: HoldOutcome | null;
 }
 
 /** An answer as the applicant's page shows it, with how it did. */
@@ -949,7 +974,8 @@ export interface ApplicationAnswerView {
 /** A step of an application's history. */
 export interface ApplicationStepView {
   event: ApplicationEvent;
-  stage: ApplicationStage;
+  /** The stage after it; one of before the tree ("shortlisted") in an older history (applicationStageLabel). */
+  stage: string;
   note: string | null;
   by: RecruitmentUserRef | null;
   at: string;
@@ -957,8 +983,14 @@ export interface ApplicationStepView {
 
 /** What the caller may do to an applicant now. */
 export interface ApplicationCan {
-  shortlist: boolean;
-  interview: boolean;
+  /** Send to Review 1 (the tree, 3 November 2026): HR, at Applicants. */
+  sendToReview: boolean;
+  /**
+   * Decide their step (recruitment-tree.ts takesStep): its outcomes and a rejection's reasons; null when the caller
+   * doesn't take it (or it isn't a decision step).
+   */
+  decide: { stage: DecisionStep; outcomes: StepOutcome[]; reasons: RejectReason[] } | null;
+  /** Reject from any step (HR), with the reasons of their step. */
   reject: boolean;
   restore: boolean;
   makeOffer: boolean;
@@ -1024,17 +1056,19 @@ export interface ApplicationView extends ApplicationListItem {
   feedback: FeedbackView[];
   /** Scorecards given that the caller can't see yet (an interviewer, until they give theirs). */
   feedbackHidden: number;
-  /** The hiring manager's suggestion, while HR hasn't acted on it (at Shortlisted, their review: hiring-steps.ts). */
+  /** The hiring manager's suggestion at the Technical Interview or the Offer, while HR hasn't acted on it. */
   suggestion: SuggestionView | null;
-  /** HR's screening call (29 October 2026, hiring-steps.ts); null: not made. Missing from an API before it. */
+  /** HR's screening call of before the tree (29 October 2026), kept to read; null: none. */
   screeningCall?: ScreeningCallView | null;
-  /**
-   * Why an interview can't be scheduled yet (hiring-steps.ts interviewGateProblem: the hiring manager's acceptance, then
-   * the screening call); null when it can. Missing from an API before it.
-   */
-  interviewBlocked?: string | null;
-  /** Whether their vacancy has a hiring manager (who reviews the shortlist). Missing from an API before it. */
+  /** Whether their vacancy has a hiring manager (who takes the Final Review). */
   hasHiringManager?: boolean;
+  /**
+   * The tree (3 November 2026; recruitment-tree.ts): every decision on them, oldest first, with its reasons and feedback
+   * (the feedback HR's, the recruiter's and the reviewers' own: never shown to an interviewer); and who takes their step
+   * now ("The recruiter’s manager: Sara Ali"), null when nobody does (hired, rejected, at Offer).
+   */
+  decisions?: StepDecisionView[];
+  nextBy?: string | null;
   /** What a job offer is filled in with (Make offer). */
   position: {
     jobTitleId: string;

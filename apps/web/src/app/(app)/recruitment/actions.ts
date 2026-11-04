@@ -1,8 +1,8 @@
 'use server';
 
 // Recruitment (owner, 22 October 2026: "where will we include the ATS?"): saving a vacancy, moving it on (sent to the
-// CEO, approved or sent back by the CEO, held, reopened, closed), and moving an applicant (shortlisted, interview,
-// rejected with a reason, restored). Each forwards to the API, which checks who may and every rule again. Noting on them
+// CEO, approved or sent back by the CEO, held, reopened, closed), and moving an applicant (to Review 1, rejected with its
+// reasons, restored) and deciding their step (the recruitment tree, 3 November 2026). Each forwards to the API, which checks who may and every rule again. Noting on them
 // is a screening comment since 24 October 2026 (comment-actions.ts). Deleting a vacancy or an applicant (a Super Admin,
 // owner, 25 October 2026: "Vacancy alone - applicant alone - superadmin only"): delete-actions.ts.
 import { refresh } from 'next/cache';
@@ -14,6 +14,7 @@ import { positionChoicesOf } from './general';
 import { feedbackForm, interviewForm, rejectedText, suggestionForm } from './hiring';
 import { interviewSavedText } from './meetings';
 import { vacancyForm, vacancyHref, VACANCIES_PATH } from './recruitment';
+import { decisionOf } from './tree';
 
 /** What was typed, kept to show again after a refusal. */
 function typed(fd: FormData): Record<string, string> {
@@ -68,32 +69,53 @@ export async function moveVacancy(id: string, move: keyof typeof MOVES, _prev: F
   return send('POST', `/recruitment/vacancies/${encodeURIComponent(id)}/${MOVES[move]}`, body, typed(fd));
 }
 
-/** Moves an applicant (shortlisted, interview, rejected with a reason); a rejection emails the candidate when "Email the candidate" is ticked (Phase 2). */
-export async function moveApplicant(id: string, to: 'shortlisted' | 'interview' | 'rejected', _prev: FormState, fd: FormData): Promise<FormState> {
-  const reason = fd.get('reason');
-  const email = to === 'rejected' && fd.get('email') === 'on';
+/**
+ * Moves an applicant by hand (the recruitment tree, 3 November 2026): to Review 1 from Applicants, or rejected with its
+ * reasons and feedback; a rejection emails the candidate when "Email the candidate" is ticked.
+ */
+export async function moveApplicant(id: string, to: 'review_1' | 'rejected', _prev: FormState, fd: FormData): Promise<FormState> {
+  let body: Record<string, unknown> = { to };
+  if (to === 'rejected') {
+    const { body: d, errors } = decisionOf(fd, 'rejected');
+    if (!d) return { errors, values: typed(fd) };
+    body = { to, reasons: d.reasons, feedback: d.feedback, ...(d.email && { email: true }) };
+  }
   let said: { emailed?: string } | undefined;
   try {
-    said = await apiSend<{ emailed?: string }>('POST', `/recruitment/applications/${encodeURIComponent(id)}/stage`, {
-      to,
-      reason: typeof reason === 'string' && reason.trim() ? reason.trim() : null,
-      ...(email && { email: true }),
-    });
+    said = await apiSend<{ emailed?: string }>('POST', `/recruitment/applications/${encodeURIComponent(id)}/stage`, body);
   } catch (err) {
     if (err instanceof ApiError) return { errors: err.messages, values: typed(fd) };
     throw err;
   }
   refresh();
-  return { message: to === 'rejected' ? rejectedText(said?.emailed) : 'Saved.' };
+  return { message: to === 'rejected' ? rejectedText(said?.emailed) : 'Sent to Review 1.' };
+}
+
+/**
+ * Their step decided (the recruitment tree, 3 November 2026): the outcome chosen, a rejection's reasons, the feedback, the
+ * rejection's email tick (HR's); the API checks who may.
+ */
+export async function decideApplicant(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const { body, errors } = decisionOf(fd);
+  if (!body) return { errors, values: typed(fd) };
+  let said: { emailed?: string } | undefined;
+  try {
+    said = await apiSend<{ emailed?: string }>('POST', `/recruitment/applications/${encodeURIComponent(id)}/decide`, body);
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages, values: typed(fd) };
+    throw err;
+  }
+  refresh();
+  return { message: body.outcome === 'rejected' ? rejectedText(said?.emailed) : 'Decision saved.' };
 }
 
 // ---------- Phase 2 (owner, 22 October 2026): the board, interviews, scorecards, the hiring manager's suggestion, the settings ----------
 
-/** A card dropped on a column of the pipeline board: shortlisted, interview, or rejected with its reason (and the email tick). */
-export async function moveOnBoard(id: string, to: 'shortlisted' | 'interview' | 'rejected', reason: string | null, email: boolean): Promise<FormState> {
+/** A card dropped on a column of the pipeline board: Review 1, or rejected with its reasons and feedback (and the email tick). */
+export async function moveOnBoard(id: string, to: 'review_1' | 'rejected', rejection: { reasons: string[]; feedback: string | null } | null, email: boolean): Promise<FormState> {
   let said: { emailed?: string } | undefined;
   try {
-    said = await apiSend<{ emailed?: string }>('POST', `/recruitment/applications/${encodeURIComponent(id)}/stage`, { to, reason, ...(email && { email: true }) });
+    said = await apiSend<{ emailed?: string }>('POST', `/recruitment/applications/${encodeURIComponent(id)}/stage`, { to, ...(rejection ?? {}), ...(email && { email: true }) });
   } catch (err) {
     if (err instanceof ApiError) return { errors: err.messages };
     throw err;

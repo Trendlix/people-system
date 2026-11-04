@@ -182,6 +182,9 @@ export class VacanciesService {
       ...vacancyListView(v, counts),
       grade: v.grade && { id: v.grade.id, code: v.grade.code, levelEn: v.grade.levelEn },
       hiringManager: v.hiringManager && { id: v.hiringManager.id, name: v.hiringManager.fullNameEn },
+      // the recruitment tree (3 November 2026): who takes Review 1, and Review 2
+      recruiter: v.recruiter && { id: v.recruiter.id, name: v.recruiter.fullNameEn },
+      recruiterManager: v.recruiter?.employments[0]?.manager ? { id: v.recruiter.employments[0].manager.id, name: v.recruiter.employments[0].manager.fullNameEn } : null,
       workArrangement: v.workArrangement,
       shift: v.shift,
       durationMonths: v.durationMonths,
@@ -242,6 +245,8 @@ export class VacanciesService {
       departmentId: job.departmentId,
       gradeId: dto.gradeId ?? null,
       hiringManagerId: dto.hiringManagerId ?? null,
+      // its recruiter (3 November 2026): as chosen, else whoever makes it when they have a profile
+      recruiterId: dto.recruiterId === undefined ? (user.employeeId ?? null) : dto.recruiterId,
       headcount: dto.headcount ?? 1,
       employmentType: dto.employmentType,
       workArrangement: dto.workArrangement ?? 'office',
@@ -325,6 +330,7 @@ export class VacanciesService {
       ...(job && { jobTitleId: job.id, departmentId: job.departmentId }),
       ...(dto.gradeId !== undefined && { gradeId: dto.gradeId }),
       ...(dto.hiringManagerId !== undefined && { hiringManagerId: dto.hiringManagerId }),
+      ...(dto.recruiterId !== undefined && { recruiterId: dto.recruiterId }),
       ...(dto.headcount !== undefined && { headcount: dto.headcount }),
       ...(dto.employmentType !== undefined && { employmentType: dto.employmentType }),
       ...(dto.workArrangement !== undefined && { workArrangement: dto.workArrangement }),
@@ -347,6 +353,7 @@ export class VacanciesService {
       jobTitleId: v.jobTitleId,
       gradeId: v.gradeId,
       hiringManagerId: v.hiringManagerId,
+      recruiterId: v.recruiterId,
       headcount: v.headcount,
       employmentType: v.employmentType,
       workArrangement: v.workArrangement,
@@ -460,13 +467,34 @@ export class VacanciesService {
     return tidyQuestions(questions as VacancyQuestion[]);
   }
 
-  /** The grade, hiring manager and shift chosen exist (the hiring manager a current employee). */
-  private async checkLinks(dto: { gradeId?: string | null; hiringManagerId?: string | null; shiftId?: string | null }): Promise<void> {
+  /** Who may be a vacancy's recruiter (3 November 2026): current employees who sign in with HR's or a Super Admin's role. */
+  async recruiters(): Promise<{ id: string; name: string }[]> {
+    const rows = await this.prisma.employee.findMany({
+      where: { employments: { some: { endDate: null } }, account: { isActive: true, roles: { some: { role: { key: { in: ['hr', 'super_admin'] } } } } } },
+      orderBy: { fullNameEn: 'asc' },
+      select: { id: true, fullNameEn: true },
+    });
+    return rows.map((r) => ({ id: r.id, name: r.fullNameEn }));
+  }
+
+  /**
+   * The grade, hiring manager, recruiter and shift chosen exist (the hiring manager a current employee; the recruiter a
+   * current employee who signs in with HR's or a Super Admin's role: 3 November 2026).
+   */
+  private async checkLinks(dto: { gradeId?: string | null; hiringManagerId?: string | null; recruiterId?: string | null; shiftId?: string | null }): Promise<void> {
     const problems: string[] = [];
     if (dto.gradeId && !(await this.prisma.grade.count({ where: { id: dto.gradeId } }))) problems.push('Choose the grade, or leave it empty.');
     if (dto.shiftId && !(await this.prisma.shift.count({ where: { id: dto.shiftId } }))) problems.push('Choose the shift, or leave it empty.');
     if (dto.hiringManagerId && !(await this.prisma.employee.count({ where: { id: dto.hiringManagerId, employments: { some: { endDate: null } } } }))) {
       problems.push('The hiring manager must be a current employee.');
+    }
+    if (
+      dto.recruiterId &&
+      !(await this.prisma.employee.count({
+        where: { id: dto.recruiterId, employments: { some: { endDate: null } }, account: { isActive: true, roles: { some: { role: { key: { in: ['hr', 'super_admin'] } } } } } },
+      }))
+    ) {
+      problems.push('The recruiter must be a current employee who works in HR.');
     }
     if (problems.length) throw new BadRequestException(problems);
   }

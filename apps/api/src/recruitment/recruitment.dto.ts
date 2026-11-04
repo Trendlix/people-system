@@ -48,11 +48,11 @@ import {
   type AgencyBackgroundWanted,
   EXPERIENCE_BASES,
   type ExperienceBasis,
-  HIRING_STEPS,
-  SCREENING_CALL_NOTE_MAX,
-  SCREENING_CALL_RESULTS,
-  type HiringStep,
-  type ScreeningCallResult,
+  HOLD_OUTCOMES,
+  STEP_OUTCOMES,
+  FEEDBACK_MAX,
+  type HoldOutcome,
+  type StepOutcome,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
@@ -75,6 +75,10 @@ class VacancyFieldsDto {
 
   @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose the hiring manager, or leave it empty.' })
   hiringManagerId?: string | null;
+
+  /** Its recruiter (owner, 3 November 2026: "A Recruiter field"): an HR person's employee profile; none: HR takes Review 1. */
+  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose the recruiter, or leave it empty.' })
+  recruiterId?: string | null;
 
   @Sent() @IsInt({ message: `The headcount is a whole number from 1 to ${L.headcount}.` }) @Min(1, { message: `The headcount is a whole number from 1 to ${L.headcount}.` }) @Max(L.headcount, { message: `The headcount is a whole number from 1 to ${L.headcount}.` })
   headcount?: number;
@@ -213,18 +217,22 @@ export class ListApplicationsDto {
   @IsOptional() @IsIn(VERDICT_FILTERS, { message: 'Choose a verdict.' })
   verdict?: VerdictFilter;
 
-  /** Only the shortlisted at this hiring step (29 October 2026, hiring-steps.ts): waiting for the manager, the screening call due… */
-  @IsOptional() @IsIn(HIRING_STEPS, { message: 'Choose a hiring step.' })
-  step?: HiringStep;
+  /** Only those kept at their step (the recruitment tree, 3 November 2026): Unreachable or Pending. */
+  @IsOptional() @IsIn(HOLD_OUTCOMES, { message: 'Choose Unreachable or Pending.' })
+  hold?: HoldOutcome;
 }
 
 export class MoveApplicationDto {
-  @IsIn(HAND_STAGES, { message: 'Choose shortlisted, interview or rejected.' })
+  @IsIn(HAND_STAGES, { message: 'Choose Review 1 or Rejected.' })
   to!: HandStage;
 
-  /** Required to reject. */
-  @IsOptional() @TrimOrNull() @IsString() @MaxLength(L.reason, { message: `Keep the reason to ${L.reason} characters or fewer.` })
-  reason?: string | null;
+  /** To reject (the recruitment tree, 3 November 2026): one reason or more of their step's (checked by the service). */
+  @IsOptional() @IsArray({ message: 'Send the reasons as a list.' }) @ArrayMaxSize(12) @IsString({ each: true })
+  reasons?: string[];
+
+  /** The written feedback (a rejection's). */
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(FEEDBACK_MAX, { message: `Keep the feedback to ${FEEDBACK_MAX} characters or fewer.` })
+  feedback?: string | null;
 
   /** Phase 2: a rejection may email the candidate the rejection email (off unless sent). */
   @IsOptional() @IsBoolean({ message: 'Say whether to email the candidate.' })
@@ -623,15 +631,22 @@ export class CvMoveDto extends CvUploadTargetDto {
 }
 
 /**
- * HR's screening call on a shortlisted applicant (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call
- * + result"): passed or failed, with a comment.
+ * A step decided (the recruitment tree, owner, 3 November 2026: "Recrutment tree"): its outcome, a rejection's reasons
+ * and the written feedback; whether they fit the step the service checks (packages/shared decisionProblems).
  */
-export class ScreeningCallDto {
-  @IsIn(SCREENING_CALL_RESULTS, { message: 'Choose whether they passed or failed the screening call.' })
-  result!: ScreeningCallResult;
+export class DecideDto {
+  @IsIn(STEP_OUTCOMES, { message: 'Choose the outcome.' })
+  outcome!: StepOutcome;
 
-  @IsOptional() @TrimOrNull() @IsString() @MaxLength(SCREENING_CALL_NOTE_MAX, { message: `Keep the comment to ${SCREENING_CALL_NOTE_MAX} characters or fewer.` })
-  note?: string | null;
+  @IsOptional() @IsArray({ message: 'Send the reasons as a list.' }) @ArrayMaxSize(12) @IsString({ each: true })
+  reasons?: string[];
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(FEEDBACK_MAX, { message: `Keep the feedback to ${FEEDBACK_MAX} characters or fewer.` })
+  feedback?: string | null;
+
+  /** A rejection may email the candidate the rejection email (HR only; off unless sent). */
+  @IsOptional() @IsBoolean({ message: 'Say whether to email the candidate.' })
+  email?: boolean;
 }
 
 /** A CV read again (29 October 2026: "can i perform a rerun for example?"): `asScan` reads it by the OCR service whatever its own text. */

@@ -10,10 +10,11 @@ import { boardHref } from '../hiring';
 import { ShortlistToReview } from '../shortlist-review';
 
 // My Hiring (Phase 2, owner, 22 October 2026; the brief: "Show it only to people who are a hiring manager or interviewer
-// on something open"): the open vacancies the person hires for, with their applicants from Shortlisted on, and the
+// on something open"): the open vacancies the person hires for, with their applicants from the Final Review on, and the
 // interviews they sit on (to come, and those of the last 60 days, a scorecard due marked). Since 29 October 2026 (owner:
 // "Score Card for each of them"), a hiring manager's list holds their vacancies' interviews too, though not on the panel:
-// they give their scorecard on each, "Scorecard due" linking to it.
+// they give their scorecard on each, "Scorecard due" linking to it. Since 3 November 2026 (the recruitment tree), the
+// reviews waiting for them: Review 2 for the recruiter's manager, the Final Review for the hiring manager.
 
 export const metadata: Metadata = { title: 'My Hiring · People System' };
 
@@ -21,7 +22,8 @@ async function Mine() {
   const [user, loaded] = await Promise.all([getCurrentUser(), loadMyHiring()]);
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'hiring')}</Empty>;
   const { vacancies, interviews, feedbackDue } = loaded.value;
-  if (!vacancies.length && !interviews.length) return <Empty>Nothing to hire for or interview yet.</Empty>;
+  const toReview = loaded.value.toReview ?? [];
+  if (!vacancies.length && !interviews.length && !toReview.length) return <Empty>Nothing to hire for, review or interview yet.</Empty>;
   return (
     <div className="space-y-6">
       {feedbackDue > 0 && (
@@ -29,8 +31,8 @@ async function Mine() {
           {feedbackDue} {feedbackDue === 1 ? 'scorecard is' : 'scorecards are'} waiting for you.
         </p>
       )}
-      {/* the shortlists HR sent them, to accept or reject (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them") */}
-      <ShortlistToReview groups={loaded.value.toReview ?? []} hires={vacancies.length > 0} />
+      {/* the reviews waiting for them, to pass or reject (the tree, 3 November 2026: Review 2 for the recruiter's manager, the Final Review for the hiring manager) */}
+      <ShortlistToReview groups={toReview} reviews={vacancies.length > 0} />
       {vacancies.length > 0 && (
         <section aria-labelledby="my-vacancies" className="space-y-3">
           <h2 id="my-vacancies" className="text-lg font-semibold">
@@ -44,7 +46,7 @@ async function Mine() {
                 </Link>
                 <p className="text-xs text-muted">{v.number}</p>
                 <p className="text-sm">
-                  {HIRING_MANAGER_STAGES.map((s) => `${APPLICATION_STAGE_LABELS[s]} ${v.counts[s]}`).join(' · ')}
+                  {HIRING_MANAGER_STAGES.map((s) => `${APPLICATION_STAGE_LABELS[s]}: ${v.counts[s]}`).join(' · ')}
                 </p>
               </li>
             ))}

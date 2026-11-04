@@ -5,12 +5,32 @@ import {
   BOARD_STAGES,
   daysSince,
   feedbackSeen,
-  hiringStepOf,
-  interviewGateProblem,
   isScreeningCallResult,
-  screeningCallProblem,
-  SCREENING_CALL_LABELS,
   mobileSearchForms,
+  applicationStageLabel,
+  decisionProblems,
+  decisionText,
+  isDecisionStep,
+  isHoldOutcome,
+  OUTCOME_EFFECT,
+  rejectReasonsOf,
+  rejectReasonsText,
+  reviewDoneNotice,
+  reviewTemplateValues,
+  reviewWaitingEmail,
+  reviewWaitingNotice,
+  stageAfter,
+  STEP_ACTOR,
+  STEP_ACTOR_LABELS,
+  STEP_OUTCOMES_OF,
+  takesStep,
+  takesStepProblem,
+  type DecisionStep,
+  type RejectReason,
+  type ReviewStage,
+  type StepDecisionInput,
+  type StepDecisionView,
+  type StepOutcome,
   offerable,
   rejectionMail,
   restorable,
@@ -33,10 +53,8 @@ import {
   type ApplicationView,
   type EmploymentType,
   type HandStage,
-  type ScreeningCallResult,
   type ScreeningCallView,
   type WorkArrangement,
-  shortlistTemplateValues
 } from '@trendlix/shared';
 import { isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -63,8 +81,7 @@ import {
   byExperience,
   EARLIER_CV_SELECT,
   earlierCvView,
-  hiringStepInput,
-  hiringStepWhere,
+  holdWhere,
   minYearsWhere,
   money,
   questionsOf,
@@ -75,9 +92,10 @@ import type { ListApplicationsDto } from './recruitment.dto.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
 import { NOTES_GONE } from './screening-notes.js';
 import { ConfigService } from '@nestjs/config';
-import { reviewNotice, shortlistEmail, shortlistNotice, suggestionShown, type HiringBatchResult } from '@trendlix/shared';
+import { suggestionShown, type HiringBatchResult } from '@trendlix/shared';
+import { reviewersOf, treeCaller, treeReviewers, type VacancyReviewers } from './recruitment-tree-access.js';
 import { webOriginOf } from '../employee-access/employee-access.service.js';
-import { BATCH_NOT_FOUND, batchIds, reviewSkip, shortlistSkip, skippedOf } from './hiring-batches.js';
+import { BATCH_NOT_FOUND, batchIds, decideSkip, sendSkip, skippedOf } from './hiring-batches.js';
 import { cvLinkedinOf } from './cv-fit-inputs.js';
 
 // The applicants (owner, 22 October 2026: "where will we include the ATS?"; packages/shared recruitment.ts): listed by
@@ -91,11 +109,12 @@ import { cvLinkedinOf } from './cv-fit-inputs.js';
 // HR's notes; the interviews and the scorecards (an interviewer sees the others' once they gave theirs); the hiring
 // manager's suggestion (the next step or a rejection) for HR, cleared once HR moves the applicant; the rejection email
 // (an "Email the candidate" tick, off unless ticked); and the pipeline board.
-// The hiring steps (owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the shortlisted and accept or
-// reject them - HR Screening and scheduling"; packages/shared hiring-steps.ts): HR's screening call on a shortlisted
-// applicant the hiring manager accepted ("Screening call + result": passed or failed, with a comment), and the interview
-// only for one who passed it (moving them to Interview by hand too); where each shortlisted applicant stands on the
-// lists and the board, and the lists' ?step= filter.
+// The recruitment tree (owner, 3 November 2026: "Recrutment tree"; packages/shared recruitment-tree.ts): HR sends
+// applicants to Review 1 (one, or several at once); each step is decided by whoever takes it (the vacancy's recruiter,
+// the recruiter's manager, the hiring manager, HR; a Super Admin any), with its outcome, a rejection's reasons and the
+// written feedback, kept as a decision; a pass moves them on (a review nobody is named for skipped), a rejection or a
+// decline closes them, Unreachable and Pending keep them at their step (the lists' ?hold=). The next reviewer is told
+// once a batch, HR once a batch of the hiring manager's Final Review.
 
 const NOT_FOUND = 'Applicant not found.';
 const LIST_CAP = 1000;
@@ -109,6 +128,23 @@ function byMatch<T extends { matchPercent: number | null; cvMatchPercent: number
     .map((row, i) => ({ row, i, k: key(row) }))
     .sort((a, b) => (a.k === null ? (b.k === null ? a.i - b.i : 1) : b.k === null ? -1 : b.k - a.k || a.i - b.i))
     .map((x) => x.row);
+}
+
+/** A decision as an application's page shows it: its feedback hidden from an interviewer (3 November 2026). */
+function decisionView(
+  d: { id: string; stage: string; outcome: string; reasons: string[]; feedback: string | null; by: { id: string; email: string } | null; at: Date },
+  names: Awaited<ReturnType<typeof userNames>>,
+  hideFeedback: boolean,
+): StepDecisionView {
+  return {
+    id: d.id,
+    stage: d.stage as StepDecisionView['stage'],
+    outcome: d.outcome as StepOutcome,
+    reasons: d.reasons as RejectReason[],
+    feedback: hideFeedback ? null : d.feedback,
+    by: userRef(d.by, names),
+    at: d.at.toISOString(),
+  };
 }
 
 /** A job offer still open: drafted or sent. */
@@ -132,6 +168,8 @@ const DETAIL_INCLUDE = {
       departmentId: true,
       gradeId: true,
       hiringManagerId: true,
+      // its recruiter (the recruitment tree, 3 November 2026)
+      recruiterId: true,
       shiftId: true,
       employmentType: true,
       workArrangement: true,
@@ -152,6 +190,8 @@ const DETAIL_INCLUDE = {
   suggestedBy: { select: { id: true, email: true } },
   // who made HR's screening call (29 October 2026: "Screening call + result")
   screeningCallBy: { select: { id: true, email: true } },
+  // every decision in the recruitment tree (3 November 2026)
+  decisions: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
   // moved from a general CV (22 October 2026): where that CV came from
   generalCv: { select: { source: true } },
 } satisfies Prisma.JobApplicationInclude;
@@ -161,12 +201,13 @@ type DetailRow = Prisma.JobApplicationGetPayload<{ include: typeof DETAIL_INCLUD
 /** What a step reads of an application (an applicant's page's row, or a batch's). */
 type StepRow = Pick<DetailRow, 'id' | 'number' | 'filteredOut'> & { vacancy: Pick<DetailRow['vacancy'], 'number'> };
 
-/** A vacancy as the hiring steps' batches read it (29 October 2026): who hires for it, and whether it is C-level. */
+/** A vacancy as the batches read it: who recruits and hires for it, and whether it is C-level. */
 const BATCH_VACANCY = {
   id: true,
   number: true,
   title: true,
   hiringManagerId: true,
+  recruiterId: true,
   grade: { select: { confidential: true } },
   jobTitle: { select: { minGrade: { select: { confidential: true } } } },
 } satisfies Prisma.VacancySelect;
@@ -226,8 +267,8 @@ export class ApplicationsService {
           query.source ? { source: query.source } : {},
           filtered === 'hide' ? { filteredOut: false } : filtered === 'only' ? { filteredOut: true } : {},
           query.minCvMatch !== undefined ? { cvMatchPercent: { gte: query.minCvMatch } } : {},
-          // where a shortlisted applicant stands (29 October 2026: "Manager view the shortlisted and accept or reject them")
-          query.step ? hiringStepWhere(query.step) : {},
+          // kept at their step: Unreachable or Pending (the recruitment tree, 3 November 2026)
+          query.hold ? holdWhere(query.hold) : {},
           // the search also looks in the CVs' text (22 October 2026: "search by CV content"), and a mobile as typed in
           // any form (kept as +201012345678 since the careers form's mobile field, 22 October 2026)
           text
@@ -303,25 +344,32 @@ export class ApplicationsService {
       this.prisma,
       a.steps.map((s) => s.by),
     );
+    const names2 = await userNames(
+      this.prisma,
+      a.decisions.map((d) => d.by),
+    );
     const stage = a.stage as ApplicationStage;
     const manages = c.manages;
     const viewer = viewerOf(c, a);
-    const participant = viewer === 'hiring_manager' || viewer === 'interviewer';
+    const participant = viewer === 'hiring_manager' || viewer === 'interviewer' || viewer === 'reviewer';
     const openOffer = a.offers.some((o) => o.status === 'draft' || o.status === 'sent');
     const settled = stage === 'hired' || stage === 'rejected';
-    // the interview only once the hiring manager accepted them and they passed HR's screening call (29 October 2026)
-    const gate = interviewGateProblem(hiringStepInput(a));
+    // the recruitment tree (3 November 2026): who takes their step, and whether the caller does
+    const reviewers = await reviewersOf(this.prisma, a.vacancy);
+    const tree = treeCaller(c, reviewers);
+    const decides = isDecisionStep(stage) && !a.filteredOut && takesStep(stage, tree);
     const can: ApplicationCan = {
-      shortlist: manages && stageMoveProblem(stage, 'shortlisted', { filteredOut: a.filteredOut, openOffer }) === null,
-      interview: manages && stageMoveProblem(stage, 'interview', { filteredOut: a.filteredOut, openOffer }) === null && gate === null,
+      sendToReview: manages && stageMoveProblem(stage, 'review_1', { filteredOut: a.filteredOut, openOffer }) === null,
+      decide: decides && isDecisionStep(stage) ? { stage, outcomes: [...STEP_OUTCOMES_OF[stage]], reasons: [...rejectReasonsOf(stage)] } : null,
       reject: manages && stageMoveProblem(stage, 'rejected', { filteredOut: a.filteredOut, openOffer }) === null,
       restore: manages && restorable({ stage, filteredOut: a.filteredOut }),
-      // only after an interview marked done (1 November 2026)
+      // at Offer: the Technical Interview accepted them (3 November 2026)
       makeOffer: manages && offerable({ stage, filteredOut: a.filteredOut, interviewsDone: a._count.interviews }) && !openOffer,
       // the notes became screening comments (24 October 2026): kept read only
       editNotes: false,
-      scheduleInterview: manages && !a.filteredOut && !settled,
-      suggest: viewer === 'hiring_manager' && !settled,
+      // the Technical Interview's setting (3 November 2026): scheduled once HR Screening accepted them
+      scheduleInterview: manages && !a.filteredOut && (stage === 'interview' || stage === 'offer'),
+      suggest: viewer === 'hiring_manager' && (stage === 'interview' || stage === 'offer'),
       emailOnReject: manages && (await this.mail.ready()),
       // Delete applicant (owner, 25 October 2026: "Vacancy alone - applicant alone - superadmin only"); never a developer
       delete: isSuperAdmin(c.user) && !c.user.developer,
@@ -379,9 +427,7 @@ export class ApplicationsService {
       cvReading: a.cv ? this.readings.view(a.cvReading, a.vacancy.keySkills, cvFitFrom(a.cvFit), await agencyMarksOf(this.prisma)) : null,
       // Other Open Positions (25 October 2026): HR, the CEO and a Super Admin only
       openPositions: c.reads ? ((await this.fits.shownFor([{ kind: 'application', id: a.id, candidateId: a.candidateId }], c.user)).get(a.id) ?? []) : null,
-      history: a.steps.map(
-        (s): ApplicationStepView => ({ event: s.event as ApplicationEvent, stage: s.stage as ApplicationStage, note: s.note, by: userRef(s.by, names), at: s.at.toISOString() }),
-      ),
+      history: a.steps.map((s): ApplicationStepView => ({ event: s.event as ApplicationEvent, stage: s.stage, note: s.note, by: userRef(s.by, names), at: s.at.toISOString() })),
       offers: a.offers,
       employeeId: a.employeeId,
       viewer,
@@ -389,11 +435,13 @@ export class ApplicationsService {
       feedback,
       feedbackHidden: allFeedback.length - feedback.length,
       suggestion,
-      // the hiring steps (29 October 2026): the screening call, whether a hiring manager reviews the shortlist, and why an
-      // interview can't be scheduled yet (said to HR, who schedules)
+      // HR's screening call of before the tree (29 October 2026), kept to read
       screeningCall,
-      hasHiringManager: !!a.vacancy.hiringManagerId,
-      interviewBlocked: manages ? gate : null,
+      hasHiringManager: !!reviewers.hiringManagerId,
+      // the recruitment tree (3 November 2026): every decision (its feedback never an interviewer's to read), and who
+      // takes their step now
+      decisions: a.decisions.map((d) => decisionView(d, names2, viewer === 'interviewer')),
+      nextBy: await this.nextBy(stage, a.filteredOut, reviewers),
       // their candidate profile (22 October 2026): HR, the CEO and a Super Admin only, never a hiring manager or an interviewer
       candidateProfile: c.reads ? await this.candidates.ofApplication({ id: a.id, candidateId: a.candidateId }, c.user) : null,
       position: {
@@ -464,26 +512,150 @@ export class ApplicationsService {
   }
 
   /**
-   * Moves an applicant by hand (shared stageMoveProblem): shortlisted, interview, or rejected with a reason; refused in
-   * words when the move doesn't fit their stage (409).
+   * Moves an applicant by hand (shared stageMoveProblem; the recruitment tree, 3 November 2026): to Review 1 from
+   * Applicants (the recruiter told when someone else sent them), or rejected from any step with one or more of its
+   * reasons and the written feedback (kept as a decision at a step that takes them); refused in words when the move
+   * doesn't fit their stage (409).
    */
-  async move(id: string, to: HandStage, reason: string | null | undefined, user: SessionUser, email = false): Promise<ApplicationView & { emailed: RejectionEmail }> {
+  async move(
+    id: string,
+    to: HandStage,
+    rejection: { reasons?: string[]; feedback?: string | null } | null,
+    user: SessionUser,
+    email = false,
+  ): Promise<ApplicationView & { emailed: RejectionEmail }> {
     const { a } = await this.managedRow(id, user);
     const stage = a.stage as ApplicationStage;
     const openOffer = a.offers.some((o) => o.status === 'draft' || o.status === 'sent');
     const problem = stageMoveProblem(stage, to, { filteredOut: a.filteredOut, openOffer });
     if (problem) throw new ConflictException(problem);
-    // to Interview only once the hiring manager accepted them and they passed the screening call (29 October 2026)
-    const gate = to === 'interview' ? interviewGateProblem(hiringStepInput(a)) : null;
-    if (gate) throw new ConflictException(gate);
-    if (to === 'rejected' && !reason) throw new BadRequestException(['Say why they are rejected.']);
-    const data: Prisma.JobApplicationUpdateManyMutationInput =
-      to === 'rejected' ? { stage: 'rejected', rejectedFrom: stage, rejectReason: reason ?? null } : { stage: to, rejectedFrom: null, rejectReason: null };
-    await this.step(a, stage, data, { event: to, stage: to, note: to === 'rejected' ? (reason ?? null) : null }, user);
-    const emailed = to === 'rejected' && email ? await this.emailRejection(a, user) : 'not_sent';
-    // the hiring manager told, a batch of one (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them")
-    if (to === 'shortlisted') await this.tellHiringManager(a.vacancy, [a.fullName], user);
+    if (to === 'review_1') {
+      await this.step(a, stage, { stage: 'review_1', rejectedFrom: null, rejectReason: null }, { event: 'to_review', stage: 'review_1', note: null }, user);
+      await this.tellReviewer('review_1', a.vacancy, await reviewersOf(this.prisma, a.vacancy), [a.fullName], user);
+      return { ...(await this.get(id, user)), emailed: 'not_sent' };
+    }
+    // rejected (3 November 2026: "Reason list + feedback"): the reasons of their step, its feedback
+    const at: DecisionStep | 'applied' = isDecisionStep(stage) ? stage : 'applied';
+    const problems = decisionProblems(at, { outcome: 'rejected', reasons: rejection?.reasons ?? [], feedback: rejection?.feedback ?? null });
+    if (problems.length) throw new BadRequestException(problems);
+    await this.decided(a, stage, at, { outcome: 'rejected', reasons: rejection?.reasons ?? [], feedback: rejection?.feedback ?? null }, 'rejected', user, stage !== 'offer');
+    const emailed = email ? await this.emailRejection(a, user) : 'not_sent';
     return { ...(await this.get(id, user)), emailed };
+  }
+
+  /**
+   * A step decided (the recruitment tree, 3 November 2026: "Recrutment tree"): by whoever takes it (takesStepProblem:
+   * 403 for anyone else), its outcome checked with its reasons and feedback (400), the applicant still at it (409). A pass
+   * moves them on (Review 2 skipped without the recruiter's manager, the Final Review without a hiring manager), a
+   * rejection or a decline closes them, Unreachable and Pending keep them at it. The next reviewer told; HR told of the
+   * hiring manager's Final Review. A rejection may email the candidate (HR only).
+   */
+  async decide(id: string, dto: StepDecisionInput & { email?: boolean }, user: SessionUser): Promise<ApplicationView & { emailed: RejectionEmail }> {
+    const c = await this.caller(user);
+    const a = await this.row(id, c);
+    const stage = a.stage as ApplicationStage;
+    if (a.filteredOut) throw new ConflictException('They failed a must-have question and were filtered out: restore them first.');
+    if (!isDecisionStep(stage)) throw new ConflictException(`They are at ${APPLICATION_STAGE_LABELS[stage]}: there is no step to decide.`);
+    const reviewers = await reviewersOf(this.prisma, a.vacancy);
+    const refusal = takesStepProblem(stage, treeCaller(c, reviewers));
+    if (refusal) throw new ForbiddenException(refusal);
+    const problems = decisionProblems(stage, dto);
+    if (problems.length) throw new BadRequestException(problems);
+    const to = this.stageOf(stage, dto.outcome, reviewers);
+    await this.decided(a, stage, stage, dto, to, user);
+    await this.afterDecisions(a.vacancy, stage, to, dto.outcome, [a.fullName], reviewers, c, user);
+    const emailed = dto.outcome === 'rejected' && dto.email && c.manages ? await this.emailRejection(a, user) : 'not_sent';
+    return { ...(await this.view(await this.row(id, c), c)), emailed };
+  }
+
+  /** Where an outcome at a step takes the applicant: on, closed (rejected or declined), or kept there. */
+  private stageOf(step: DecisionStep, outcome: StepOutcome, reviewers: VacancyReviewers): ApplicationStage {
+    const effect = OUTCOME_EFFECT[outcome];
+    if (effect === 'next') return stageAfter(step, treeReviewers(reviewers));
+    return effect === 'hold' ? step : 'rejected';
+  }
+
+  /**
+   * A decision kept: the application moved (or held) if still at `stage`, the decision (at a decision step), a step of its
+   * history, the audit log. The hiring manager's suggestion is done with.
+   */
+  private async decided(
+    a: StepRow,
+    stage: ApplicationStage,
+    at: DecisionStep | 'applied',
+    d: StepDecisionInput,
+    to: ApplicationStage,
+    user: SessionUser,
+    keep = true,
+  ): Promise<void> {
+    const effect = OUTCOME_EFFECT[d.outcome];
+    const reasons = d.reasons ?? [];
+    const feedback = d.feedback?.trim() || null;
+    const data: Prisma.JobApplicationUpdateManyMutationInput =
+      effect === 'hold'
+        ? { hold: d.outcome }
+        : to === 'rejected'
+          ? { stage: 'rejected', rejectedFrom: stage, hold: null, rejectReason: effect === 'decline' ? 'Declined by the candidate' : rejectReasonsText(reasons) || null }
+          : { stage: to, hold: null, rejectedFrom: null, rejectReason: null };
+    const label = (x: string) => applicationStageLabel(x);
+    const note = decisionText({ stage: at, outcome: d.outcome, reasons: reasons as RejectReason[] }, label);
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.jobApplication.updateMany({
+        where: { id: a.id, stage, filteredOut: a.filteredOut },
+        data: { ...data, suggestion: null, suggestionNote: null, suggestedById: null, suggestedAt: null },
+      });
+      if (!count) throw new ConflictException(CHANGED_MEANWHILE);
+      if (keep) await tx.jobApplicationDecision.create({ data: { applicationId: a.id, stage: at, outcome: d.outcome, reasons, feedback, byId: user.id } });
+      await tx.jobApplicationStep.create({ data: { applicationId: a.id, event: 'decided', stage: effect === 'hold' ? stage : to, note, byId: user.id } });
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'decide',
+      entityType: APPLICATION_ENTITY,
+      entityId: a.id,
+      diff: {
+        number: a.number,
+        vacancy: a.vacancy.number,
+        step: at,
+        outcome: d.outcome,
+        ...(reasons.length && { reasons: rejectReasonsText(reasons) }),
+        ...(feedback && { feedback: '(written)' }),
+        ...(effect !== 'hold' && { stage: { from: stage, to } }),
+      },
+    });
+  }
+
+  /**
+   * Who is told after decisions at a step (once a batch): the next reviewer when they moved on to a review, HR when the
+   * hiring manager decided their Final Review.
+   */
+  private async afterDecisions(
+    v: Parameters<typeof isConfidentialVacancy>[0] & { id: string; number: string; title: string },
+    step: DecisionStep,
+    to: ApplicationStage,
+    outcome: StepOutcome,
+    names: readonly string[],
+    reviewers: VacancyReviewers,
+    c: RecruitmentCaller,
+    user: SessionUser,
+    counts: { passed: number; rejected: number } | null = null,
+  ): Promise<void> {
+    if (!names.length) return;
+    if (to === 'review_2' || to === 'final_review') await this.tellReviewer(to, v, reviewers, names, user);
+    if (step === 'final_review' && !c.manages) {
+      const n = counts ?? { passed: OUTCOME_EFFECT[outcome] === 'next' ? names.length : 0, rejected: OUTCOME_EFFECT[outcome] === 'next' ? 0 : names.length };
+      await this.tellHr(v, reviewDoneNotice(v.title, APPLICATION_STAGE_LABELS.final_review, n.passed, n.rejected), `/recruitment/vacancies/${v.id}?stage=screening`);
+    }
+  }
+
+  /** Who takes the step an applicant is at now, in words ("The recruiter’s manager: Sara Ali"); null when nobody does. */
+  private async nextBy(stage: ApplicationStage, filteredOut: boolean, r: VacancyReviewers): Promise<string | null> {
+    if (filteredOut || !(isDecisionStep(stage) || stage === 'applied')) return null;
+    const actor = STEP_ACTOR[stage];
+    const id = actor === 'recruiter' ? r.recruiterId : actor === 'recruiter_manager' ? r.recruiterManagerId : actor === 'hiring_manager' ? r.hiringManagerId : null;
+    if (!id) return actor === 'hr' ? STEP_ACTOR_LABELS.hr : `HR (no ${STEP_ACTOR_LABELS[actor].replace(/^The /, '').toLowerCase()} named)`;
+    const e = await this.prisma.employee.findUnique({ where: { id }, select: { fullNameEn: true } });
+    return e ? `${STEP_ACTOR_LABELS[actor]}: ${e.fullNameEn}` : STEP_ACTOR_LABELS[actor];
   }
 
   /**
@@ -520,7 +692,8 @@ export class ApplicationsService {
     const a = await this.row(id, c);
     if (viewerOf(c, a) !== 'hiring_manager') throw new ForbiddenException('Only the vacancy’s hiring manager suggests what happens next.');
     const stage = a.stage as ApplicationStage;
-    if (stage === 'hired' || stage === 'rejected') throw new ConflictException(`They are ${APPLICATION_STAGE_LABELS[stage].toLowerCase()}: there is nothing to suggest.`);
+    // the Final Review is theirs to decide (the recruitment tree, 3 November 2026): a suggestion at the interview or the offer
+    if (stage !== 'interview' && stage !== 'offer') throw new ConflictException(`They are at ${APPLICATION_STAGE_LABELS[stage]}: the hiring manager suggests at the Technical Interview or the Offer.`);
     await this.recordSuggestion(a, suggestion, note, user);
     // at Shortlisted, their review (29 October 2026: "Accepted by the hiring manager"); else "Hiring manager suggests: Reject"
     await this.tellHr(a.vacancy, { title: suggestionShown(suggestion, stage), body: `${a.fullName} · ${a.vacancy.title}` }, `/recruitment/applicants/${id}`);
@@ -547,19 +720,17 @@ export class ApplicationsService {
     );
   }
 
-  // ---------- the hiring steps: HR's shortlist, the hiring manager's review (29 October 2026) ----------
-  // The owner: "HR Filteration and shortlisting - Manager view the shortlisted and accept or reject them"; asked, "Tick
-  // several at once" and "One message per batch" (packages/shared hiring-steps.ts; hiring-batches.ts). A batch does each
-  // applicant as their page would, skips the others with why, and tells the other side once.
+  // ---------- the batches: HR's Send to Review 1, a review's decisions (the recruitment tree, 3 November 2026) ----------
+  // A batch does each applicant as their page would, skips the others with why, and tells the other side once ("Tick
+  // several at once", "One message per batch").
 
   /**
-   * HR (or a Super Admin) shortlists several of a vacancy's applicants at once: those at Applied, never one filtered out,
-   * each as Shortlist on their page (the stage rules, its history step, the audit log); the others skipped with why. The
-   * hiring manager told once for the batch.
+   * HR (or a Super Admin) sends several of a vacancy's applicants to Review 1 at once: those at Applicants, never one
+   * filtered out, each as Send to Review 1 on their page; the others skipped with why. The recruiter told once.
    */
-  async shortlistMany(vacancyId: string, ids: readonly string[], user: SessionUser): Promise<HiringBatchResult> {
+  async sendToReviewMany(vacancyId: string, ids: readonly string[], user: SessionUser): Promise<HiringBatchResult> {
     const c = await this.caller(user);
-    if (!c.manages) throw new ForbiddenException('Only HR (or a Super Admin) shortlists applicants.');
+    if (!c.manages) throw new ForbiddenException('Only HR (or a Super Admin) sends applicants to Review 1.');
     const v = await this.prisma.vacancy.findFirst({ where: { AND: [{ id: vacancyId }, vacancyWhere(user)] }, select: BATCH_VACANCY });
     if (!v) throw new NotFoundException('Vacancy not found.');
     const wanted = batchIds(ids);
@@ -571,13 +742,13 @@ export class ApplicationsService {
     const result: HiringBatchResult = { done: [], skipped: [] };
     for (const id of wanted) {
       const a = found.get(id);
-      const reason = a ? shortlistSkip({ ...a, openOffer: a.offers.length > 0 }, v.id) : BATCH_NOT_FOUND;
+      const reason = a ? sendSkip({ ...a, openOffer: a.offers.length > 0 }, v.id) : BATCH_NOT_FOUND;
       if (!a || reason) {
         result.skipped.push(skippedOf(id, a, reason ?? BATCH_NOT_FOUND));
         continue;
       }
       try {
-        await this.step(a, 'applied', { stage: 'shortlisted', rejectedFrom: null, rejectReason: null }, { event: 'shortlisted', stage: 'shortlisted', note: null }, user);
+        await this.step(a, 'applied', { stage: 'review_1', rejectedFrom: null, rejectReason: null }, { event: 'to_review', stage: 'review_1', note: null }, user);
       } catch (err) {
         if (!(err instanceof ConflictException)) throw err;
         result.skipped.push(skippedOf(id, a, err.message));
@@ -585,8 +756,10 @@ export class ApplicationsService {
       }
       result.done.push({ id, number: a.number, fullName: a.fullName });
     }
-    await this.tellHiringManager(
+    await this.tellReviewer(
+      'review_1',
       v,
+      await reviewersOf(this.prisma, v),
       result.done.map((d) => d.fullName),
       user,
     );
@@ -594,31 +767,37 @@ export class ApplicationsService {
   }
 
   /**
-   * The vacancy's hiring manager accepts (`next`) or rejects several of its shortlisted applicants at once, with a note:
-   * kept as their suggestion on each (recordSuggestion, audited); a rejection is HR's to confirm. The others skipped with
-   * why. HR told once for the batch. Only the hiring manager (403 for anyone else; 404 for a vacancy HR may not see).
+   * Several of a vacancy's applicants at one step decided at once (a review's Pass or Reject; HR Screening's and the
+   * interview's outcomes too), the same outcome, reasons and feedback for each, by whoever takes the step (403 for
+   * anyone else); each as Decide on their page; the others (another step, moved meanwhile) skipped with why. The next
+   * reviewer told once, HR once of a Final Review.
    */
-  async reviewMany(vacancyId: string, ids: readonly string[], decision: HiringSuggestion, note: string | null | undefined, user: SessionUser): Promise<HiringBatchResult> {
+  async decideMany(vacancyId: string, step: DecisionStep, ids: readonly string[], dto: StepDecisionInput, user: SessionUser): Promise<HiringBatchResult> {
     const c = await this.caller(user);
     const v = await this.prisma.vacancy.findFirst({ where: { AND: [{ id: vacancyId }, c.reads ? vacancyWhere(user) : {}] }, select: BATCH_VACANCY });
     if (!v) throw new NotFoundException('Vacancy not found.');
-    if (viewerOf(c, { vacancy: v }) !== 'hiring_manager') throw new ForbiddenException('Only the vacancy’s hiring manager accepts or rejects its shortlist.');
+    const reviewers = await reviewersOf(this.prisma, v);
+    const refusal = takesStepProblem(step, treeCaller(c, reviewers));
+    if (refusal) throw new ForbiddenException(refusal);
+    const problems = decisionProblems(step, dto);
+    if (problems.length) throw new BadRequestException(problems);
     const wanted = batchIds(ids);
     const rows = await this.prisma.jobApplication.findMany({
       where: { AND: [{ id: { in: wanted } }, visibleApplications(c)] },
-      select: { id: true, number: true, fullName: true, vacancyId: true, stage: true, filteredOut: true },
+      select: { id: true, number: true, fullName: true, vacancyId: true, stage: true, filteredOut: true, vacancy: { select: { number: true } } },
     });
     const found = new Map(rows.map((r) => [r.id, r]));
     const result: HiringBatchResult = { done: [], skipped: [] };
+    const to = this.stageOf(step, dto.outcome, reviewers);
     for (const id of wanted) {
       const a = found.get(id);
-      const reason = a ? reviewSkip(a, v.id) : BATCH_NOT_FOUND;
+      const reason = a ? decideSkip(a, v.id, step) : BATCH_NOT_FOUND;
       if (!a || reason) {
         result.skipped.push(skippedOf(id, a, reason ?? BATCH_NOT_FOUND));
         continue;
       }
       try {
-        await this.recordSuggestion(a, decision, note, user);
+        await this.decided(a, step, step, dto, to, user);
       } catch (err) {
         if (!(err instanceof ConflictException)) throw err;
         result.skipped.push(skippedOf(id, a, err.message));
@@ -626,68 +805,48 @@ export class ApplicationsService {
       }
       result.done.push({ id, number: a.number, fullName: a.fullName });
     }
-    const n = result.done.length;
-    if (n) await this.tellHr(v, reviewNotice(v.title, decision === 'next' ? n : 0, decision === 'reject' ? n : 0), `/recruitment/vacancies/${v.id}?stage=shortlisted`);
+    await this.afterDecisions(
+      v,
+      step,
+      to,
+      dto.outcome,
+      result.done.map((d) => d.fullName),
+      reviewers,
+      c,
+      user,
+    );
     return result;
   }
 
   /**
-   * The vacancy's hiring manager told once a batch is shortlisted (owner, 29 October 2026: "One message per batch"), in the
-   * app and by email when it is set up, to accept or reject them on My Hiring. Nobody when the vacancy has no hiring
-   * manager (or they have no active account), when they shortlisted them themselves, or when nobody was shortlisted. An
-   * email refused never fails the shortlist: it is logged.
+   * The reviewer told once a batch reaches their review (owner, 29 October 2026: "One message per batch"), in the app and
+   * by email when it is set up, to pass or reject them on My Hiring: the recruiter (Review 1), the recruiter's manager
+   * (Review 2), the hiring manager (Final Review). Nobody when none is named for it (or they have no active account),
+   * when they sent them themselves, or when nobody reached it. An email refused never fails the step: it is logged.
    */
-  private async tellHiringManager(v: { number: string; title: string; hiringManagerId: string | null }, names: readonly string[], user: SessionUser): Promise<void> {
-    if (!v.hiringManagerId || !names.length || user.employeeId === v.hiringManagerId) return;
-    const hm = await this.prisma.user.findFirst({ where: { employeeId: v.hiringManagerId, isActive: true }, select: { id: true, email: true, employee: { select: { workEmail: true } } } });
-    if (!hm) return;
-    await this.notifications.notify([hm.id], { kind: 'shortlist_review', ...shortlistNotice(v.title, names), link: MY_HIRING_LINK });
+  private async tellReviewer(stage: ReviewStage, v: { number: string; title: string }, r: VacancyReviewers, names: readonly string[], user: SessionUser): Promise<void> {
+    const who = stage === 'review_1' ? r.recruiterId : stage === 'review_2' ? r.recruiterManagerId : r.hiringManagerId;
+    if (!who || !names.length || user.employeeId === who) return;
+    const account = r.accounts.get(who);
+    if (!account) return;
+    // the recruiter works on the HR pages; the others on My Hiring
+    const path = stage === 'review_1' ? '/recruitment/applicants?stage=review_1' : MY_HIRING_LINK;
+    await this.notifications.notify([account.id], { kind: 'shortlist_review', ...reviewWaitingNotice(v.title, names, stage), link: path });
     try {
       if (!(await this.mail.ready())) return;
-      const link = `${webOriginOf(this.config)}${MY_HIRING_LINK}`;
-      const mail = shortlistEmail(v.title, names, link);
+      const link = `${webOriginOf(this.config)}${path}`;
+      const mail = reviewWaitingEmail(v.title, names, link, stage);
       // their work email, else the one they sign in with; HR's words when they wrote them (1 November 2026)
       await this.mail.send({
-        to: hm.employee?.workEmail || hm.email,
+        to: account.workEmail || account.email,
         replyTo: user.email,
         subject: mail.subject,
         text: mail.text,
-        template: { key: 'shortlist_review', values: shortlistTemplateValues(v.title, names, link) },
+        template: { key: 'shortlist_review', values: reviewTemplateValues(v.title, names, link) },
       });
     } catch (err) {
-      this.logger.warn(`The shortlist email of ${v.number} could not be sent: ${(err as Error).message}`);
+      this.logger.warn(`The review email of ${v.number} could not be sent: ${(err as Error).message}`);
     }
-  }
-
-  /**
-   * HR's screening call (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call + result"): on a
-   * shortlisted applicant the hiring manager accepted (a vacancy without one asks no acceptance), passed or failed with a
-   * comment; made again, it changes. Refused in words otherwise (409). Kept on the application and in the audit log (its
-   * comment never in words, as a screening comment's); the history's events stay the stages'.
-   */
-  async screeningCall(id: string, result: ScreeningCallResult, note: string | null | undefined, user: SessionUser): Promise<ApplicationView> {
-    const { a, c } = await this.managedRow(id, user);
-    const problem = screeningCallProblem(hiringStepInput(a));
-    if (problem) throw new ConflictException(problem);
-    const { count } = await this.prisma.jobApplication.updateMany({
-      where: { id, stage: 'shortlisted', filteredOut: false, suggestion: a.suggestion },
-      data: { screeningCall: result, screeningCallNote: note ?? null, screeningCallById: user.id, screeningCallAt: new Date() },
-    });
-    if (!count) throw new ConflictException('The applicant changed meanwhile. Reload the page to see where they stand.');
-    const before = isScreeningCallResult(a.screeningCall) ? a.screeningCall : null;
-    await this.audit.record({
-      userId: user.id,
-      action: 'screening_call',
-      entityType: APPLICATION_ENTITY,
-      entityId: id,
-      diff: {
-        number: a.number,
-        vacancy: a.vacancy.number,
-        result: before ? { from: SCREENING_CALL_LABELS[before], to: SCREENING_CALL_LABELS[result] } : SCREENING_CALL_LABELS[result],
-        ...(note && { note: '(comment)' }),
-      },
-    });
-    return this.view(await this.row(id, c), c);
   }
 
   // ---------- the pipeline board ----------
@@ -695,7 +854,7 @@ export class ApplicationsService {
   /**
    * A vacancy's pipeline board (the brief: "a board with a column per stage, and cards with name, match %, source and
    * days in stage"): HR, the CEO and a Super Admin see every applicant but those filtered out (counted apart); the
-   * vacancy's hiring manager from Shortlisted on, read only; 404 for anyone else.
+   * vacancy's hiring manager from their Final Review on, read only; 404 for anyone else.
    */
   async board(vacancyId: string, user: SessionUser, now = new Date()): Promise<VacancyBoard> {
     const c = await this.caller(user);
@@ -718,8 +877,8 @@ export class ApplicationsService {
         stage: true,
         filteredOut: true,
         suggestion: true,
-        // HR's screening call, for where a shortlisted applicant stands (29 October 2026)
-        screeningCall: true,
+        // kept at their step: Unreachable or Pending (the recruitment tree, 3 November 2026)
+        hold: true,
         createdAt: true,
         steps: { select: { stage: true, at: true }, orderBy: { at: 'asc' } },
         offers: { where: OPEN_OFFER, select: { id: true } },
@@ -743,7 +902,8 @@ export class ApplicationsService {
       : new Map<string, CandidateBadge>();
     // another open vacancy the CV fits better (25 October 2026), as the list's badge
     const better = c.reads ? await this.fits.badges(rows, user) : new Map<string, BetterFitBadge>();
-    const stages = viewer === 'hiring_manager' ? BOARD_STAGES.filter((s) => s !== 'applied') : [...BOARD_STAGES];
+    // a hiring manager's board from their Final Review on (the recruitment tree, 3 November 2026)
+    const stages = viewer === 'hiring_manager' ? BOARD_STAGES.filter((s) => !['applied', 'review_1', 'review_2'].includes(s)) : [...BOARD_STAGES];
     const cards = rows.map(
       (r): BoardCard => ({
         id: r.id,
@@ -762,8 +922,7 @@ export class ApplicationsService {
         upcomingInterviews: r.interviews.length,
         interviewsDone: r._count.interviews,
         suggestion: (r.suggestion as HiringSuggestion | null) ?? null,
-        // waiting for the manager, the screening call due, ready to interview… (29 October 2026, hiring-steps.ts)
-        hiringStep: hiringStepOf(hiringStepInput({ ...r, vacancy: v })),
+        hold: isHoldOutcome(r.hold) ? r.hold : null,
         candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null,
         verdict: verdicts.get(r.id) ?? null,
         // a new CV sent by applying again in the last 7 days (25 October 2026)
@@ -823,8 +982,11 @@ export class ApplicationsService {
     user: SessionUser,
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      // HR acted: the hiring manager's suggestion is done with
-      const { count } = await tx.jobApplication.updateMany({ where: { id: a.id, stage, filteredOut: a.filteredOut }, data: { ...data, suggestion: null, suggestionNote: null, suggestedById: null, suggestedAt: null } });
+      // HR acted: the hiring manager's suggestion is done with; a new stage, its hold too (3 November 2026)
+      const { count } = await tx.jobApplication.updateMany({
+        where: { id: a.id, stage, filteredOut: a.filteredOut },
+        data: { ...data, ...(data.stage !== undefined && { hold: null }), suggestion: null, suggestionNote: null, suggestedById: null, suggestedAt: null },
+      });
       if (!count) throw new ConflictException('The applicant changed meanwhile. Reload the page to see where they stand.');
       await tx.jobApplicationStep.create({ data: { applicationId: a.id, ...step, byId: user.id } });
     });

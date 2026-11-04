@@ -26,7 +26,6 @@ import {
   columnSortText,
   nextSort,
   sortApplicants,
-  hiringStepBadge,
 } from './recruitment';
 
 // Recruitment on the site (owner, 22 October 2026: "where will we include the ATS?"; "HR creates a vacancy and the CEO
@@ -56,9 +55,9 @@ describe('the lists', () => {
   });
 
   it('read the applicants filters, refusing what isn’t one', () => {
-    expect(readApplicantsQuery({ stage: 'shortlisted', minMatch: '70', source: 'linkedin', filtered: 'only', vacancyId: ID })).toEqual({
+    expect(readApplicantsQuery({ stage: 'final_review', minMatch: '70', source: 'linkedin', filtered: 'only', vacancyId: ID })).toEqual({
       vacancyId: ID,
-      stage: 'shortlisted',
+      stage: 'final_review',
       minMatch: 70,
       minYears: null,
       source: 'linkedin',
@@ -69,7 +68,7 @@ describe('the lists', () => {
       dir: '',
       skill: '',
       verdict: '',
-      step: '',
+      hold: '',
     });
     expect(readApplicantsQuery({ stage: 'boss', minMatch: '170', source: 'x', filtered: 'x', vacancyId: '../x' })).toEqual({
       vacancyId: '',
@@ -84,7 +83,7 @@ describe('the lists', () => {
       dir: '',
       skill: '',
       verdict: '',
-      step: '',
+      hold: '',
     });
     expect(applicantsApiPath({ vacancyId: ID, stage: 'offer', minMatch: 70, filtered: 'hide' })).toBe(`/recruitment/applications?vacancyId=${ID}&stage=offer&minMatch=70`);
     expect(applicantsHref(APPLICANTS_PATH, { stage: 'hired', filtered: 'all' })).toBe('/recruitment/applicants?stage=hired&filtered=all');
@@ -255,7 +254,7 @@ describe('sorting the applicants by a column', () => {
     const rows = [
       row('Nour', { cvMatchPercent: 70, stage: 'interview', yearsExperience: 3, appliedAt: '2026-10-20T10:00:00.000Z' }),
       row('amal', { matchPercent: 90, cvMatchPercent: 40, stage: 'applied', fromCv: { status: 'read', experienceMonths: 60, latestTitle: 'Designer', latestCompany: null } }),
-      row('Karim', { stage: 'shortlisted', filteredOut: true, fromCv: { status: 'read', experienceMonths: null, latestTitle: 'Account Manager', latestCompany: null } }),
+      row('Karim', { stage: 'review_1', filteredOut: true, fromCv: { status: 'read', experienceMonths: null, latestTitle: 'Account Manager', latestCompany: null } }),
       row('Bassem'),
     ];
     expect(names(sortApplicants(rows, { sort: '', dir: '' }))).toEqual(['Nour', 'amal', 'Karim', 'Bassem']);
@@ -273,23 +272,14 @@ describe('sorting the applicants by a column', () => {
   });
 });
 
-describe('the hiring steps on the lists', () => {
-  // owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the shortlisted and accept or reject them - HR
-  // Screening and scheduling"
-  it('reads the Hiring step filter, sending it to the API and keeping it in the links', () => {
-    expect(readApplicantsQuery({ step: 'call_due' }).step).toBe('call_due');
-    expect(readApplicantsQuery({ step: 'maybe' }).step).toBe('');
-    expect(applicantsApiPath({ vacancyId: ID, step: 'ready' })).toBe(`/recruitment/applications?vacancyId=${ID}&step=ready`);
-    expect(applicantsHref(APPLICANTS_PATH, { stage: 'shortlisted', step: 'to_review' })).toBe('/recruitment/applicants?stage=shortlisted&step=to_review');
-  });
-
-  it('badges each step in its tone, nothing at another stage', () => {
-    expect(hiringStepBadge('to_review')).toEqual({ label: 'Waiting for the manager', className: 'bg-canvas text-muted' });
-    expect(hiringStepBadge('manager_rejected')).toEqual({ label: 'Rejected by the manager', className: 'bg-warn-soft text-warn' });
-    expect(hiringStepBadge('call_due')).toEqual({ label: 'Screening call due', className: 'bg-accent-soft text-accent' });
-    expect(hiringStepBadge('call_failed')).toEqual({ label: 'Failed the screening call', className: 'bg-warn-soft text-warn' });
-    expect(hiringStepBadge('ready')).toEqual({ label: 'Ready to interview', className: 'bg-ok-soft text-ok' });
-    expect(hiringStepBadge(null)).toBeNull();
-    expect(hiringStepBadge(undefined)).toBeNull();
+describe('the recruitment tree on the lists', () => {
+  // owner, 3 November 2026: "Recrutment tree": Pending and Unreachable stay at their step
+  it('reads the hold filter, sending it to the API and keeping it in the links', () => {
+    expect(readApplicantsQuery({ hold: 'unreachable' }).hold).toBe('unreachable');
+    expect(readApplicantsQuery({ hold: 'maybe' }).hold).toBe('');
+    expect(applicantsApiPath({ vacancyId: ID, hold: 'pending' })).toBe(`/recruitment/applications?vacancyId=${ID}&hold=pending`);
+    expect(applicantsHref(APPLICANTS_PATH, { stage: 'interview', hold: 'pending' })).toBe('/recruitment/applicants?stage=interview&hold=pending');
+    expect(readApplicantsQuery({ stage: 'final_review' }).stage).toBe('final_review');
+    expect(readApplicantsQuery({ stage: 'shortlisted' }).stage).toBe('');
   });
 });

@@ -185,7 +185,7 @@ describe('Deleting applicants and vacancies with applicants (e2e)', () => {
 
     it('goes when rejected, with its steps, comments, interviews past and cancelled, draft offer and notifications; its last record taking the profile', async () => {
       const a = await apply(A, 'rana');
-      ok(await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'rejected', reason: 'Made-up reason' }));
+      ok(await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'rejected', reasons: ['attitude'], feedback: 'Made-up reason' }));
       ok(await post('hr', '/recruitment/comments', { applicationId: a.id, comment: 'Made-up comment', verdict: 'maybe' }), 201);
       await interview(a.id, 'done', new Date(Date.now() - 3 * 86_400_000));
       await interview(a.id, 'cancelled', new Date(Date.now() + 5 * 86_400_000));
@@ -219,7 +219,7 @@ describe('Deleting applicants and vacancies with applicants (e2e)', () => {
 
     it('stays on record once an offer was sent to them', async () => {
       const a = await apply(A, 'omar');
-      ok(await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'shortlisted' }));
+      ok(await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'review_1' }));
       await offer(a.id, 'sent', 2);
       const d = ok(await get('superAdmin', `/recruitment/applications/${a.id}/deletion`)).body as ApplicationDeletion;
       expect(d.refusal).toBe('An offer was sent to them, so the application stays on record.');
@@ -286,7 +286,7 @@ describe('Deleting applicants and vacancies with applicants (e2e)', () => {
       const C = await openVacancy();
       const lone = await apply(C, 'lone');
       const zaid = await apply(C, 'zaid');
-      ok(await post('hr', `/recruitment/applications/${zaid.id}/stage`, { to: 'rejected', reason: 'Made-up reason' }));
+      ok(await post('hr', `/recruitment/applications/${zaid.id}/stage`, { to: 'rejected', reasons: ['attitude'], feedback: 'Made-up reason' }));
       await interview(zaid.id, 'done', new Date(Date.now() - 86_400_000));
       // zaid applied to another job too: their profile stays
       const zaidA = await apply(A, 'zaid');
@@ -331,7 +331,7 @@ describe('Deleting applicants and vacancies with applicants (e2e)', () => {
       const D = await openVacancy();
       const kept = await apply(D, 'kamal');
       const other = await apply(D, 'mai');
-      ok(await post('hr', `/recruitment/applications/${kept.id}/stage`, { to: 'shortlisted' }));
+      ok(await post('hr', `/recruitment/applications/${kept.id}/stage`, { to: 'review_1' }));
       const sent = await offer(kept.id, 'sent', 3);
       const line = `${kept.number}: an offer was sent (${sent.number})`;
       const d = ok(await get('superAdmin', `/recruitment/vacancies/${D.id}/deletion`)).body as VacancyDeletion;

@@ -58,3 +58,25 @@ export async function signIn(app: INestApplication<App>, email: string, userAgen
 export async function interviewDone(prisma: PrismaService, applicationId: string): Promise<void> {
   await prisma.interview.create({ data: { applicationId, startsAt: new Date(Date.now() - 86_400_000), minutes: 30, kind: 'phone', status: 'done' } });
 }
+
+/**
+ * Walks an application through the recruitment tree to `to` (owner, 3 November 2026; packages/shared
+ * recruitment-tree.ts), each step as its page would: Applicants sent to Review 1, each review passed, HR Screening and
+ * the Technical Interview accepted. `session` takes each step: a Super Admin's takes any; HR's those nobody is named for.
+ */
+export async function walkTo(app: INestApplication<App>, session: string, applicationId: string, to: 'review_1' | 'review_2' | 'final_review' | 'screening' | 'interview' | 'offer'): Promise<void> {
+  const http = () => request(app.getHttpServer());
+  for (let i = 0; i < 10; i++) {
+    const a = (await http().get(`/api/recruitment/applications/${applicationId}`).set('Cookie', session).expect(200)).body as { stage: string };
+    if (a.stage === to) return;
+    const step =
+      a.stage === 'applied'
+        ? http().post(`/api/recruitment/applications/${applicationId}/stage`).send({ to: 'review_1' })
+        : http()
+            .post(`/api/recruitment/applications/${applicationId}/decide`)
+            .send({ outcome: ['review_1', 'review_2', 'final_review'].includes(a.stage) ? 'passed' : 'accepted' });
+    const res = await step.set('Cookie', session);
+    if (res.status !== 200) throw new Error(`walkTo ${to}: at ${a.stage}, ${res.status} ${JSON.stringify(res.body)}`);
+  }
+  throw new Error(`walkTo ${to}: never got there`);
+}

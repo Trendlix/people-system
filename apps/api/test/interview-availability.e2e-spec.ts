@@ -109,15 +109,8 @@ describe('Interviewers’ availability (e2e)', () => {
     sessions[key] = await signIn(app, emails[key]);
   }
 
-  /**
-   * The hiring steps before a first interview (owner, 29 October 2026: "Manager view the shortlisted and accept or reject
-   * them - HR Screening and scheduling"; hiring-steps.ts): shortlisted (as made here), accepted by Ahmed (the vacancy's
-   * hiring manager), and HR's screening call passed.
-   */
-  async function readyToInterview(id: string) {
-    await as('ahmed').post(`/recruitment/applications/${id}/suggest`, { suggestion: 'next' }).expect(200);
-    await as('hr').post(`/recruitment/applications/${id}/screening-call`, { result: 'passed' }).expect(200);
-  }
+  /** The recruitment tree before the interview (3 November 2026): made at the Technical Interview here, nothing left to take. */
+  async function readyToInterview(_id: string) {}
 
   /** A leave of theirs on a date, approved or waiting. */
   async function leave(key: string, date: string, status: 'approved' | 'with_hr') {
@@ -158,13 +151,13 @@ describe('Interviewers’ availability (e2e)', () => {
           data: {
             number: `APP-1998-${String(Date.now()).slice(-6)}${n}`,
             vacancyId: v.id,
-            stage: 'shortlisted',
+            stage: 'interview',
             fullName: `Candidate ${n} ${RUN}`,
             email: `candidate${n}.${RUN}@mail.test`,
             mobile: '+20 100 765 4321',
             consentAt: new Date(),
             cv: { create: { fileName: 'cv.pdf', mimeType: 'application/pdf', sizeBytes: 10, data: Buffer.from('%PDF-1.4\n%%EOF\n') } },
-            steps: { create: [{ event: 'applied', stage: 'applied' }, { event: 'shortlisted', stage: 'shortlisted' }] },
+            steps: { create: [{ event: 'applied', stage: 'applied' }, { event: 'decided', stage: 'interview' }] },
           },
           select: { id: true },
         })

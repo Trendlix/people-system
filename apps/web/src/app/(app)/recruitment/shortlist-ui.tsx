@@ -1,18 +1,19 @@
 'use client';
 
-import { SUGGESTION_NOTE_MAX } from '@trendlix/shared';
-import { createContext, useActionState, useCallback, useContext, useState, useTransition } from 'react';
+import { APPLICATION_STAGE_LABELS, isDecisionStep, rejectReasonsOf, STEP_OUTCOME_LABELS, STEP_OUTCOME_NOTES, STEP_OUTCOMES_OF, type ApplicationStage, type DecisionStep, type StepOutcome } from '@trendlix/shared';
+import { createContext, useCallback, useContext, useState, useTransition } from 'react';
 import { FormErrors, useFieldIds } from '@/components/form';
-import { reviewShortlist, shortlistApplicants, type BatchState } from './shortlist-actions';
-import { allTicks, reviewLabel, shortlistLabel, ticked, tickedAll, tickedIds } from './shortlist';
+import { decideBatch, sendToReview, type BatchState } from './shortlist-actions';
+import { allTicks, outcomeLabel, sendLabel, sharedStage, ticked, tickedAll, tickedIds } from './shortlist';
+import { FeedbackField, ReasonPicker } from './tree-ui';
 
-// Ticking applicants to act on together (owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the
-// shortlisted and accept or reject them"; asked, "Tick several at once"), as All Assets ticks assets: the tables put a
-// tick box on each row that may be ticked and a "Select all" on their titles (BatchTick, BatchTickAll), inside
-// ShortlistSelection (a vacancy's list, for HR: "Shortlist (N)" in a bar kept at the bottom of the screen while some are
-// ticked) or ReviewSelection (My Hiring, for the hiring manager: a note, "Accept (N)" and "Reject (N)"). The ticks live
-// here, so the rows' own forms (Delete applicant) are never nested in another; what a batch did is said above the list
-// (or by its buttons) once the page is read again.
+// Ticking applicants to act on together (owner, 29 October 2026: "Tick several at once"; the recruitment tree, 3 November
+// 2026), as All Assets ticks assets: the tables put a tick box on each row that may be ticked and a "Select all" on their
+// titles (BatchTick, BatchTickAll), inside VacancySelection (a vacancy's list: "Send to Review 1 (N)" for those at
+// Applicants, or the step's outcomes for those ticked at one step the caller decides, in a bar kept at the bottom of the
+// screen while some are ticked) or ReviewSelection (My Hiring: a review's Pass or Reject, with the reasons and the
+// feedback). The ticks live here, so the rows' own forms (Delete applicant) are never nested in another; what a batch did
+// is said above the list once the page is read again.
 
 interface Ticks {
   selected: ReadonlySet<string>;
@@ -78,19 +79,75 @@ function Said({ state }: { state: BatchState }) {
 }
 
 /**
- * A vacancy's list with HR's ticks (those at Applied, never one filtered out: `ids`): "Shortlist (N)" shortlists those
- * ticked together, the hiring manager told once; what was done and skipped said above the list.
+ * A step's decision for those ticked: the outcome (the step's own), the reasons once Reject is chosen, the feedback, and
+ * the button for them all ("Pass (3)"). What it did goes to `done`, said by the list's selection.
  */
-export function ShortlistSelection({ vacancyId, ids, children }: { vacancyId: string; ids: readonly string[]; children: React.ReactNode }) {
+function BatchDecide({ vacancyId, stage, chosen, done, className = '' }: { vacancyId: string; stage: DecisionStep; chosen: readonly string[]; done: (state: BatchState) => void; className?: string }) {
+  const [outcome, setOutcome] = useState<StepOutcome | ''>('');
+  const [errors, setErrors] = useState<string[] | undefined>();
+  const [pending, startTransition] = useTransition();
+  const fid = useFieldIds();
+  const n = chosen.length;
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        setErrors(undefined);
+        startTransition(async () => {
+          const r = await decideBatch(vacancyId, {}, fd);
+          if (r.errors) return setErrors(r.errors);
+          setOutcome('');
+          done(r);
+        });
+      }}
+      className={`space-y-3 ${className}`}
+    >
+      <FormErrors errors={errors} />
+      {chosen.map((id) => (
+        <input key={id} type="hidden" name="applicationIds" value={id} />
+      ))}
+      <input type="hidden" name="stage" value={stage} />
+      <fieldset>
+        <legend className="label">Decide {APPLICATION_STAGE_LABELS[stage]}</legend>
+        <div className="flex flex-wrap gap-2">
+          {STEP_OUTCOMES_OF[stage].map((o) => (
+            <label key={o} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
+              <input type="radio" name="outcome" value={o} checked={outcome === o} onChange={() => setOutcome(o)} className="size-4 accent-accent" />
+              <span>
+                {STEP_OUTCOME_LABELS[o]}
+                {STEP_OUTCOME_NOTES[o] && <span className="block text-xs text-muted">{STEP_OUTCOME_NOTES[o]}</span>}
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {outcome === 'rejected' && <ReasonPicker reasons={rejectReasonsOf(stage)} />}
+      <FeedbackField id={fid('feedback')} />
+      <button type="submit" disabled={pending || !outcome || n === 0} className={`btn ${outcome === 'rejected' || outcome === 'declined' ? 'btn-danger' : 'btn-primary'}`}>
+        {pending ? 'Saving…' : outcome ? outcomeLabel(outcome, n) : `Choose the outcome (${n})`}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * A vacancy's list with the caller's ticks (`rows`: those that may be ticked, with their stage): "Send to Review 1 (N)"
+ * for those ticked at Applicants (the recruiter told once), or their step's decision for those ticked at one step the
+ * caller decides; what was done and skipped said above the list.
+ */
+export function VacancySelection({ vacancyId, rows, children }: { vacancyId: string; rows: readonly { id: string; stage: ApplicationStage }[]; children: React.ReactNode }) {
+  const ids = rows.map((r) => r.id);
   const { ticks, chosen, clear } = useTicks(ids);
   const [state, setState] = useState<BatchState>({});
   const [pending, startTransition] = useTransition();
   const n = chosen.length;
+  const stage = sharedStage(chosen, Object.fromEntries(rows.map((r) => [r.id, r.stage])));
 
   function send() {
     setState({});
     startTransition(async () => {
-      const r = await shortlistApplicants(vacancyId, chosen);
+      const r = await sendToReview(vacancyId, chosen);
       setState(r);
       if (r.result) clear();
     });
@@ -103,16 +160,33 @@ export function ShortlistSelection({ vacancyId, ids, children }: { vacancyId: st
         <Said state={state} />
         {children}
         {n > 0 && (
-          <div role="region" aria-label="Applicants ticked" className="sticky bottom-4 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card p-3 shadow-lg">
-            <p className="mr-auto px-1 text-sm font-semibold tabular-nums" aria-live="polite">
-              {n} selected
-            </p>
-            <button type="button" onClick={send} disabled={pending} className="btn btn-primary">
-              {pending ? 'Shortlisting…' : shortlistLabel(n)}
-            </button>
-            <button type="button" onClick={clear} disabled={pending} className="btn btn-secondary">
-              Clear
-            </button>
+          <div role="region" aria-label="Applicants ticked" className="sticky bottom-4 z-20 space-y-3 rounded-xl border border-line bg-card p-3 shadow-lg">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="mr-auto px-1 text-sm font-semibold tabular-nums" aria-live="polite">
+                {n} selected{stage ? ` at ${APPLICATION_STAGE_LABELS[stage]}` : ''}
+              </p>
+              {stage === 'applied' && (
+                <button type="button" onClick={send} disabled={pending} className="btn btn-primary">
+                  {pending ? 'Sending…' : sendLabel(n)}
+                </button>
+              )}
+              <button type="button" onClick={clear} disabled={pending} className="btn btn-secondary">
+                Clear
+              </button>
+            </div>
+            {!stage && <p className="px-1 text-sm text-muted">Tick applicants at one step to act on them together.</p>}
+            {stage && isDecisionStep(stage) && (
+              <BatchDecide
+                key={stage}
+                vacancyId={vacancyId}
+                stage={stage}
+                chosen={chosen}
+                done={(r) => {
+                  setState(r);
+                  if (r.result) clear();
+                }}
+              />
+            )}
           </div>
         )}
       </div>
@@ -121,47 +195,28 @@ export function ShortlistSelection({ vacancyId, ids, children }: { vacancyId: st
 }
 
 /**
- * A vacancy's shortlist on My Hiring with the hiring manager's ticks (`ids`: every one shown): a note, then "Accept (N)"
- * or "Reject (N)" for those ticked together; HR told once. A rejection is HR's to confirm.
+ * A review's applicants on My Hiring with the reviewer's ticks (`ids`: every one shown, all at `stage`): Pass or Reject
+ * for those ticked together, with the reasons and the feedback; HR told once.
  */
-export function ReviewSelection({ vacancyId, ids, children }: { vacancyId: string; ids: readonly string[]; children: React.ReactNode }) {
+export function ReviewSelection({ vacancyId, stage, ids, children }: { vacancyId: string; stage: DecisionStep; ids: readonly string[]; children: React.ReactNode }) {
   const { ticks, chosen, clear } = useTicks(ids);
-  const [note, setNote] = useState('');
-  const fid = useFieldIds();
-  const [state, formAction, pending] = useActionState(async (prev: BatchState, fd: FormData) => {
-    const next = await reviewShortlist(vacancyId, prev, fd);
-    if (next.result) {
-      clear();
-      setNote('');
-    }
-    return next;
-  }, {});
-  const n = chosen.length;
+  const [state, setState] = useState<BatchState>({});
   return (
     <TicksContext.Provider value={ticks}>
       <div className="space-y-3">
         {children}
-        <form action={formAction} className="space-y-3 px-4 pb-4">
-          <FormErrors errors={state.errors} />
-          {chosen.map((id) => (
-            <input key={id} type="hidden" name="applicationIds" value={id} />
-          ))}
-          <div>
-            <label htmlFor={fid('note')} className="label">
-              Note for HR <span className="font-normal text-muted">(optional)</span>
-            </label>
-            <textarea id={fid('note')} name="note" rows={2} maxLength={SUGGESTION_NOTE_MAX} value={note} onChange={(e) => setNote(e.currentTarget.value)} className="input" />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="submit" name="decision" value="next" disabled={pending || n === 0} className="btn btn-primary">
-              {reviewLabel('next', n)}
-            </button>
-            <button type="submit" name="decision" value="reject" disabled={pending || n === 0} className="btn btn-secondary">
-              {reviewLabel('reject', n)}
-            </button>
-            <Said state={state} />
-          </div>
-        </form>
+        <div className="space-y-3 px-4 pb-4">
+          <Said state={state} />
+          <BatchDecide
+            vacancyId={vacancyId}
+            stage={stage}
+            chosen={chosen}
+            done={(r) => {
+              setState(r);
+              if (r.result) clear();
+            }}
+          />
+        </div>
       </div>
     </TicksContext.Provider>
   );

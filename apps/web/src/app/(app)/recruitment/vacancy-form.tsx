@@ -29,6 +29,8 @@ export interface VacancyDefaults {
   title: string;
   gradeId: string;
   hiringManagerId: string;
+  /** Who takes Review 1 (3 November 2026): '' for none (HR takes it). */
+  recruiterId: string;
   headcount: number;
   employmentType: string;
   workArrangement: string;
@@ -68,7 +70,7 @@ export function VacancyForm({
 }: {
   action: Action;
   defaults: VacancyDefaults;
-  options: { jobTitles: Option[]; grades: Option[]; shifts: Option[]; managers: Option[] };
+  options: { jobTitles: Option[]; grades: Option[]; shifts: Option[]; managers: Option[]; recruiters: Option[] };
   /** Published: the job title and employment type stay. */
   published: boolean;
   /** The questions can be changed (not once someone applied to a published vacancy). */
@@ -202,7 +204,25 @@ export function VacancyForm({
                 </option>
               ))}
             </Select>
+            <p className="hint">Takes the Final Review of each applicant.</p>
           </div>
+          {/* the recruitment tree (owner, 3 November 2026: "A Recruiter field"): Review 1 is theirs, Review 2 their manager's */}
+          {options.recruiters.length > 0 && (
+            <div>
+              <label htmlFor={fid('recruiterId')} className="label">
+                Recruiter
+              </label>
+              <Select id={fid('recruiterId')} name="recruiterId" defaultValue={valueOf(state, 'recruiterId', defaults.recruiterId)} className="input">
+                <option value="">None (HR takes Review 1)</option>
+                {options.recruiters.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </Select>
+              <p className="hint">Takes Review 1; their manager takes Review 2.</p>
+            </div>
+          )}
           <div>
             <label htmlFor={fid('durationMonths')} className="label">
               Contract length, months <span className="font-normal text-muted">(optional)</span>

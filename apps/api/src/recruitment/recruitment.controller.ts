@@ -27,7 +27,7 @@ import {
   InterviewMeetingDto,
   InterviewOutcomeDto,
   RecruitmentSettingsDto,
-  ScreeningCallDto,
+  DecideDto,
   CvPositionChoicesDto,
   EarlierOffersDto,
   SuggestionDto,
@@ -59,6 +59,16 @@ export class VacanciesController {
     private readonly vacancies: VacanciesService,
     private readonly deletes: RecruitmentDeletesService,
   ) {}
+
+  /**
+   * Who may be a vacancy's recruiter (the recruitment tree, 3 November 2026: "A Recruiter field"): the current employees
+   * who sign in with HR's or a Super Admin's role, by name.
+   */
+  @Roles(...MANAGES)
+  @Get('recruiters')
+  recruiters() {
+    return this.vacancies.recruiters();
+  }
 
   /** ?status= (a status, active: the default, or all) and ?q= (title, number, job title). */
   @Roles(...READS)
@@ -236,12 +246,25 @@ export class ApplicationsController {
     return new StreamableFile(file.data, { type: file.mimeType, length: file.data.length, disposition: save ? attachment(file.fileName) : contentDisposition(file.fileName) });
   }
 
-  /** { to: shortlisted | interview | rejected, reason } (a reason to reject). */
+  /**
+   * { to: review_1 | rejected, reasons, feedback, email } (the recruitment tree, 3 November 2026): Send to Review 1 from
+   * Applicants, or reject from any step with its reasons.
+   */
   @Roles(...MANAGES)
   @Post(':id/stage')
   @HttpCode(200)
   move(@Param('id', ParseUUIDPipe) id: string, @Body() dto: MoveApplicationDto, @CurrentUser() user: SessionUser) {
-    return this.applications.move(id, dto.to, dto.reason, user, dto.email === true);
+    return this.applications.move(id, dto.to, { reasons: dto.reasons, feedback: dto.feedback }, user, dto.email === true);
+  }
+
+  /**
+   * Their step decided (the recruitment tree, 3 November 2026): { outcome, reasons, feedback, email } by whoever takes it
+   * (the recruiter, the recruiter's manager, the hiring manager, HR; a Super Admin any).
+   */
+  @Post(':id/decide')
+  @HttpCode(200)
+  decide(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideDto, @CurrentUser() user: SessionUser) {
+    return this.applications.decide(id, { outcome: dto.outcome, reasons: dto.reasons, feedback: dto.feedback, email: dto.email === true }, user);
   }
 
   /** The vacancy's hiring manager suggests the next step or a rejection: { suggestion, note }. */
@@ -249,17 +272,6 @@ export class ApplicationsController {
   @HttpCode(200)
   suggest(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SuggestionDto, @CurrentUser() user: SessionUser) {
     return this.applications.suggest(id, dto.suggestion, dto.note, user);
-  }
-
-  /**
-   * HR's screening call (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call + result"): { result:
-   * passed | failed, note }, on a shortlisted applicant the hiring manager accepted; HR and a Super Admin only.
-   */
-  @Roles(...MANAGES)
-  @Post(':id/screening-call')
-  @HttpCode(200)
-  screeningCall(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ScreeningCallDto, @CurrentUser() user: SessionUser) {
-    return this.applications.screeningCall(id, dto.result, dto.note, user);
   }
 
   /** Its CV read again (HR, a Super Admin; 29 October 2026): { asScan } reads it by the OCR service whatever its own text. */

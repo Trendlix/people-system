@@ -62,6 +62,8 @@ async function NewVacancy({ searchParams }: { searchParams: PageProps<'/recruitm
         title: j.titleEn,
         gradeId: j.minGradeId && j.minGradeId === j.maxGradeId ? j.minGradeId : '',
         hiringManagerId: '',
+        // the one creating it, when they may recruit (3 November 2026: "A Recruiter field")
+        recruiterId: options.recruiters.some((r) => r.id === user.employeeId) ? (user.employeeId ?? '') : '',
         headcount: 1,
         employmentType: 'full_time',
         workArrangement: 'office',

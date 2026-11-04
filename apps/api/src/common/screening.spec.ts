@@ -76,7 +76,7 @@ describe('the latest verdict', () => {
 
 describe('who reads and writes', () => {
   const app = (extra: Partial<ApplicationReaders> = {}): ApplicationReaders => ({
-    stage: 'shortlisted',
+    stage: 'final_review',
     rejectedFrom: null,
     filteredOut: false,
     vacancy: { hiringManagerId: 'emp-hm', grade: { confidential: false }, jobTitle: { minGrade: { confidential: false } } },

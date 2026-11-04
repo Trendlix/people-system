@@ -88,12 +88,10 @@ export class RecruitmentOffersService {
       if (a.stage !== 'offer') return;
       // another offer to them still open keeps them at Offer
       if (await this.prisma.jobOffer.count({ where: { applicationId: a.id, id: { not: offerId }, ...OPEN_OFFER } })) return;
+      // the recruitment tree (3 November 2026): kept at the Offer, for another offer or a rejection; its history says why
       const event: ApplicationEvent = outcome === 'declined' ? 'offer_declined' : 'offer_withdrawn';
-      await this.prisma.$transaction([
-        this.prisma.jobApplication.update({ where: { id: a.id }, data: { stage: 'shortlisted' } }),
-        this.prisma.jobApplicationStep.create({ data: { applicationId: a.id, event, stage: 'shortlisted', note: o.number, byId: userId } }),
-      ]);
-      await this.audit.record({ userId, action: 'stage', entityType: APPLICATION_ENTITY, entityId: a.id, diff: { number: a.number, stage: { from: 'offer', to: 'shortlisted' }, offer: o.number, why: outcome } });
+      await this.prisma.jobApplicationStep.create({ data: { applicationId: a.id, event, stage: 'offer', note: o.number, byId: userId } });
+      await this.audit.record({ userId, action: 'stage', entityType: APPLICATION_ENTITY, entityId: a.id, diff: { number: a.number, stage: 'offer', offer: o.number, why: outcome } });
     } catch (err) {
       this.logger.warn(`Moving the application of an offer on (${outcome}) failed: ${(err as Error).message}`);
     }

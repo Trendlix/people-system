@@ -1,62 +1,62 @@
-import type { HiringSuggestion, ReviewApplicant, ReviewGroup } from '@trendlix/shared';
+import type { ReviewApplicant, ReviewGroup, ReviewStage } from '@trendlix/shared';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import { agencyMarksOf } from './agency-marks.js';
 import { reviewOrder } from './hiring-batches.js';
-import { hiringManagerApplications } from './recruitment-scope.js';
 import { cvListFactsOf, money } from './recruitment-views.js';
 
-// My Hiring's shortlist to review (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them";
-// "Tick several at once"; packages/shared hiring-steps.ts): for each open (or on hold) vacancy the person hires for, its
-// shortlisted applicants (never one filtered out), those not reviewed yet first, then those accepted, then those
-// rejected; each with their match, the CV's facts (the Ex-agency and Skipper flags with HR's agency marks, as the lists
-// read them), the years they typed, their review and its note, and when they were shortlisted. A vacancy with nobody
-// shortlisted is left out. One read of the applicants, one of the agency marks.
+// My Hiring's reviews waiting (the recruitment tree, owner, 3 November 2026: "HR1 (Recruter) - HR2 (Her MAnager if there
+// is) - then Manager"; "Tick several at once"; packages/shared recruitment-tree.ts): the applicants at the Review 2 of
+// the open (or on hold) vacancies whose recruiter the person manages now, and at the Final Review of those they hire for,
+// never one filtered out; each with their match, the CV's facts (the Ex-agency and Skipper flags with HR's agency marks,
+// as the lists read them), the years they typed, and when they reached that review; the longest waiting first. A
+// vacancy with nobody waiting is left out. One read of the applicants, one of the agency marks.
 
-/** The shortlists waiting for the hiring manager `selfId` on these vacancies (theirs), in the vacancies' order. */
-export async function shortlistsToReview(prisma: PrismaService, vacancies: readonly { id: string; number: string; title: string }[], selfId: string): Promise<ReviewGroup[]> {
-  if (!vacancies.length) return [];
+const LIVE = { in: ['open', 'on_hold'] };
+
+/** The applicants waiting for the review of `selfId` (an employee's id), a vacancy each, the vacancies by number. */
+export async function reviewsWaiting(prisma: PrismaService, selfId: string): Promise<ReviewGroup[]> {
   const [rows, marks] = await Promise.all([
     prisma.jobApplication.findMany({
-      where: { AND: [{ vacancyId: { in: vacancies.map((v) => v.id) } }, hiringManagerApplications(selfId), { stage: 'shortlisted', filteredOut: false }] },
+      where: {
+        filteredOut: false,
+        OR: [
+          { stage: 'review_2', vacancy: { status: LIVE, recruiter: { employments: { some: { endDate: null, managerId: selfId } } } } },
+          { stage: 'final_review', vacancy: { status: LIVE, hiringManagerId: selfId } },
+        ],
+      },
       select: {
         id: true,
         number: true,
         fullName: true,
-        vacancyId: true,
+        stage: true,
+        vacancy: { select: { id: true, number: true, title: true } },
         matchPercent: true,
         cvMatchPercent: true,
         yearsExperience: true,
-        suggestion: true,
-        suggestionNote: true,
         cv: { select: { sizeBytes: true } },
         cvReading: { select: { status: true, facts: true, readAt: true } },
-        // the latest time they were shortlisted (shortlisted again after a step back, the latest)
-        steps: { where: { event: 'shortlisted' }, orderBy: { at: 'desc' }, take: 1, select: { at: true } },
+        // when they reached it: the latest step to their stage
+        steps: { orderBy: { at: 'desc' }, take: 5, select: { stage: true, at: true } },
       },
+      take: 500,
     }),
     agencyMarksOf(prisma),
   ]);
-  const byVacancy = new Map<string, ReviewApplicant[]>();
+  const groups = new Map<string, ReviewGroup>();
   for (const r of rows) {
-    const list = byVacancy.get(r.vacancyId) ?? [];
-    list.push({
+    const g = groups.get(r.vacancy.id) ?? { vacancy: r.vacancy, applicants: [] as ReviewApplicant[] };
+    g.applicants.push({
       id: r.id,
       number: r.number,
       fullName: r.fullName,
+      stage: r.stage as ReviewStage,
       matchPercent: r.matchPercent,
       cvMatchPercent: r.cvMatchPercent,
       fromCv: cvListFactsOf(!!r.cv, r.cvReading, marks),
       yearsTyped: money(r.yearsExperience),
-      suggestion: (r.suggestion as HiringSuggestion | null) ?? null,
-      note: r.suggestion ? r.suggestionNote : null,
-      shortlistedAt: r.steps[0]?.at.toISOString() ?? null,
+      since: r.steps.find((s) => s.stage === r.stage)?.at.toISOString() ?? null,
     });
-    byVacancy.set(r.vacancyId, list);
+    groups.set(r.vacancy.id, g);
   }
-  return vacancies
-    .map((v) => ({
-      vacancy: { id: v.id, number: v.number, title: v.title },
-      applicants: reviewOrder(byVacancy.get(v.id) ?? []),
-    }))
-    .filter((g) => g.applicants.length > 0);
+  return [...groups.values()].sort((a, b) => a.vacancy.number.localeCompare(b.vacancy.number)).map((g) => ({ ...g, applicants: reviewOrder(g.applicants) }));
 }

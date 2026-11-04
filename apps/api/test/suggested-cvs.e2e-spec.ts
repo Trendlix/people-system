@@ -207,7 +207,7 @@ describe('Suggested From Earlier CVs (e2e)', () => {
 
     // the earlier applicants
     const omar = await apply(P, 'omar');
-    ok(await post('hr', `/recruitment/applications/${omar.id}/stage`, { to: 'rejected', reason: 'Not this time' }));
+    ok(await post('hr', `/recruitment/applications/${omar.id}/stage`, { to: 'rejected', reasons: ['underqualified'], feedback: 'Not this time' }));
     const hana = await apply(P, 'hana');
     await prisma.jobApplication.update({ where: { id: hana.id }, data: { stage: 'hired' } });
     const nadia = await apply(P, 'nadia');

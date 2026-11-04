@@ -3,31 +3,31 @@ import type { HiringBatchResult } from '@trendlix/shared';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ApplicationsService } from './applications.service.js';
-import { ReviewBatchDto, ShortlistBatchDto } from './hiring-steps.dto.js';
+import { DecideBatchDto, SendToReviewBatchDto } from './hiring-steps.dto.js';
 import { MANAGES } from './recruitment-access.js';
 
 /**
- * The hiring steps' batches on a vacancy (owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the
- * shortlisted and accept or reject them"; "Tick several at once", "One message per batch"): HR shortlists several of its
- * applicants at once, its hiring manager accepts or rejects several of the shortlist at once. Each answers what it did and
- * what it skipped, with why.
+ * The batches on a vacancy (owner, 29 October 2026: "Tick several at once", "One message per batch"; the recruitment tree,
+ * 3 November 2026): HR sends several of its applicants to Review 1 at once; whoever takes a step decides several at it
+ * at once (the recruiter Review 1, the recruiter's manager Review 2, the hiring manager the Final Review, HR the rest).
+ * Each answers what it did and what it skipped, with why.
  */
 @Controller('recruitment/vacancies')
 export class HiringStepsController {
   constructor(private readonly applications: ApplicationsService) {}
 
-  /** { applicationIds }: those at Applied shortlisted (HR, a Super Admin); the hiring manager told once. */
+  /** { applicationIds }: those at Applicants sent to Review 1 (HR, a Super Admin); the recruiter told once. */
   @Roles(...MANAGES)
-  @Post(':id/shortlist')
+  @Post(':id/send-to-review')
   @HttpCode(200)
-  shortlist(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ShortlistBatchDto, @CurrentUser() user: SessionUser): Promise<HiringBatchResult> {
-    return this.applications.shortlistMany(id, dto.applicationIds, user);
+  sendToReview(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SendToReviewBatchDto, @CurrentUser() user: SessionUser): Promise<HiringBatchResult> {
+    return this.applications.sendToReviewMany(id, dto.applicationIds, user);
   }
 
-  /** { applicationIds, decision: next | reject, note }: the vacancy's hiring manager only (the service: 403 for anyone else); HR told once. */
-  @Post(':id/review')
+  /** { applicationIds, stage, outcome, reasons, feedback }: whoever takes the step (the service: 403 for anyone else). */
+  @Post(':id/decide')
   @HttpCode(200)
-  review(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReviewBatchDto, @CurrentUser() user: SessionUser): Promise<HiringBatchResult> {
-    return this.applications.reviewMany(id, dto.applicationIds, dto.decision, dto.note, user);
+  decide(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideBatchDto, @CurrentUser() user: SessionUser): Promise<HiringBatchResult> {
+    return this.applications.decideMany(id, dto.stage, dto.applicationIds, { outcome: dto.outcome, reasons: dto.reasons, feedback: dto.feedback }, user);
   }
 }

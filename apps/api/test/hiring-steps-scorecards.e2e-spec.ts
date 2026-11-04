@@ -6,7 +6,7 @@ import { addDays, todayInCairo } from '../src/common/date-only.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { RecruitmentSchedulerService } from '../src/recruitment/recruitment-scheduler.service.js';
 import { NO_PROFILE_FOR_SCORECARD, NOT_A_SCORER } from '../src/recruitment/scorecard-givers.js';
-import { createApp, createUser, signIn } from './helpers.js';
+import { createApp, createUser, signIn, walkTo } from './helpers.js';
 
 // The hiring steps' scorecards (owner, 29 October 2026: "then there should be interview comment and status for HR and
 // hiring manager"; asked, "Score Card for each of them"; packages/shared hiring-steps.ts, step 5). A Motion Designer
@@ -108,17 +108,11 @@ describe('Scorecards from HR and the hiring manager (e2e)', () => {
   }
 
   /**
-   * Takes an applicant at Applied to an interview a week from now, the way that works with the hiring steps' gate and
-   * without it: HR shortlists them, the hiring manager (if any) accepts them, HR's screening call passes, then HR
-   * schedules it.
+   * Takes an applicant at Applicants to an interview a week from now: each step of the recruitment tree taken by a Super
+   * Admin (3 November 2026), then `as` schedules it.
    */
-  async function interviewFor(as: string, key: string, hm: string | null, interviewerIds: string[]): Promise<InterviewView> {
-    await post(as, `/recruitment/applications/${apps[key]}/stage`, { to: 'shortlisted' }).expect(200);
-    if (hm) await post(hm, `/recruitment/applications/${apps[key]}/suggest`, { suggestion: 'next' }).expect(200);
-    // HR's screening call comes with the hiring steps' gate on scheduling (built beside this): where that endpoint isn't
-    // there yet, it answers 404 and nothing gates the interview, so either way the interview below is scheduled
-    const call = await post(as, `/recruitment/applications/${apps[key]}/screening-call`, { result: 'passed' });
-    if (call.status !== 404) expect(call.status).toBeLessThan(300);
+  async function interviewFor(as: string, key: string, _hm: string | null, interviewerIds: string[]): Promise<InterviewView> {
+    await walkTo(app, sessions.superAdmin, apps[key], 'interview');
     const body = { date: addDays(TODAY, 7), time: '10:30', minutes: 45, kind: 'phone', interviewerIds, note: 'Bring your reel.' };
     return ((await post(as, `/recruitment/applications/${apps[key]}/interviews`, body).expect(201)).body as InterviewSaved).interview;
   }

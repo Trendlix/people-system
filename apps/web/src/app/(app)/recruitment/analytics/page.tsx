@@ -102,7 +102,7 @@ async function Report({ q }: { q: AnalyticsQuery }) {
                 <tr>
                   <th>Source</th>
                   <th className="text-right">Applicants</th>
-                  <th className="text-right">Shortlisted</th>
+                  <th className="text-right">Sent to review</th>
                   <th className="text-right">Hired</th>
                 </tr>
               </thead>
@@ -111,7 +111,7 @@ async function Report({ q }: { q: AnalyticsQuery }) {
                   <tr key={s.source}>
                     <td>{APPLICATION_SOURCE_LABELS[s.source]}</td>
                     <td className="text-right tabular-nums">{s.applicants}</td>
-                    <td className="text-right tabular-nums">{s.shortlisted}</td>
+                    <td className="text-right tabular-nums">{s.reviewed}</td>
                     <td className="text-right tabular-nums">{s.hired}</td>
                   </tr>
                 ))}

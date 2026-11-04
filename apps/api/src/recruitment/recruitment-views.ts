@@ -6,10 +6,8 @@ import {
   cvMonthsAtLeast,
   cvUpdatedMark,
   experienceOf,
-  hiringStepOf,
   isGeneralCvSource,
-  isHiringSuggestion,
-  isScreeningCallResult,
+  isHoldOutcome,
   tidyQuestions,
   vacancyQuestionsProblems,
   type AnswerValue,
@@ -19,8 +17,7 @@ import {
   type CvReadingStatus,
   type EarlierCvView,
   type EmploymentType,
-  type HiringStep,
-  type HiringStepInput,
+  type HoldOutcome,
   type PublicVacancySummary,
   type RecruitmentUserRef,
   type VacancyListItem,
@@ -48,6 +45,8 @@ export const VACANCY_INCLUDE = {
   department: { select: { id: true, nameEn: true } },
   grade: { select: { id: true, code: true, levelEn: true, confidential: true } },
   hiringManager: { select: { id: true, fullNameEn: true } },
+  // its recruiter (3 November 2026) and their manager now, who takes Review 2
+  recruiter: { select: { id: true, fullNameEn: true, employments: { where: { endDate: null }, orderBy: { joinDate: 'desc' }, take: 1, select: { manager: { select: { id: true, fullNameEn: true } } } } } },
   shift: { select: { id: true, code: true } },
   submittedBy: USER,
   decidedBy: USER,
@@ -109,7 +108,6 @@ export function vacancyListView(v: VacancyRow, counts: VacancyCounts): VacancyLi
 export const APPLICATION_LIST_SELECT = {
   id: true,
   number: true,
-  // its hiring manager, for where a shortlisted applicant stands (29 October 2026, hiring-steps.ts)
   vacancy: { select: { id: true, number: true, title: true, status: true, hiringManagerId: true } },
   fullName: true,
   email: true,
@@ -134,10 +132,8 @@ export const APPLICATION_LIST_SELECT = {
   cvReading: { select: { status: true, facts: true, readAt: true } },
   // a new CV sent by applying again (25 October 2026): the "CV updated" mark for 7 days
   cvUpdatedAt: true,
-  // the hiring steps (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them - HR Screening and
-  // scheduling"): the hiring manager's review (their suggestion) and HR's screening call, for the hiring step's badge
-  suggestion: true,
-  screeningCall: true,
+  // kept at its step (the recruitment tree, 3 November 2026): Unreachable or Pending
+  hold: true,
 } satisfies Prisma.JobApplicationSelect;
 
 export type ApplicationListRow = Prisma.JobApplicationGetPayload<{ select: typeof APPLICATION_LIST_SELECT }>;
@@ -163,45 +159,12 @@ export const applicationListView = (a: ApplicationListRow, marks: AgencyMarks = 
   fromCv: cvListFactsOf(!!a.cv, a.cvReading, marks),
   cvUpdatedAt: a.cvUpdatedAt?.toISOString() ?? null,
   cvUpdated: cvUpdatedMark(a.cvUpdatedAt),
-  // where a shortlisted applicant stands (29 October 2026): waiting for the manager, the screening call due, ready…
-  hiringStep: hiringStepOf(hiringStepInput(a)),
+  // kept at its step (the recruitment tree, 3 November 2026): Unreachable or Pending
+  hold: isHoldOutcome(a.hold) ? a.hold : null,
 });
 
-// ---------- the hiring steps (owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the shortlisted and
-// accept or reject them - HR Screening and scheduling"; packages/shared hiring-steps.ts) ----------
-
-/** What the hiring steps' rules read of an application: its stage, the hiring manager's review and HR's screening call. */
-export const hiringStepInput = (a: { stage: string; filteredOut: boolean; suggestion: string | null; screeningCall: string | null; vacancy: { hiringManagerId: string | null } }): HiringStepInput => ({
-  stage: a.stage as ApplicationStage,
-  filteredOut: a.filteredOut,
-  hasHiringManager: !!a.vacancy.hiringManagerId,
-  suggestion: isHiringSuggestion(a.suggestion) ? a.suggestion : null,
-  screeningCall: isScreeningCallResult(a.screeningCall) ? a.screeningCall : null,
-});
-
-/**
- * ?step= on the applicants' list: the shortlisted applicants (not filtered out) at that hiring step, exactly as
- * hiringStepOf tells it (tested against it in hiring-step-where.spec.ts). A vacancy without a hiring manager asks no
- * acceptance; a suggestion or a screening call other than those kept counts as none, as hiringStepOf reads it.
- */
-export function hiringStepWhere(step: HiringStep): Prisma.JobApplicationWhereInput {
-  const withManager: Prisma.JobApplicationWhereInput = { vacancy: { hiringManagerId: { not: null } } };
-  // accepted by the hiring manager, or no hiring manager to ask
-  const accepted: Prisma.JobApplicationWhereInput = { OR: [{ vacancy: { hiringManagerId: null } }, { suggestion: 'next' }] };
-  const at = (...more: Prisma.JobApplicationWhereInput[]): Prisma.JobApplicationWhereInput => ({ AND: [{ stage: 'shortlisted', filteredOut: false }, ...more] });
-  switch (step) {
-    case 'manager_rejected':
-      return at(withManager, { suggestion: 'reject' });
-    case 'to_review':
-      return at(withManager, { OR: [{ suggestion: null }, { suggestion: { notIn: ['next', 'reject'] } }] });
-    case 'call_failed':
-      return at(accepted, { screeningCall: 'failed' });
-    case 'ready':
-      return at(accepted, { screeningCall: 'passed' });
-    case 'call_due':
-      return at(accepted, { OR: [{ screeningCall: null }, { screeningCall: { notIn: ['passed', 'failed'] } }] });
-  }
-}
+/** ?hold= on the applicants' list (the recruitment tree, 3 November 2026): those kept at their step, Unreachable or Pending. */
+export const holdWhere = (hold: HoldOutcome): Prisma.JobApplicationWhereInput => ({ hold, filteredOut: false });
 
 // ---------- an application's earlier CVs (applying again, 25 October 2026: "Update their application") ----------
 

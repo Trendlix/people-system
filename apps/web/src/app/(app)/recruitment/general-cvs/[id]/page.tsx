@@ -25,7 +25,7 @@ import { shownCode } from '@/lib/hidden';
 // A general CV (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
 // randomly", "Both"): who sent it, the area they would like to work in, how it came (the careers page, or HR from email,
 // WhatsApp, LinkedIn, in person or a referral), their consent (whose, when), the CV, HR's notes and its history. HR marks
-// it reviewed, archives (and restores) it, or adds it to an open vacancy at Applied or Shortlisted: an application made
+// it reviewed, archives (and restores) it, or adds it to an open vacancy at Applicants or Review 1: an application made
 // from it, with the same reference. A warning when they worked here before (offboarding's rehire check).
 // Since 24 October 2026 (owner: "when opening a CV, open it in a popup window", "is there a way to add screening
 // comments?"): the CV opens in the CV window (?cv=, with the candidate's other CVs before and after it), and the

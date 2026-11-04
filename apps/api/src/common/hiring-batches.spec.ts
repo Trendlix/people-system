@@ -1,39 +1,36 @@
-import { BATCH_NOT_FOUND, batchIds, OTHER_VACANCY, reviewOrder, reviewSkip, shortlistSkip, skippedOf, type BatchApplicant } from '../recruitment/hiring-batches.js';
+import { BATCH_NOT_FOUND, batchIds, decideSkip, OTHER_VACANCY, reviewOrder, sendSkip, skippedOf, type BatchApplicant } from '../recruitment/hiring-batches.js';
 
-// The hiring steps' batches (owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the shortlisted and
-// accept or reject them"; "Tick several at once"; recruitment/hiring-batches.ts). Every person here is invented.
+// The batches (owner, 29 October 2026: "Tick several at once"; the recruitment tree, 3 November 2026;
+// recruitment/hiring-batches.ts). Every person here is invented.
 
 const V = 'vacancy-1';
 const a = (over: Partial<BatchApplicant> = {}): BatchApplicant => ({ id: 'a1', number: 'APP-2026-0001', fullName: 'Sara Applicant', vacancyId: V, stage: 'applied', filteredOut: false, ...over });
 
-describe('HR’s shortlist of several', () => {
-  it('shortlists those at Applied of the vacancy', () => {
-    expect(shortlistSkip(a(), V)).toBeNull();
+describe('HR’s Send to Review 1 of several', () => {
+  it('sends those at Applicants of the vacancy', () => {
+    expect(sendSkip(a(), V)).toBeNull();
   });
 
   it('skips the others with why, in words', () => {
-    expect(shortlistSkip(a({ vacancyId: 'vacancy-2' }), V)).toBe(OTHER_VACANCY);
-    expect(shortlistSkip(a({ filteredOut: true }), V)).toBe('They failed a must-have question and were filtered out: restore them first.');
-    expect(shortlistSkip(a({ stage: 'shortlisted' }), V)).toBe('They are shortlisted already.');
-    expect(shortlistSkip(a({ stage: 'rejected' }), V)).toBe('They were rejected: restore them first.');
-    expect(shortlistSkip(a({ stage: 'hired' }), V)).toBe('They were hired: their application stays as it is.');
-    expect(shortlistSkip(a({ stage: 'offer' }), V)).toBe("They are at Offer: they can't go back to shortlisted.");
-    // their page may move one at Interview back; a batch leaves them be
-    expect(shortlistSkip(a({ stage: 'interview' }), V)).toBe('They are at Interview: only applicants at Applied are shortlisted together.');
+    expect(sendSkip(a({ vacancyId: 'vacancy-2' }), V)).toBe(OTHER_VACANCY);
+    expect(sendSkip(a({ filteredOut: true }), V)).toBe('They failed a must-have question and were filtered out: restore them first.');
+    expect(sendSkip(a({ stage: 'review_1' }), V)).toBe('They are at Review 1 already.');
+    expect(sendSkip(a({ stage: 'rejected' }), V)).toBe('They were rejected: restore them first.');
+    expect(sendSkip(a({ stage: 'hired' }), V)).toBe('They were hired: their application stays as it is.');
+    expect(sendSkip(a({ stage: 'screening' }), V)).toBe('They are at HR Screening: only Applicants are sent to Review 1.');
   });
 });
 
-describe('the hiring manager’s review of several', () => {
-  it('reviews those shortlisted for the vacancy', () => {
-    expect(reviewSkip(a({ stage: 'shortlisted' }), V)).toBeNull();
+describe('a step decided for several', () => {
+  it('decides those at that step of the vacancy', () => {
+    expect(decideSkip(a({ stage: 'final_review' }), V, 'final_review')).toBeNull();
   });
 
   it('skips the others with why, in words', () => {
-    expect(reviewSkip(a({ stage: 'shortlisted', vacancyId: 'vacancy-2' }), V)).toBe(OTHER_VACANCY);
-    expect(reviewSkip(a({ stage: 'shortlisted', filteredOut: true }), V)).toBe('They failed a must-have question and were filtered out.');
-    expect(reviewSkip(a({ stage: 'rejected' }), V)).toBe('They were rejected already.');
-    expect(reviewSkip(a({ stage: 'interview' }), V)).toBe('They are at Interview: only shortlisted applicants are accepted or rejected here.');
-    expect(reviewSkip(a({ stage: 'applied' }), V)).toBe('They are at Applied: only shortlisted applicants are accepted or rejected here.');
+    expect(decideSkip(a({ stage: 'final_review', vacancyId: 'vacancy-2' }), V, 'final_review')).toBe(OTHER_VACANCY);
+    expect(decideSkip(a({ stage: 'final_review', filteredOut: true }), V, 'final_review')).toBe('They failed a must-have question and were filtered out.');
+    expect(decideSkip(a({ stage: 'rejected' }), V, 'review_2')).toBe('They were rejected already.');
+    expect(decideSkip(a({ stage: 'screening' }), V, 'final_review')).toBe('They are at HR Screening: only those at Final Review are decided here.');
   });
 });
 
@@ -48,16 +45,16 @@ describe('a batch', () => {
   });
 });
 
-describe('My Hiring’s shortlist, in order', () => {
-  const r = (fullName: string, suggestion: 'next' | 'reject' | null, matchPercent: number | null, cvMatchPercent: number | null = null) => ({ fullName, suggestion, matchPercent, cvMatchPercent });
+describe('My Hiring’s reviews waiting, in order', () => {
+  const r = (fullName: string, since: string | null, matchPercent: number | null, cvMatchPercent: number | null = null) => ({ fullName, since, matchPercent, cvMatchPercent });
 
-  it('lists those not reviewed yet first, then those accepted, then those rejected; the best match first in each', () => {
-    const rows = [r('Rana', 'reject', 90), r('Adam', 'next', 60), r('Nour', null, 50), r('Omar', null, null, 70), r('Hala', 'next', 80), r('Zaid', null, null), r('Badr', null, 50)];
-    expect(reviewOrder(rows).map((x) => x.fullName)).toEqual(['Omar', 'Badr', 'Nour', 'Zaid', 'Hala', 'Adam', 'Rana']);
+  it('lists the longest waiting first, then the best match, then by name', () => {
+    const rows = [r('Rana', '2026-11-03T10:00:00Z', 90), r('Adam', '2026-11-01T10:00:00Z', 60), r('Nour', '2026-11-01T10:00:00Z', 80), r('Zaid', null, 99), r('Badr', '2026-11-01T10:00:00Z', null, 70)];
+    expect(reviewOrder(rows).map((x) => x.fullName)).toEqual(['Nour', 'Badr', 'Adam', 'Rana', 'Zaid']);
   });
 
   it('leaves the list it was given as it was', () => {
-    const rows = [r('B', 'next', 1), r('A', null, 1)];
+    const rows = [r('B', '2026-11-02T00:00:00Z', 1), r('A', '2026-11-01T00:00:00Z', 1)];
     reviewOrder(rows);
     expect(rows.map((x) => x.fullName)).toEqual(['B', 'A']);
   });

@@ -21,10 +21,10 @@ import {
 
 describe('applying again: open or closed', () => {
   it('updates an application at Applied, Shortlisted, Interview or Offer', () => {
-    expect(REAPPLY_OPEN_STAGES).toEqual(['applied', 'shortlisted', 'interview', 'offer']);
+    expect(REAPPLY_OPEN_STAGES).toEqual(['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer']);
     for (const stage of REAPPLY_OPEN_STAGES) expect(reapplyOutcome({ stage }), stage).toBe('update');
     // an offer declined or withdrawn (back to Shortlisted), or still a draft or sent: open
-    expect(reapplyOutcome({ stage: 'shortlisted', offers: [{ status: 'declined' }, { status: 'withdrawn' }] })).toBe('update');
+    expect(reapplyOutcome({ stage: 'review_2', offers: [{ status: 'declined' }, { status: 'withdrawn' }] })).toBe('update');
     expect(reapplyOutcome({ stage: 'offer', offers: [{ status: 'sent' }] })).toBe('update');
   });
 
@@ -49,7 +49,7 @@ describe('applying again: the must-have questions', () => {
   });
 
   it('once HR moved them on, or restored them, HR’s decision stands: never filtered out by itself, the failure told', () => {
-    for (const stage of ['shortlisted', 'interview', 'offer']) {
+    for (const stage of ['review_1', 'final_review', 'interview', 'offer']) {
       expect(reapplyFilter({ stage, filteredOut: false, knockedOut: [] }, ['q1']), stage).toEqual({ filteredOut: false, change: 'kept_by_hr' });
       expect(reapplyFilter({ stage, filteredOut: false, knockedOut: [] }, []), stage).toEqual({ filteredOut: false, change: null });
     }

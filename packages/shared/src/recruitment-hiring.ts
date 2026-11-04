@@ -21,21 +21,23 @@ import type { BetterFitBadge, CvFit } from './cv-fit.js';
 import type { ScreeningVerdict } from './screening.js';
 import { isMeetingChoiceValue, MEETING_KEEP, parseMeetingChoice, type InterviewMeetingView, type MeetingOutcome } from './meetings.js';
 import type { InviteWords } from './suggested-cvs.js';
-import type { HiringStep, ReviewGroup } from './hiring-steps.js';
+import type { ReviewGroup } from './hiring-steps.js';
+import type { HoldOutcome } from './recruitment-tree.js';
 
 // ---------- who looks ----------
 
 /**
  * How the caller sees recruitment: HR (and a Super Admin) manage it, the CEO reads everything, a vacancy's hiring manager
- * sees its applicants from Shortlisted on, an interviewer those they interview.
+ * sees its applicants from the Final Review on (the tree, 3 November 2026), an interviewer those they interview.
  */
-export const RECRUITMENT_VIEWERS = ['manages', 'reads', 'hiring_manager', 'interviewer'] as const;
+// 'reviewer': the recruiter's manager, at their Review 2 (the recruitment tree, 3 November 2026)
+export const RECRUITMENT_VIEWERS = ['manages', 'reads', 'hiring_manager', 'interviewer', 'reviewer'] as const;
 export type RecruitmentViewer = (typeof RECRUITMENT_VIEWERS)[number];
 
-/** The stages a hiring manager sees their vacancy's applicants at (owner's brief: "from Shortlisted on"). */
-export const HIRING_MANAGER_STAGES = ['shortlisted', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
+/** The stages a hiring manager sees their vacancy's applicants at: from their Final Review on (the tree, 3 November 2026). */
+export const HIRING_MANAGER_STAGES = ['final_review', 'screening', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
 
-/** Whether a hiring manager sees an applicant: from Shortlisted on, or rejected from there; never one filtered out. */
+/** Whether a hiring manager sees an applicant: from the Final Review on, or rejected from there; never one filtered out. */
 export function hiringManagerSees(a: { stage: ApplicationStage; rejectedFrom: string | null; filteredOut: boolean }): boolean {
   if (a.filteredOut) return false;
   if ((HIRING_MANAGER_STAGES as readonly string[]).includes(a.stage)) return true;
@@ -44,19 +46,20 @@ export function hiringManagerSees(a: { stage: ApplicationStage; rejectedFrom: st
 
 // ---------- the pipeline board ----------
 
-/** The board's columns, in order: every stage. A hiring manager's board starts at Shortlisted. */
-export const BOARD_STAGES = ['applied', 'shortlisted', 'interview', 'offer', 'hired', 'rejected'] as const satisfies readonly ApplicationStage[];
+/** The board's columns, in order: every stage. A hiring manager's board starts at the Final Review. */
+export const BOARD_STAGES = ['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer', 'hired', 'rejected'] as const satisfies readonly ApplicationStage[];
 
 /** What dropping a card on a column does: a move (Reject asks why first), Make offer, or nothing, with why. */
 export type BoardMove = { kind: 'move'; to: HandStage; needsReason: boolean } | { kind: 'offer' } | { kind: 'refused'; reason: string };
 
 /**
  * What moving an applicant from `from` to the column `to` does on the board (the brief: "the same rules as the stage
- * actions: Reject asks for a reason; Offer goes through Make offer; Hired only by an accepted offer").
+ * actions: Reject asks for a reason; Offer goes through Make offer; Hired only by an accepted offer"; the tree, 3
+ * November 2026: Applicants to Review 1 by hand, every later step by its decision on their page).
  */
 export function boardMove(from: ApplicationStage, to: ApplicationStage, state: { filteredOut: boolean; openOffer: boolean; interviewsDone?: number | null }): BoardMove {
   if (from === to) return { kind: 'refused', reason: `They are at ${APPLICATION_STAGE_LABELS[to]} already.` };
-  if (to === 'applied') return { kind: 'refused', reason: 'Nobody goes back to Applied: shortlist them, or reject them.' };
+  if (to === 'applied') return { kind: 'refused', reason: 'Nobody goes back to Applicants: reject them instead.' };
   if (to === 'hired') return { kind: 'refused', reason: 'Hired follows an accepted job offer: make them an offer first.' };
   if (to === 'offer') {
     if (state.openOffer) return { kind: 'refused', reason: 'A job offer to them is open already: open it from their page.' };
@@ -65,6 +68,7 @@ export function boardMove(from: ApplicationStage, to: ApplicationStage, state: {
     if (problem) return { kind: 'refused', reason: problem };
     return { kind: 'offer' };
   }
+  if (to !== 'review_1' && to !== 'rejected') return { kind: 'refused', reason: `${APPLICATION_STAGE_LABELS[to]} follows a decision at ${APPLICATION_STAGE_LABELS[from]}: open their page to decide it.` };
   const problem = stageMoveProblem(from, to, state);
   if (problem) return { kind: 'refused', reason: problem };
   return { kind: 'move', to, needsReason: to === 'rejected' };
@@ -501,11 +505,15 @@ export function rejectionMail(words: RejectionWords, vars: { name: string; job: 
 
 // ---------- analytics ----------
 
-/** The stages in the order an applicant goes through them (Rejected apart). */
-export const FUNNEL_STAGES = ['applied', 'shortlisted', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
+/**
+ * The stages in the order an applicant goes through them (Rejected apart): the tree's (3 November 2026), Review 1 the
+ * first CV review; Review 2 and the Final Review counted with HR Screening's way there.
+ */
+export const FUNNEL_STAGES = ['applied', 'review_1', 'screening', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
 export type FunnelStage = (typeof FUNNEL_STAGES)[number];
 
-const RANK: Record<string, number> = { applied: 0, shortlisted: 1, interview: 2, offer: 3, hired: 4 };
+// a history of before the tree: Shortlisted counts as reviewed
+const RANK: Record<string, number> = { applied: 0, review_1: 1, review_2: 1, final_review: 1, shortlisted: 1, screening: 2, interview: 3, offer: 4, hired: 5 };
 
 /** The furthest stage an application reached, from its history's stages (Rejected never counts as one). */
 export function furthestStage(stages: readonly string[]): FunnelStage {
@@ -554,7 +562,8 @@ export interface RecruitmentAnalytics {
   funnel: { stage: FunnelStage; reached: number; conversion: number | null }[];
   /** YYYY-MM, January to December. */
   hiresByMonth: { month: string; hires: number }[];
-  sources: { source: ApplicationSource; applicants: number; shortlisted: number; hired: number }[];
+  /** By source: applicants, those reviewed (reached Review 1 or further: the recruitment tree, 3 November 2026), hired. */
+  sources: { source: ApplicationSource; applicants: number; reviewed: number; hired: number }[];
   departments: { id: string | null; name: string; hires: number; timeToHireDays: number | null }[];
   /** C-level vacancies left out for the caller. */
   hidden: number;
@@ -673,8 +682,8 @@ export interface BoardCard {
    */
   interviewsDone?: number;
   suggestion: HiringSuggestion | null;
-  /** Where a shortlisted applicant stands in the hiring steps (29 October 2026, hiring-steps.ts); null at another stage. */
-  hiringStep?: HiringStep | null;
+  /** Kept at their step (the tree, 3 November 2026): Unreachable or Pending; null otherwise. */
+  hold?: HoldOutcome | null;
   /** Their candidate profile, for the badges (22 October 2026): HR, the CEO and a Super Admin only; null for a hiring manager. */
   candidate?: CandidateBadge | null;
   /** The application's latest screening verdict (24 October 2026; screening.ts); null: none yet. */
@@ -701,8 +710,8 @@ export interface MyHiring {
   /** Interviews of theirs past, without their scorecard yet. */
   feedbackDue: number;
   /**
-   * The shortlists waiting for their review (29 October 2026: "Manager view the shortlisted and accept or reject them";
-   * hiring-steps.ts), a vacancy each, those not reviewed yet first. Missing from an API before it.
+   * The applicants waiting for their review (the tree, 3 November 2026): the recruiter's manager's Review 2, the hiring
+   * manager's Final Review, a vacancy each, the longest waiting first. Missing from an API before it.
    */
   toReview?: ReviewGroup[];
 }

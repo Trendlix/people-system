@@ -476,6 +476,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // the hiring steps (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call + result"): HR's screening
   // call on a shortlisted applicant, passed or failed (its comment never in words)
   screening_call: 'Recorded the screening call',
+  // the recruitment tree (3 November 2026): a step decided (Review 1, Review 2, Final Review, HR Screening, the interview)
+  decide: 'Decided a recruitment step',
   read_again: 'Read the CV again',
   // the days of the months not yet paid recounted on deploy: by their pairs (owner, 25 October 2026), from the first
   // check-in to the last check-out with the breaks counted since 31 October 2026 (owner: "9:00, break included")

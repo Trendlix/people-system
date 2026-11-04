@@ -273,12 +273,12 @@ describe('Applying again for the same job (e2e)', () => {
     a = await appOf(A, 'lina');
     expect(a).toMatchObject({ filteredOut: false, knockedOut: [], matchPercent: 100 });
     expect(a.steps.at(-1)?.note).toBe('Same CV. Changed: answers (match 67% → 100%). No longer filtered out: every must-have question met.');
-    // HR shortlists her; failing the must-have now keeps her there, for HR to decide
-    await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'shortlisted' }).expect(200);
+    // HR sends her to Review 1; failing the must-have now keeps her there, for HR to decide
+    await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'review_1' }).expect(200);
     status(await apply(A, 'lina', { answers: answers('no', 5) }, cv), 201);
     a = await appOf(A, 'lina');
-    expect(a).toMatchObject({ stage: 'shortlisted', filteredOut: false, knockedOut: ['q1'], matchPercent: 67 });
-    expect(a.steps.at(-1)).toMatchObject({ event: 'updated', stage: 'shortlisted', note: 'Same CV. Changed: answers (match 100% → 67%). 1 must-have question not met; kept at Shortlisted (HR decides).' });
+    expect(a).toMatchObject({ stage: 'review_1', filteredOut: false, knockedOut: ['q1'], matchPercent: 67 });
+    expect(a.steps.at(-1)).toMatchObject({ event: 'updated', stage: 'review_1', note: 'Same CV. Changed: answers (match 100% → 67%). 1 must-have question not met; kept at Review 1 (HR decides).' });
     // exactly the same again: nothing changes, nothing is kept
     const steps = a.steps.length;
     expect(status(await apply(A, 'lina', { answers: answers('no', 5) }, cv), 201).body).toMatchObject({ updated: true });
@@ -288,13 +288,13 @@ describe('Applying again for the same job (e2e)', () => {
   it('closed once rejected: refused with the closed message, by email or mobile, nothing changed', async () => {
     status(await apply(A, 'omar'), 201);
     const a = await appOf(A, 'omar');
-    await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'rejected', reason: 'Not this time' }).expect(200);
+    await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'rejected', reasons: ['objectives_mismatch'], feedback: 'Not this time' }).expect(200);
     expect(said(status(await apply(A, 'omar'), 409))).toEqual([APPLICATION_CLOSED]);
     expect(said(status(await apply(A, 'omar.two', { mobile: mobile('omar') }), 409))).toEqual([APPLICATION_CLOSED]);
     const after = await appOf(A, 'omar');
     expect(after.cv!.sha256).toBe(a.cv!.sha256);
     expect(after.earlierCvs).toEqual([]);
-    expect(after.steps.map((s) => s.event)).toEqual(['applied', 'rejected']);
+    expect(after.steps.map((s) => s.event)).toEqual(['applied', 'decided']);
     expect(await prisma.jobApplication.count({ where: { vacancyId: A.id, email: email('omar.two') } })).toBe(0);
   });
 
