@@ -1,7 +1,11 @@
+import Link from 'next/link';
 import { cache } from 'react';
+import { TIMESHEET_CHECK_IN_REFUSAL } from '@trendlix/shared';
 import { PanelHead } from '@/components/design';
 import type { CheckInTodayView } from '@/lib/attendance-types';
+import { APP_PATHS } from '@/lib/surface';
 import { loadJson } from '../payroll/load';
+import { MY_TIMESHEET_PATH } from '../timesheets/timesheets';
 import { checkInShows, dayTitle, longDayTitle } from './check-in';
 import { CheckInPanel, TodayCard, TodayHeadButton } from './check-in-panel';
 
@@ -18,7 +22,23 @@ import { CheckInPanel, TodayCard, TodayHeadButton } from './check-in-panel';
 // "dashboard" (the default, and the staff home page's) is the Dashboard's Today card, "TODAY" over the day, its badge,
 // the work time in a ring, the work location and Check in now →; "attendance" is My Attendance's "Ready to start?".
 // The phone pages' `big` keeps the panel as it was. `className` goes on the card (e.g. h-full in a grid). The Dashboard
-// head's "Check in for work" (TodayCheckInButton) is the same press; today is read once for both.
+// head's "Check in for work" (TodayCheckInButton) is the same press; today is read once for both. Someone HR switched to
+// timesheets (owner, 4 November 2026) gets Log hours under the reason, opening their timesheet (the phone pages' on the
+// phone pages).
+
+/** Why they don't check in, quietly; for someone on timesheets, Log hours under it. */
+function Refusal({ text, big, className }: { text: string; big: boolean; className: string }) {
+  return (
+    <div className={className}>
+      <p className="text-sm text-muted">{text}</p>
+      {text === TIMESHEET_CHECK_IN_REFUSAL && (
+        <Link href={big ? APP_PATHS.timesheet : MY_TIMESHEET_PATH} className={`btn btn-primary mt-3 no-underline ${big ? 'min-h-12 w-full' : ''}`}>
+          Log hours
+        </Link>
+      )}
+    </div>
+  );
+}
 
 /** Today's check-in, read once a request for the card and the head's button. */
 const loadToday = cache(() => loadJson<CheckInTodayView>('/me/attendance/today'));
@@ -55,7 +75,13 @@ export async function TodayCheckIn({
           <h2 className="font-semibold">Today</h2>
           <span className="text-xs text-muted tabular-nums">{dayTitle(view.date)}</span>
         </div>
-        <div className="mt-3">{shows === 'refusal' ? <p className="text-sm text-muted">{view.refusal}</p> : <CheckInPanel initial={view} big />}</div>
+        {shows === 'refusal' ? (
+          <Refusal text={view.refusal ?? ''} big className="mt-3" />
+        ) : (
+          <div className="mt-3">
+            <CheckInPanel initial={view} big />
+          </div>
+        )}
       </section>
     );
   }
@@ -64,7 +90,7 @@ export async function TodayCheckIn({
     return (
       <section aria-label="Today's check-in" className={`card p-[22px] ${className}`}>
         <PanelHead eyebrow={variant === 'attendance' ? `Today · ${dayTitle(view.date)}` : 'Today'} title={variant === 'attendance' ? 'Checking in' : longDayTitle(view.date)} />
-        <p className="mt-4 text-sm text-muted">{view.refusal}</p>
+        <Refusal text={view.refusal ?? ''} big={false} className="mt-4" />
       </section>
     );
   }

@@ -34,6 +34,8 @@ describe('the phone pages’ tabs', () => {
     expect(activeTab('/app/requests')).toBe('requests');
     expect(activeTab('/app/requests/new/leave')).toBe('requests');
     expect(activeTab('/app/attendance')).toBe('attendance');
+    // My Timesheet (4 November 2026) is under Attendance
+    expect(activeTab('/app/attendance/timesheet')).toBe('attendance');
     expect(activeTab('/app/payslips/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed')).toBe('payslips');
     expect(activeTab('/app/approve/leave/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed')).toBe('approve');
     expect(activeTab('/app/requestsx')).toBeNull();

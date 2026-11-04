@@ -6,6 +6,7 @@ import {
   checkInFlags,
   checkInPlace,
   checkInRefusal,
+  TIMESHEET_CHECK_IN_REFUSAL,
   dayFromPunches,
   daysByPrecedence,
   distanceMetres,
@@ -219,6 +220,12 @@ describe('who checks in', () => {
     expect(checkInRefusal(true, null)).toContain('no current employment');
     expect(checkInRefusal(true, { employmentType: 'freelance', shiftId: 's1' })).toContain('A freelancer doesn’t check in');
     expect(checkInRefusal(true, { employmentType: 'part_time', shiftId: null })).toContain('no shift yet');
+  });
+
+  it('sends someone on timesheets to their timesheet, a freelancer too (4 November 2026)', () => {
+    expect(checkInRefusal(true, { employmentType: 'full_time', shiftId: 's1', worksOnTimesheets: true })).toBe(TIMESHEET_CHECK_IN_REFUSAL);
+    expect(checkInRefusal(true, { employmentType: 'freelance', shiftId: null, worksOnTimesheets: true })).toBe(TIMESHEET_CHECK_IN_REFUSAL);
+    expect(checkInRefusal(true, { employmentType: 'freelance', shiftId: null, worksOnTimesheets: false })).toContain('A freelancer doesn’t check in');
   });
 });
 

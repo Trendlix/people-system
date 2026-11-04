@@ -1,7 +1,7 @@
 import { HOLD_PATH, isNotificationKind, NOTIFICATION_KIND_LABELS, notificationSection, PUSH_TOKEN_MAX, REMINDER_KINDS, safeNotificationLink } from '@trendlix/shared';
 import { formatDateTime } from './format';
 import type { PushRegistration } from './native';
-import { APP_PATHS, appAttendanceHref, toAppHref } from './surface';
+import { APP_PATHS, appAttendanceHref, appTimesheetHref, toAppHref } from './surface';
 
 // Notifications on the web's side (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for
 // someone, a check-in reminder)"; apps/mobile/README.md, Phase 4): where a notification opens on the site and on the
@@ -20,6 +20,12 @@ const isReminder = (kind: string) => (REMINDER_KINDS as readonly string[]).inclu
 /** The path of an address, without its ?query and #part. */
 const pathOf = (href: string) => href.split(/[?#]/, 1)[0];
 
+/** One of an address's ?query values; null without it. */
+const paramOf = (href: string, name: string) => {
+  const at = href.indexOf('?');
+  return at < 0 ? null : new URLSearchParams(href.slice(at + 1).split('#', 1)[0]).get(name);
+};
+
 /** Whether an address is under `base` ("/app" itself, "/app/…", "/app?…", "/app#…"), not "/appendix". */
 const isUnder = (href: string, base: string) => {
   const path = pathOf(href);
@@ -29,8 +35,9 @@ const isUnder = (href: string, base: string) => {
 /**
  * Where a notification opens. The site: its link as it is. The phone pages: a link already under /app as it is (a
  * payslip's, "/app/payslips/<lineId>"); the two reminders on Home (its check-in); My Attendance as the phone's
- * Attendance (its month kept); a request's page as the same request's in To Approve (what waits for the person) or in
- * their own requests (lib/surface.ts toAppHref), any other page as that section's list. A link that isn't one address on
+ * Attendance (its month kept); My Timesheet as the phone's (its week kept; 4 November 2026); a request's page as the
+ * same request's in To Approve (what waits for the person; a week of hours too) or in their own requests (lib/surface.ts
+ * toAppHref), any other page as that section's list. A link that isn't one address on
  * this site (not starting with a single "/") opens nothing: null, as for no link. Custody (Assets step 3, 21 October
  * 2026): My custody ("/my-custody") as the phone's My Custody, and a custody record ("/assets/custody/CUS-0042") as the
  * same record in the phone layout.
@@ -45,15 +52,11 @@ export function notificationHref(link: string | null | undefined, kind: string, 
   if (isUnder(safe, '/my-custody')) return '/app/custody';
   const custody = /^\/assets\/custody\/(CUS-\d{4,})(?:[?#]|$)/i.exec(safe);
   if (custody) return `/app/assets/custody/${custody[1].toUpperCase()}`;
-  if (isUnder(safe, '/my-attendance')) {
-    const at = safe.indexOf('?');
-    const month = at < 0 ? null : new URLSearchParams(safe.slice(at + 1).split('#', 1)[0]).get('month');
-    return appAttendanceHref(month);
-  }
+  if (isUnder(safe, '/my-attendance')) return appAttendanceHref(paramOf(safe, 'month'));
+  // their week of hours decided (4 November 2026): the same week on the phone pages
+  if (isUnder(safe, '/my-timesheet')) return appTimesheetHref(paramOf(safe, 'week'));
   // a change made by hand for an employee (4 November 2026): not the person's own, nor waiting for them: its page on the site
   if (kind === 'manual_change') return safe;
-  // a week of hours to approve, or their own decided (4 November 2026): the phone pages have no timesheet pages, the site's open
-  if (kind === 'timesheet_waiting' || kind === 'timesheet_decided') return safe;
   return toAppHref(safe, notificationSection(kind));
 }
 

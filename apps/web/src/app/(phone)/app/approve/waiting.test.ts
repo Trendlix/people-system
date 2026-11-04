@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { KpiScorecardSummary } from '@trendlix/shared';
+import type { KpiScorecardSummary, TimesheetListItem } from '@trendlix/shared';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
 import type { HomeLocationView } from '../../../../lib/home-location-types';
 import type { PendingRaise, RaiseRequest } from '../../../../lib/raise-types';
@@ -156,6 +156,28 @@ describe('what waits for the caller', () => {
     expect(waitingTotal(sections)).toBe(5);
     expect(waitingSections({ compensatory: null })).toMatchObject([{ key: 'compensatory', failed: true }]);
     expect(waitingSections({ compensatory: [] })).toEqual([]);
+  });
+
+  it('lists the weeks of hours waiting for the caller after the corrections, opening each under To Approve', () => {
+    // 4 November 2026: "Direct manager, weekly"
+    const week = {
+      id: ID(13),
+      employee: { id: 'e1', fullNameEn: 'Nour Adel', employeeCode: 'EMP-0001' },
+      weekStart: '2026-11-01',
+      weekEnd: '2026-11-07',
+      status: 'submitted',
+      totalHours: 38.5,
+      submittedAt: '2026-11-04T09:00:00.000Z',
+      waitingForYou: true,
+    } satisfies TimesheetListItem;
+    const sections = waitingSections({ leave: [leave], permissions: [], corrections: [correction], timesheets: [week], raiseRequests: [request] });
+    expect(sections.map((s) => s.key)).toEqual(['leave', 'correction', 'timesheet', 'raise']);
+    expect(sections[2].title).toBe('Timesheets');
+    expect(sections[2].rows.map((r) => [r.href, r.name, r.line, r.action])).toEqual([
+      [`/app/approve/timesheet/${ID(13)}`, 'Nour Adel', '01/11/2026 to 07/11/2026 · 38.5 hours', undefined],
+    ]);
+    expect(waitingSections({ timesheets: [] })).toEqual([]);
+    expect(waitingSections({ timesheets: null }).map((s) => [s.key, s.failed])).toEqual([['timesheet', true]]);
   });
 
   it('leaves out what is empty or not the caller’s, and says what couldn’t be read', () => {

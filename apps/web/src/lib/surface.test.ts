@@ -9,6 +9,7 @@ import {
   appPayslipPdfHref,
   appRaiseHref,
   appSectionOf,
+  appTimesheetHref,
   isAppSection,
   SURFACE_FIELD,
   toAppHref,
@@ -57,6 +58,10 @@ describe('the phone pages’ addresses', () => {
     expect(appAttendanceHref('2026-10')).toBe('/app/attendance?month=2026-10');
     expect(appAttendanceHref('2026-13')).toBe('/app/attendance');
     expect(appAttendanceHref(null)).toBe('/app/attendance');
+    // their week of hours (4 November 2026), under Attendance
+    expect(appTimesheetHref('2026-11-01')).toBe('/app/attendance/timesheet?week=2026-11-01');
+    expect(appTimesheetHref('1/11/2026')).toBe('/app/attendance/timesheet');
+    expect(appTimesheetHref(null)).toBe('/app/attendance/timesheet');
     expect(appCorrectionHref('2026-10-19')).toBe('/app/requests/new/correction?date=2026-10-19');
     expect(appCorrectionHref('19/10/2026')).toBe('/app/requests/new/correction');
     expect(appRaiseHref(ID)).toBe(`/app/requests/new/raise?employee=${ID}`);
@@ -92,6 +97,9 @@ describe('where an action sends someone on to from the phone pages', () => {
     expect(toAppHref('/my-requests#my-compensatory', 'requests')).toBe('/app/requests');
     expect(toAppHref('/attendance/compensatory/new', 'requests')).toBe('/app/requests');
     expect(toAppHref('/attendance/compensatory/record', 'approve')).toBe('/app/approve');
+    // a week of hours (4 November 2026): the approver's page under To Approve; the list To Approve itself
+    expect(toAppHref(`/timesheets/${ID}`, 'approve')).toBe(`/app/approve/timesheet/${ID}`);
+    expect(toAppHref('/timesheets?status=all', 'approve')).toBe('/app/approve');
     expect(appItemHref('approve', 'compensatory', ID)).toBe(`/app/approve/compensatory/${ID}`);
     // the KPI lists aren't phone pages: the section's list
     expect(toAppHref('/kpis/team', 'approve')).toBe('/app/approve');

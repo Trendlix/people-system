@@ -641,6 +641,9 @@ export interface CheckInEmployment {
   worksOnTimesheets?: boolean;
 }
 
+/** Why someone HR switched to timesheets doesn't check in: the pages offer their timesheet beside it. */
+export const TIMESHEET_CHECK_IN_REFUSAL = 'You log your hours on your timesheet instead of checking in.';
+
 /**
  * Why someone can't check in on the system (null: they can; owner's brief, 19 October 2026: "Employees (with an employee
  * profile and a current employment under a shift; not freelancers)"): no profile, no current employment, a freelancer,
@@ -649,9 +652,10 @@ export interface CheckInEmployment {
 export function checkInRefusal(profile: boolean, employment: CheckInEmployment | null): string | null {
   if (!profile) return 'Your sign-in has no employee profile, so there is nothing to check in to. Ask HR to add your work email to your profile.';
   if (!employment) return 'You have no current employment, so there is nothing to check in to.';
+  // those HR switched to timesheets (owner, 4 November 2026: "Only those HR switches on"), freelancers among them: said
+  // before the freelancer's reason, as they log hours rather than doing nothing
+  if (employment.worksOnTimesheets) return TIMESHEET_CHECK_IN_REFUSAL;
   if (employment.employmentType === 'freelance') return 'A freelancer doesn’t check in: freelance work is outside the labour law and its working hours.';
-  // those HR switched to timesheets (owner, 4 November 2026: "Only those HR switches on")
-  if (employment.worksOnTimesheets) return 'You log your hours on your timesheet instead of checking in.';
   if (!employment.shiftId) return 'Your employment has no shift yet, so checking in isn’t on for you. Ask HR to set your shift.';
   return null;
 }

@@ -40,9 +40,9 @@ describe('where a notification opens', () => {
     // a change made by hand for an employee (4 November 2026): its page on the site, from the phone pages too
     expect(notificationHref(`/leave/${ID}`, 'manual_change', 'site')).toBe(`/leave/${ID}`);
     expect(notificationHref(`/attendance/corrections/${ID}`, 'manual_change', 'app')).toBe(`/attendance/corrections/${ID}`);
-    // timesheets (4 November 2026): the site's pages, from the phone pages too
-    expect(notificationHref(`/timesheets/${ID}`, 'timesheet_waiting', 'app')).toBe(`/timesheets/${ID}`);
-    expect(notificationHref('/my-timesheet?week=2026-11-01', 'timesheet_decided', 'app')).toBe('/my-timesheet?week=2026-11-01');
+    // timesheets (4 November 2026): the site's pages on the site
+    expect(notificationHref(`/timesheets/${ID}`, 'timesheet_waiting', 'site')).toBe(`/timesheets/${ID}`);
+    expect(notificationHref('/my-timesheet?week=2026-11-01', 'timesheet_decided', 'site')).toBe('/my-timesheet?week=2026-11-01');
     expect(notificationHref('/raise-requests?status=with_hr', 'raise_request_waiting', 'site')).toBe('/raise-requests?status=with_hr');
     expect(notificationHref('/my-attendance', 'check_in_reminder', 'site')).toBe('/my-attendance');
     expect(notificationHref('/app/payslips/line-1', 'payslip_issued', 'site')).toBe('/app/payslips/line-1');
@@ -55,6 +55,14 @@ describe('where a notification opens', () => {
       expect(notificationHref(link, 'leave_decided', 'app')).toBeNull();
     }
     expect(notificationHref(undefined, 'leave_decided', 'app')).toBeNull();
+  });
+
+  it('opens a week of hours on the phone pages (4 November 2026)', () => {
+    // to approve: its page under To Approve; their own decided: the same week of their timesheet
+    expect(notificationHref(`/timesheets/${ID}`, 'timesheet_waiting', 'app')).toBe(`/app/approve/timesheet/${ID}`);
+    expect(notificationHref('/my-timesheet?week=2026-11-01', 'timesheet_decided', 'app')).toBe('/app/attendance/timesheet?week=2026-11-01');
+    expect(notificationHref('/my-timesheet', 'timesheet_decided', 'app')).toBe('/app/attendance/timesheet');
+    expect(pushHref({ link: `/timesheets/${ID}`, kind: 'timesheet_waiting', id: 'n1' })).toBe(`/app/approve/timesheet/${ID}`);
   });
 
   it('keeps a phone page’s link on the phone pages', () => {

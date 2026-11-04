@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import type { KpiCounts } from '@trendlix/shared';
+import type { KpiCounts, TimesheetListItem } from '@trendlix/shared';
 import { KPI_API } from '@/lib/kpi-paths';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import type { CorrectionCounts } from '@/lib/correction-types';
@@ -19,6 +19,7 @@ import { HOME_COUNTS, seesHomes } from '../../(app)/home-locations/home-location
 import { LEAVE_COUNTS } from '../../(app)/leave/list';
 import { countsRaiseRequests, waitingForYouCount, WITH_HR_REQUESTS } from '../../(app)/raise-requests/list';
 import { CLAIM_COUNTS } from '../../(app)/reimbursements/list';
+import { timesheetsApi } from '../../(app)/timesheets/timesheets';
 import { decidesSomething } from './tabs';
 
 // How many things wait for the caller on To Approve (owner, 20 October 2026: the employee app, "managers and team leads
@@ -29,7 +30,8 @@ import { decidesSomething } from './tabs';
 // (owner, 21 October 2026: "Self, manager, HR, sign-off"): their people's to score or sign, and HR's to calibrate, and the
 // work from home requests at the caller's step (owner, 21 October 2026: "Manager, then HR"), and the official duty
 // requests the same (owner, 23 October 2026), and the compensatory day requests the same (owner, 26 October 2026: "WFH
-// and compensatory pages in the phone app"). What can't be read counts none.
+// and compensatory pages in the phone app"), and the weeks of hours waiting for the caller (owner, 4 November 2026:
+// "Direct manager, weekly"). What can't be read counts none.
 
 // counts, as the sidebar's: they don't count as activity for the 15 minutes (lib/api.ts, 20 October 2026)
 const BACKGROUND = { background: true } as const;
@@ -39,7 +41,7 @@ type Decider = Parameters<typeof decidesSomething>[0] & Parameters<typeof waitin
 /** Read once a request (the tab bar and Home both say it): `user` is getCurrentUser's, the same object all through it. */
 export const approveCount = cache(async (user: Decider): Promise<number> => {
   if (!decidesSomething(user)) return 0;
-  const [leave, claims, corrections, requests, raises, homes, kpis, wfh, od, compensatory] = await Promise.all([
+  const [leave, claims, corrections, requests, raises, homes, kpis, wfh, od, compensatory, timesheets] = await Promise.all([
     getOrNull<LeaveCounts>(LEAVE_COUNTS, BACKGROUND),
     getOrNull<ReimbursementCounts>(CLAIM_COUNTS, BACKGROUND),
     getOrNull<CorrectionCounts>(CORRECTION_COUNTS, BACKGROUND),
@@ -50,6 +52,7 @@ export const approveCount = cache(async (user: Decider): Promise<number> => {
     getOrNull<WfhCounts>(WFH_COUNTS, BACKGROUND),
     getOrNull<OdCounts>(OD_COUNTS, BACKGROUND),
     getOrNull<CompensatoryCounts>(COMPENSATORY_COUNTS, BACKGROUND),
+    getOrNull<TimesheetListItem[]>(timesheetsApi({ status: 'waiting', week: null }), BACKGROUND),
   ]);
   return (
     (leave?.waiting ?? 0) +
@@ -62,6 +65,7 @@ export const approveCount = cache(async (user: Decider): Promise<number> => {
     (kpis?.hr ?? 0) +
     (wfh?.waiting ?? 0) +
     (od?.waiting ?? 0) +
-    (compensatory?.waiting ?? 0)
+    (compensatory?.waiting ?? 0) +
+    (timesheets?.length ?? 0)
   );
 });

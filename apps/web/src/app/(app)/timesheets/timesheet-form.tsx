@@ -12,8 +12,26 @@ import { blankLine, clientGroups, dayHead, entriesOf, lineTotals, linesOf, type 
 // client from the list, those they work on first, or a task written, the hours in quarter hours, a note), a line added
 // to a day gone by or today, removed; Save keeps them, Send for approval saves and sends the week. What the form can
 // see is said before anything is sent (packages/shared timesheetEntryProblems); the API checks it all again.
+// `phone`: on the phone pages (4 November 2026), each line in two columns (the client and the task across, the hours
+// beside the note) and Save and Send kept above the tab bar.
 
-export function TimesheetForm({ view, today }: { view: MyTimesheetView; today: string }) {
+const LINE = {
+  site: { line: 'grid gap-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_6rem_minmax(0,1fr)_auto] sm:items-end', wide: '', remove: 'btn btn-secondary min-h-11' },
+  phone: {
+    line: 'grid grid-cols-[6rem_minmax(0,1fr)] gap-2 rounded-lg border border-line-soft p-3',
+    wide: 'col-span-2',
+    remove: 'col-span-2 min-h-11 justify-self-start text-sm font-semibold text-danger',
+  },
+} as const;
+
+const BAR = {
+  site: 'bottom-4',
+  // the tab bar is 4rem high (3rem in landscape), over the phone's home bar
+  phone: 'bottom-[calc(5rem+env(safe-area-inset-bottom))] landscape:bottom-[calc(4rem+env(safe-area-inset-bottom))]',
+} as const;
+
+export function TimesheetForm({ view, today, phone = false }: { view: MyTimesheetView; today: string; phone?: boolean }) {
+  const look = LINE[phone ? 'phone' : 'site'];
   const [lines, setLines] = useState<TimesheetLine[]>(() => linesOf(view.entries));
   const [state, setState] = useState<FormState>({});
   const [pending, start] = useTransition();
@@ -54,8 +72,8 @@ export function TimesheetForm({ view, today }: { view: MyTimesheetView; today: s
               <span className="text-sm text-muted tabular-nums">{hours ? timesheetHoursText(hours) : comes ? 'Not yet' : 'No hours'}</span>
             </div>
             {dayLines.map((l) => (
-              <div key={l.key} className="grid gap-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_6rem_minmax(0,1fr)_auto] sm:items-end">
-                <label className="block text-sm">
+              <div key={l.key} className={look.line}>
+                <label className={`block text-sm ${look.wide}`}>
                   <span className="label">Client</span>
                   <Select value={l.clientAccountId} onChange={(e) => change(l.key, 'clientAccountId', e.target.value)} className="input">
                     <option value="">No client</option>
@@ -79,7 +97,7 @@ export function TimesheetForm({ view, today }: { view: MyTimesheetView; today: s
                     )}
                   </Select>
                 </label>
-                <label className="block text-sm">
+                <label className={`block text-sm ${look.wide}`}>
                   <span className="label">Task</span>
                   <input value={l.task} onChange={(e) => change(l.key, 'task', e.target.value)} maxLength={TIMESHEET_LIMITS.task} placeholder="E.g. Editing" className="input" />
                 </label>
@@ -93,7 +111,7 @@ export function TimesheetForm({ view, today }: { view: MyTimesheetView; today: s
                   </span>
                   <input value={l.note} onChange={(e) => change(l.key, 'note', e.target.value)} maxLength={TIMESHEET_LIMITS.note} className="input" />
                 </label>
-                <button type="button" onClick={() => remove(l.key)} className="btn btn-secondary min-h-11" aria-label={`Remove this line of ${dayHead(d.date)}`}>
+                <button type="button" onClick={() => remove(l.key)} className={look.remove} aria-label={`Remove this line of ${dayHead(d.date)}`}>
                   Remove
                 </button>
               </div>
@@ -106,7 +124,7 @@ export function TimesheetForm({ view, today }: { view: MyTimesheetView; today: s
           </section>
         );
       })}
-      <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card p-3 shadow-lg">
+      <div className={`sticky ${BAR[phone ? 'phone' : 'site']} z-20 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-card p-3 shadow-lg`}>
         <p className="mr-auto px-1 text-sm font-semibold tabular-nums">Week total: {timesheetHoursText(Math.round(total * 100) / 100)}</p>
         <button type="button" onClick={() => go(false)} disabled={pending} className="btn btn-secondary">
           {pending ? 'Saving…' : 'Save'}

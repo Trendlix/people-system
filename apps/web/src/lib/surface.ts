@@ -45,6 +45,8 @@ export const APP_PATHS = {
   // a compensatory day (owner, 26 October 2026: "WFH and compensatory pages in the phone app")
   newCompensatory: '/app/requests/new/compensatory',
   attendance: '/app/attendance',
+  // the week of hours of someone on timesheets (owner, 4 November 2026: "Timesheet in app/website"), under Attendance
+  timesheet: '/app/attendance/timesheet',
   payslips: '/app/payslips',
   approve: '/app/approve',
 } as const;
@@ -53,9 +55,9 @@ export const APP_PATHS = {
  * The kinds of item a section opens: a request of the employee's, or one waiting for the caller (a pay raise: the CEO's).
  * A KPI scorecard (owner, 21 October 2026: "Self, manager, HR, sign-off"): the employee's to rate and sign under My
  * Requests, the manager's and HR's steps under To Approve. A compensatory day (owner, 26 October 2026: "WFH and
- * compensatory pages in the phone app").
+ * compensatory pages in the phone app"). A week of hours (4 November 2026): the approver's, under To Approve.
  */
-export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise', 'home', 'kpi', 'wfh', 'od', 'compensatory'] as const;
+export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise', 'home', 'kpi', 'wfh', 'od', 'compensatory', 'timesheet'] as const;
 export type AppItemKind = (typeof APP_ITEM_KINDS)[number];
 
 /** An item's page in a section: "/app/requests/leave/<id>", "/app/approve/reimbursement/<id>". */
@@ -91,6 +93,9 @@ const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 /** The month's attendance: "/app/attendance?month=2026-10"; this month's without one. */
 export const appAttendanceHref = (month?: string | null) => (month && MONTH.test(month) ? `${APP_PATHS.attendance}?month=${month}` : APP_PATHS.attendance);
 
+/** Their week of hours: "/app/attendance/timesheet?week=2026-11-01"; this week's without one. */
+export const appTimesheetHref = (week?: string | null) => (week && DATE.test(week) ? `${APP_PATHS.timesheet}?week=${week}` : APP_PATHS.timesheet);
+
 /** Asking to correct a day: "/app/requests/new/correction?date=2026-10-19"; the day chosen on the form without one. */
 export const appCorrectionHref = (date?: string | null) => (date && DATE.test(date) ? `${APP_PATHS.newCorrection}?date=${date}` : APP_PATHS.newCorrection);
 
@@ -122,6 +127,8 @@ const ITEM_PAGES: readonly [RegExp, AppItemKind][] = [
   [new RegExp(`^/attendance/official-duty/${ID}$`), 'od'],
   // a compensatory day request (26 October 2026), also as its notifications link it
   [new RegExp(`^/attendance/compensatory/${ID}$`), 'compensatory'],
+  // a week of hours (4 November 2026), as its notifications link it
+  [new RegExp(`^/timesheets/${ID}$`), 'timesheet'],
 ];
 
 /** What an address says of what was just done, kept on the way: ?done= (decided, cancelled, moved on) and ?sent=. */

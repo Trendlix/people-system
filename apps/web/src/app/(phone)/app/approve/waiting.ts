@@ -1,4 +1,4 @@
-import { PAY_CHANGE_LABELS, type KpiScorecardSummary } from '@trendlix/shared';
+import { PAY_CHANGE_LABELS, timesheetHoursText, timesheetWeekText, type KpiScorecardSummary, type TimesheetListItem } from '@trendlix/shared';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
 import { formatDate } from '../../../../lib/format';
 import type { HomeLocationView } from '../../../../lib/home-location-types';
@@ -30,7 +30,8 @@ import type { CompensatoryRequestView } from '../../../../lib/compensatory-types
 // else's: the manager's scoring and sign-off, HR's calibration. Work from home requests (owner, 21 October 2026:
 // "Manager, then HR") at the approver's step or HR's (a C-level person's HR step the CEO's). Official duty requests
 // (owner, 23 October 2026: "Manager, then HR") the same way. Compensatory day requests (owner, 26 October 2026: "WFH and
-// compensatory pages in the phone app") the same way, right after working from home.
+// compensatory pages in the phone app") the same way, right after working from home. Weeks of hours (owner, 4 November
+// 2026: "Direct manager, weekly") sent by those on timesheets, after the attendance corrections.
 
 export interface WaitingRow {
   key: string;
@@ -44,7 +45,7 @@ export interface WaitingRow {
 }
 
 export interface WaitingSection {
-  key: 'leave' | 'wfh' | 'compensatory' | 'od' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home' | 'kpi';
+  key: 'leave' | 'wfh' | 'compensatory' | 'od' | 'reimbursement' | 'correction' | 'timesheet' | 'raise' | 'pay-raise' | 'home' | 'kpi';
   /** Title Case. */
   title: string;
   rows: WaitingRow[];
@@ -69,6 +70,8 @@ export function waitingSections(from: {
   od?: List<OdRequestView>;
   claims?: List<ReimbursementClaimView>;
   corrections?: List<AttendanceCorrectionView>;
+  /** Weeks of hours waiting for the caller (4 November 2026). */
+  timesheets?: List<TimesheetListItem>;
   raiseRequests?: List<RaiseRequest>;
   payRaises?: List<PendingRaise>;
   homes?: List<HomeLocationView>;
@@ -156,6 +159,20 @@ export function waitingSections(from: {
         href: appItemHref('approve', 'correction', c.id),
         name: c.employee.fullNameEn,
         line: `${correctionDayText(c)} · ${correctionKindName(c.correctionKind)}`,
+      })),
+    );
+  }
+  if (from.timesheets !== undefined) {
+    add(
+      'timesheet',
+      'Timesheets',
+      from.timesheets === null,
+      (from.timesheets ?? []).map((w) => ({
+        key: `timesheet:${w.id}`,
+        href: appItemHref('approve', 'timesheet', w.id),
+        name: w.employee.fullNameEn,
+        // "01/11/2026 to 07/11/2026 · 38.5 hours"
+        line: `${timesheetWeekText(w.weekStart)} · ${timesheetHoursText(w.totalHours)}`,
       })),
     );
   }

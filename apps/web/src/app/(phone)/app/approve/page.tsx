@@ -18,6 +18,7 @@ import { loadWaitingLeave, loadWaitingPermissions } from '../../../(app)/leave/d
 import { loadRaiseRequests } from '../../../(app)/raise-requests/data';
 import { ceoDoneMessage, countsRaiseRequests, waitsForYou } from '../../../(app)/raise-requests/list';
 import { loadWaitingClaims } from '../../../(app)/reimbursements/data';
+import { loadWaitingTimesheets } from '../../../(app)/timesheets/data';
 import { readsChangeRequests, waitingForYou } from '../../../(app)/requests/details-changes/list';
 import { decidesSomething } from '../tabs';
 import { DoneLine, PageTitle, PhoneLoading, RowLink, RowList } from '../ui';
@@ -35,7 +36,8 @@ import { waitingSections, waitingTotal } from './waiting';
 // manager's sign-off (their own are on Home and My Requests). Work from home requests (owner, 21 October 2026:
 // "Manager, then HR") at the caller's step, as the leave is; official duty requests (owner, 23 October 2026) the same;
 // compensatory day requests (owner, 26 October 2026: "WFH and compensatory pages in the phone app") the same, HR's
-// approval a day off or, rarely, cash instead, as on the site.
+// approval a day off or, rarely, cash instead, as on the site. Weeks of hours (owner, 4 November 2026: "Direct manager,
+// weekly") waiting for the caller: the one who approves the person's leave, HR when there is none.
 
 export const metadata: Metadata = { title: 'To Approve · Trendlix People' };
 
@@ -69,7 +71,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
   if (!decidesSomething(user)) {
     return <div className="card px-4 py-8 text-center text-sm text-muted">Nothing here is yours to decide.</div>;
   }
-  const [leave, permissions, wfh, compensatory, od, claims, corrections, withHr, payRaises, homes, scorecards] = await Promise.all([
+  const [leave, permissions, wfh, compensatory, od, claims, corrections, timesheets, withHr, payRaises, homes, scorecards] = await Promise.all([
     loadWaitingLeave(),
     loadWaitingPermissions(),
     loadWaitingWfh(),
@@ -77,6 +79,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
     loadWaitingOd(),
     loadWaitingClaims(),
     loadWaitingCorrections(),
+    loadWaitingTimesheets(),
     countsRaiseRequests(user) ? loadRaiseRequests('with_hr') : null,
     decidesRaises(user) ? getOrNull<PendingRaise[]>(PENDING_RAISES) : undefined,
     seesHomes(user) ? loadWaitingHomes() : null,
@@ -91,6 +94,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
     od: listOf(od),
     claims: listOf(claims),
     corrections: listOf(corrections),
+    timesheets: listOf(timesheets),
     raiseRequests: withHr === null ? undefined : withHr.kind === 'ok' ? withHr.value.filter((r: RaiseRequest) => waitsForYou(user, r)) : withHr.kind === 'failed' ? null : [],
     payRaises,
     homes: homes === null ? undefined : listOf(homes),

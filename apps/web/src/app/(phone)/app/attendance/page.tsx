@@ -4,13 +4,14 @@ import { Suspense } from 'react';
 import type { MonthCorrectionsPart } from '@/lib/correction-types';
 import { formatDate } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
-import { appAttendanceHref, appCorrectionHref, appRequestsHref } from '@/lib/surface';
+import { APP_PATHS, appAttendanceHref, appCorrectionHref, appRequestsHref } from '@/lib/surface';
 import { figureTiles, notImportedYetText, readAttendanceMonth, type PunchRow } from '../../../(app)/attendance/attendance';
 import { loadMine } from '../../../(app)/attendance/data';
 import { notLoaded } from '../../../(app)/attendance/not-loaded';
 import { ExemptionNote, FigureTiles, MonthNav } from '../../../(app)/attendance/ui';
 import { NoProfile } from '../../../(app)/dashboard/cards';
 import { todayInCairo } from '../../../(app)/employees/ui';
+import { loadOwnProfile } from '../../../(app)/own-profile';
 import { monthName } from '../../../(app)/payroll/list';
 import { PageTitle, PhoneLoading } from '../ui';
 import { DayList } from './day-list';
@@ -22,7 +23,8 @@ import { DayList } from './day-list';
 // sees their own as everyone does. A work from home day approved for them shows "Working from home" (owner, 21 October
 // 2026: "think about how should we handle the working from home in out erp"). A compensatory day off (owner, 26 October
 // 2026: "WFH and compensatory pages in the phone app") shows as on the site: "Compensatory day off" on the day, and the
-// month's "Compensatory days off" among the tiles (figureTiles).
+// month's "Compensatory days off" among the tiles (figureTiles). Someone HR switched to timesheets (owner, 4 November
+// 2026) gets their timesheet first: their days here aren't counted.
 
 export const metadata: Metadata = { title: 'Attendance · Trendlix People' };
 
@@ -75,10 +77,31 @@ async function Month({ searchParams }: { searchParams: PageProps<'/app/attendanc
   );
 }
 
+/** The way to their timesheet, first, for someone on timesheets. */
+async function TimesheetLink() {
+  const user = await getCurrentUser();
+  const profile = await loadOwnProfile(user);
+  if (!profile?.employment?.worksOnTimesheets) return null;
+  return (
+    <Link href={APP_PATHS.timesheet} className="card flex min-h-16 items-center justify-between gap-3 border-accent/40 bg-accent-soft px-4 py-3 text-ink no-underline">
+      <span className="min-w-0">
+        <span className="block font-semibold">My Timesheet</span>
+        <span className="block text-xs text-muted">Log your hours there, by client or task, and send each week for approval.</span>
+      </span>
+      <span aria-hidden="true" className="text-lg text-accent">
+        ›
+      </span>
+    </Link>
+  );
+}
+
 export default function PhoneAttendancePage({ searchParams }: PageProps<'/app/attendance'>) {
   return (
     <div className="space-y-4">
       <PageTitle title="Attendance" />
+      <Suspense fallback={null}>
+        <TimesheetLink />
+      </Suspense>
       <Suspense fallback={<PhoneLoading />}>
         <Month searchParams={searchParams} />
       </Suspense>
