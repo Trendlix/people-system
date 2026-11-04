@@ -141,7 +141,7 @@ describe('Undoing a cancellation (e2e)', () => {
     expect((await lineOf(run, 'ana')).terms.leave).toEqual({ paidDays: 2, unpaidDays: 0 });
     const logs = await audits(leave.id);
     expect(logs.at(-1)?.diff).toMatchObject({ employeeId: ids.ana, restored: true, before: { status: 'cancelled' }, after: { status: 'approved' }, note: 'HR cancelled the wrong dates' });
-    expect((await noticesOf('ana', 'leave_decided')).map((n) => n.title)).toContain('Leave restored by a Super Admin');
+    expect((await noticesOf('ana', 'leave_decided')).map((n) => n.title)).toContain('Leave restored');
     expect((await noticesOf('cora', 'leave_cover')).length).toBe(coverBefore + 1);
     // the edit is there as usual, so the dates can be fixed
     expect((await one(leave.id)).canRestore).toBe(false);
@@ -213,7 +213,7 @@ describe('Undoing a cancellation (e2e)', () => {
     expect(await one(leave.id)).toMatchObject({ canRestore: true, balanceBeforeRestore: 0.5, days: 1 });
     const back = (await restore(leave.id).expect(200)).body as View;
     expect(back.status).toBe('approved');
-    expect(back.steps.at(-1)?.comment).toBe('Back to approved\nOver the balance by 0.5 days: allowed by a Super Admin');
+    expect(back.steps.at(-1)?.comment).toBe('Back to approved\nOver the balance by 0.5 days: allowed');
     expect(await available('zed')).toBe(-0.5);
     expect((await audits(leave.id)).at(-1)?.diff).toMatchObject({ overBalanceDays: 0.5 });
   });

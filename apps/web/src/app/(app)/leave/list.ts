@@ -272,7 +272,7 @@ export function leaveProgressText(
     }
     case 'approved':
     default:
-      return { text: r.recordedByHr ? 'Recorded by HR' : 'Approved', reason: null };
+      return { text: r.recordedByHr ? 'Recorded' : 'Approved', reason: null };
   }
 }
 
@@ -336,7 +336,7 @@ export function leaveStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'c
       // nobody in charge: no direct manager, and no team lead or head of department other than the employee
       return confidential === true ? 'No direct manager or lead: sent straight to HR’s stage' : 'No direct manager or lead: sent straight to HR';
     case 'recorded_by_hr':
-      return 'Recorded by HR, approved at once';
+      return 'Recorded, approved at once';
     case 'manager_decision':
     case 'hr_decision': {
       if (s.kind === 'hr_decision' && confidential === true) return s.decision === 'reject' ? `Rejected ${AT_HR_STAGE}` : `Approved ${AT_HR_STAGE}`;
@@ -350,10 +350,10 @@ export function leaveStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'c
       return 'Cover changed';
     // a Super Admin edited it (owner, 26 October 2026: "as a superadmin i need to edit the leaves"); the comment lists what
     case 'edited':
-      return 'Edited by a Super Admin';
+      return 'Changed';
     // a Super Admin undid its cancellation (owner, 26 October 2026: "allow superadmin to undo cancellation")
     case 'restored':
-      return 'Restored by a Super Admin';
+      return 'Restored';
     default:
       return String(s.kind);
   }

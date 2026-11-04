@@ -101,7 +101,7 @@ describe('inside a circle, the accuracy allowed for', () => {
   it('says the nearest of the company’s places and how far its point is', () => {
     const far = verdict({ reading: north(MAIN, 1200, 10) });
     expect(far.nearest).toEqual({ name: MAIN.name, distanceMetres: 1200 });
-    expect(gpsOutsideMessage(far.nearest)).toBe("You're about 1.2 km from Trendlix Al Mahrouki; check in at the office, or ask HR for an attendance correction.");
+    expect(gpsOutsideMessage(far.nearest)).toBe("You're about 1.2 km from Trendlix Al Mahrouki; check in at the office, or ask for an attendance correction.");
   });
 });
 
@@ -158,7 +158,7 @@ describe('the two locks together: either passing is enough', () => {
       lock: 'locations',
       reason: 'outside_locations',
       network: 'off_network',
-      message: "You're about 1.2 km from Trendlix Al Mahrouki and not on the office network; check in at the office, or ask HR for an attendance correction.",
+      message: "You're about 1.2 km from Trendlix Al Mahrouki and not on the office network; check in at the office, or ask for an attendance correction.",
     });
     expect(checkInLockRefusal({ locked: true, refused: true, signed: false }, { locked: true, refused: 'no_location', nearest: null })).toMatchObject({
       reason: 'no_location',

@@ -87,7 +87,7 @@ abstract final class HomeWords {
   static const putOnMap = 'Put on the map by the employee';
   static String readOnDevice(int metres) => 'Read on the employee’s device, within ±$metres m';
   static const howLong = 'How long it lasts';
-  static const setByHr = 'Set by HR when approving';
+  static const setByHr = 'Set when approved';
   static String askedUntil(String date) => 'Asked until $date';
   static const noLongerCounts = 'It no longer counts for check-ins';
   static const onSetup = 'On Check-in Setup';

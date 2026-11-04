@@ -215,7 +215,7 @@ export const wfhDayText = (r: { date: string }) => `${weekdayOf(r.date)} ${forma
 /** How it came: asked by the employee, recorded by HR, or imported from Zoho People. */
 export function wfhSourceText(r: Pick<WfhRequestView, 'source' | 'recordedByHr'>): string {
   if (r.source === 'zoho') return 'Imported from Zoho People';
-  return r.recordedByHr ? 'Recorded by HR' : 'Asked by the employee';
+  return r.recordedByHr ? 'Recorded' : 'Asked by the employee';
 }
 
 /**
@@ -263,7 +263,7 @@ export function wfhDoneText(query: Query, status: LeaveStatus, manager?: Pick<Re
  */
 export function wfhStepText(s: Pick<WfhRequestStep | LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
   if (s.kind === 'imported') return 'Imported from Zoho People, approved';
-  if (s.kind === 'recorded_by_hr') return 'Recorded by HR, approved at once';
+  if (s.kind === 'recorded_by_hr') return 'Recorded, approved at once';
   if (s.kind === 'cancelled') return 'Cancelled';
   return leaveStepText({ ...s, kind: s.kind as LeaveStepKind }, manager, confidential);
 }

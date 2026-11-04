@@ -106,9 +106,9 @@ describe('Record official duty', () => {
 describe('how an official duty came', () => {
   it('asked, recorded by HR, or imported', () => {
     expect(odSourceText({})).toBe('Asked by the employee');
-    expect(odSourceText({ recordedByHr: true })).toBe('Recorded by HR');
+    expect(odSourceText({ recordedByHr: true })).toBe('Recorded');
     expect(odSourceText({ recordedByHr: true, imported: true })).toBe('Imported');
-    expect(odProgressText(view({ recordedByHr: true }))).toEqual({ text: 'Recorded by HR', reason: null });
+    expect(odProgressText(view({ recordedByHr: true }))).toEqual({ text: 'Recorded', reason: null });
     expect(odProgressText(view({ recordedByHr: true, imported: true }))).toEqual({ text: 'Imported', reason: null });
     // an API from before them: approved
     expect(odProgressText(view({}))).toEqual({ text: 'Approved', reason: null });
@@ -117,7 +117,7 @@ describe('how an official duty came', () => {
   });
 
   it('words HR’s recording and an import in the steps', () => {
-    expect(odStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded by HR, approved at once');
+    expect(odStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded, approved at once');
     expect(odStepText({ kind: 'imported', decision: null, comment: 'Imported from Leave.xlsx' })).toBe('Imported, approved');
   });
 });

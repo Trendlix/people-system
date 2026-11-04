@@ -181,6 +181,6 @@ describe('an approved day at check-in', () => {
 
   it('logs an import from Zoho People as its own step', () => {
     expect(WFH_STEP_KIND_LABELS.imported).toBe('Imported from Zoho People');
-    expect(WFH_STEP_KIND_LABELS.recorded_by_hr).toBe('Recorded by HR');
+    expect(WFH_STEP_KIND_LABELS.recorded_by_hr).toBe('Recorded');
   });
 });

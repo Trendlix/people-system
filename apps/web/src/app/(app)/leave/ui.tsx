@@ -172,7 +172,7 @@ export function MyLeaveTable({ requests }: { requests: LeaveRequestView[] }) {
             <tr key={r.id} className={`align-top ${r.status === 'cancelled' || r.status === 'rejected' ? 'text-muted' : ''}`}>
               <td className="min-w-40">
                 <TypeLink request={r} />
-                <div className="text-xs text-muted">{r.recordedByHr ? 'Recorded by HR' : 'Sent'} {formatDateTime(r.createdAt)}</div>
+                <div className="text-xs text-muted">{r.recordedByHr ? 'Recorded' : 'Sent'} {formatDateTime(r.createdAt)}</div>
               </td>
               <td className="min-w-40">
                 <RequestWhen request={r} />
@@ -268,7 +268,7 @@ export function MyPermissionTable({ requests }: { requests: PermissionRequestVie
                   <span className="sr-only">, permission of {permissionHoursLine(r)}</span>
                 </Link>
                 <div className="text-xs text-muted">
-                  {r.recordedByHr ? 'Recorded by HR' : 'Sent'} {formatDateTime(r.createdAt)}
+                  {r.recordedByHr ? 'Recorded' : 'Sent'} {formatDateTime(r.createdAt)}
                 </div>
               </td>
               <td className="min-w-40 tabular-nums">

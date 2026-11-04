@@ -161,7 +161,7 @@ export async function LeaveRequestDetail({
         </div>
         <p className="text-muted">
           {r.employee.fullNameEn}
-          {place && ` · ${place}`} · {r.recordedByHr ? 'recorded by HR' : 'sent'} {formatDateTime(r.createdAt)}
+          {place && ` · ${place}`} · {r.recordedByHr ? 'recorded' : 'sent'} {formatDateTime(r.createdAt)}
         </p>
       </div>
       {done && (
@@ -204,7 +204,7 @@ export async function LeaveRequestDetail({
               </Fact>
               <Fact label={r.manager ? approverLabel(r.manager) : 'Direct manager'}>
                 {r.recordedByHr ? (
-                  <span className="text-muted">Recorded by HR</span>
+                  <span className="text-muted">Recorded</span>
                 ) : r.manager ? (
                   r.manager.fullNameEn
                 ) : (

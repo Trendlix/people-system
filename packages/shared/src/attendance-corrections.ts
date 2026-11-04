@@ -157,9 +157,11 @@ export function correctionAskFrom(today: string, workingDays: readonly number[] 
   return earliest;
 }
 
-/** Why a day before `askFrom` can't be asked about any more, in words. */
-export const correctionTooLateText = (date: string) =>
-  `It’s too late to ask to correct ${shown(date)}: ask within ${CORRECTION_ASK_WORKING_DAYS} working days of the day. HR can still correct it for you.`;
+/**
+ * Why a day before `askFrom` can't be asked about any more, in words; never that anyone could act for them (owner, 4
+ * November 2026: "dont show the employee that anyone can do anything on their behalf").
+ */
+export const correctionTooLateText = (date: string) => `It’s too late to ask to correct ${shown(date)}: ask within ${CORRECTION_ASK_WORKING_DAYS} working days of the day.`;
 
 const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;

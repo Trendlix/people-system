@@ -180,10 +180,10 @@ describe('a request, in words', () => {
 
   it('words its steps, how it came and where it stands, an import from Zoho People too', () => {
     expect(wfhStepText({ kind: 'imported', decision: null, comment: null })).toBe('Imported from Zoho People, approved');
-    expect(wfhStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded by HR, approved at once');
+    expect(wfhStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded, approved at once');
     expect(wfhStepText({ kind: 'hr_decision', decision: 'approve', comment: null })).toBe('HR approved it');
     expect(wfhSourceText(request({ source: 'zoho', recordedByHr: true }))).toBe('Imported from Zoho People');
-    expect(wfhSourceText(request({ recordedByHr: true }))).toBe('Recorded by HR');
+    expect(wfhSourceText(request({ recordedByHr: true }))).toBe('Recorded');
     expect(wfhProgressText(request({ status: 'approved', source: 'zoho', recordedByHr: true })).text).toBe('Imported from Zoho People');
     expect(wfhProgressText(request({ status: 'rejected', rejectedStage: 'hr', rejectReason: 'Client day' }))).toEqual({ text: 'Rejected by HR', reason: 'Client day' });
   });

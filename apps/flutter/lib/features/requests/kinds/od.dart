@@ -67,7 +67,7 @@ abstract final class OdWords {
   static String sameMonth(String worked, String workedMonth, String off, String offMonth) =>
       'The day off must be in the same month as the day worked: $worked is in $workedMonth, $off in $offMonth.';
   static String withinDays(int n, String from, String to) => 'The day off must be within $n ${n == 1 ? 'day' : 'days'} after the day worked: from $from to $to.';
-  static String goneBy(String day) => '$day has gone by: only HR records a day off that is past.';
+  static String goneBy(String day) => '$day has gone by: a day off is asked for before it comes.';
   static String isToday(String day) => '$day is today: ask for a compensatory day a day before the day off at the latest.';
   static const writePlace = 'Write where the official duty is, e.g. the client’s office in New Cairo.';
   static const writeReason = 'Write what the official duty is for, e.g. a site visit for the client’s launch.';

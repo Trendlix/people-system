@@ -162,7 +162,9 @@ export function distanceText(metres: number): string {
 /** What a press outside every check-in location is told (the website and the app). */
 export function gpsOutsideMessage(nearest: { name: string; distanceMetres: number } | null, offNetworkToo = false): string {
   const where = nearest ? `You're about ${distanceText(nearest.distanceMetres)} from ${nearest.name}` : "You're not at the office";
-  return `${where}${offNetworkToo ? ' and not on the office network' : ''}; check in at the office, or ask HR for an attendance correction.`;
+  // asked for as their own correction, never someone acting for them (owner, 4 November 2026: "dont show the employee that
+  // anyone can do anything on their behalf")
+  return `${where}${offNetworkToo ? ' and not on the office network' : ''}; check in at the office, or ask for an attendance correction.`;
 }
 
 /** What a reading too rough to tell is told. */
@@ -173,7 +175,7 @@ const GPS_TOO_ROUGH_OFF_NETWORK = "Your location is too rough to tell if you're 
 const OUTSIDE_STARTS = ["You're about ", "You're not at the office"];
 
 /** Whether a message is the GPS lock's refusal of a press outside the check-in locations. */
-export const isGpsOutsideMessage = (m: string): boolean => OUTSIDE_STARTS.some((s) => m.startsWith(s)) && m.endsWith('ask HR for an attendance correction.');
+export const isGpsOutsideMessage = (m: string): boolean => OUTSIDE_STARTS.some((s) => m.startsWith(s)) && m.endsWith('ask for an attendance correction.');
 
 /** Whether a message is the GPS lock's refusal of a reading too rough to tell. */
 export const isGpsTooRoughMessage = (m: string): boolean => m === GPS_TOO_ROUGH_MESSAGE || m === GPS_TOO_ROUGH_OFF_NETWORK;

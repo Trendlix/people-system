@@ -168,7 +168,7 @@ describe('HR records official duty (e2e)', () => {
     expect(past).toEqual({
       employee: { id: ids.ben, fullNameEn: `Ben Away ${RUN}` },
       problems: [],
-      warnings: [`${shown(a)} is ${Math.round((Date.parse(TODAY) - Date.parse(a)) / 86_400_000)} days ago, past the 3 days an employee may ask after: recorded by HR after the limit.`],
+      warnings: [`${shown(a)} is ${Math.round((Date.parse(TODAY) - Date.parse(a)) / 86_400_000)} days ago, past the 3 days an employee may ask after: recorded after the limit.`],
       shift: { startTime: '09:00', endTime: '19:00', graceMinutes: 15 },
       // working days: no day off to compensate (27 October 2026)
       compensation: { onDayOff: false, needed: false, earned: null, cashDays: 0, already: null },
@@ -229,7 +229,7 @@ describe('HR records official duty (e2e)', () => {
     expect(now.inputs.noShowDays).toBe((was.inputs.noShowDays ?? 0) - 2);
     expect(now.inputs.workedHours).toBe((was.inputs.workedHours ?? 0) + 18);
     // Ben is told; Mona isn't asked anything
-    expect(await inbox('ben')).toEqual([{ kind: 'od_decided', title: 'Official duty recorded by HR', body: `${shown(a)}–${shown(b)}`, link: `/attendance/official-duty/${made.id}` }]);
+    expect(await inbox('ben')).toEqual([{ kind: 'od_decided', title: 'Official duty recorded', body: `${shown(a)}–${shown(b)}`, link: `/attendance/official-duty/${made.id}` }]);
     expect(await inbox('mona')).toEqual([]);
     const logged = await prisma.auditLog.findFirst({ where: { entityType: 'od_request', entityId: made.id }, select: { action: true, diff: true } });
     expect(logged?.action).toBe('record');
@@ -243,7 +243,7 @@ describe('HR records official duty (e2e)', () => {
     // HR's cancel works on it: the days are no-shows again
     await api().post(`/api/official-duty/${made.id}/cancel`).set('Cookie', hr).send({ comment: 'Recorded for the wrong person' }).expect(200);
     expect((await lineOf(runId, 'ben')).inputs.noShowDays).toBe(was.inputs.noShowDays);
-    expect((await inbox('ben')).at(-1)).toMatchObject({ kind: 'od_decided', title: 'Official duty cancelled by HR' });
+    expect((await inbox('ben')).at(-1)).toMatchObject({ kind: 'od_decided', title: 'Official duty cancelled' });
 
     // a month whose payroll is approved is refused, as leave edits are
     await prisma.payrollRun.update({ where: { id: runId }, data: { status: 'approved' } });

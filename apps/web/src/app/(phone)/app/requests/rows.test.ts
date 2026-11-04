@@ -307,7 +307,7 @@ describe('compensatory days on the phone pages’ My Requests (owner, 26 October
     expect(appRequestHref(open)).toBe(`/app/requests/compensatory/${ID(1)}`);
     expect(appRequestHref(open, 'approve')).toBe(`/app/approve/compensatory/${ID(1)}`);
     expect(appRequestWhen(paid)).toBe('Worked Friday 06/11/2026 · paid in cash instead');
-    expect(appRequestProgress(paid)).toBe('Recorded by HR');
+    expect(appRequestProgress(paid)).toBe('Recorded');
     expect(filterAppRequests(rows, readAppRequestFilters({ kind: 'compensatory' })).map((r) => r.id)).toEqual([ID(1), ID(2)]);
     expect(filterAppRequests(rows, readAppRequestFilters({ kind: 'compensatory', status: 'open' })).map((r) => r.id)).toEqual([ID(1)]);
     expect(appRequestCounts(rows, { status: '' })).toMatchObject({ '': 3, compensatory: 2, leave: 1 });

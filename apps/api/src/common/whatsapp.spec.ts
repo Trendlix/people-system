@@ -110,12 +110,12 @@ describe('what each message says', () => {
     expect(whatsappContent({ template: 'approval_waiting', what: 'vacancy', who: { en: 'Video Editor (VAC-2026-0003)' } }, 'en', { firstName: 'Sara' }).body).toEqual(['Sara', 'a vacancy', 'Video Editor (VAC-2026-0003)']);
   });
 
-  it('a decision: approved, rejected, cancelled by HR, a claim’s pay month, a check-in location’s first step; a half day', () => {
+  it('a decision: approved, rejected, cancelled, a claim’s pay month, a check-in location’s first step; a half day', () => {
     const update = (o: Partial<Extract<WhatsAppFacts, { template: 'request_update' }>>, lang: 'en' | 'ar' = 'en') =>
       whatsappContent({ template: 'request_update', what: 'leave', span: { from: '2026-11-02', to: '2026-11-02' }, outcome: 'approved', ...o }, lang, { firstName: 'Omar' }).body;
     expect(update({})).toEqual(['Omar', 'leave request', '02/11/2026', 'approved']);
     expect(update({ outcome: 'rejected' }, 'ar')).toEqual(['Omar', 'طلب الإجازة الخاص بك', '٠٢/١١/٢٠٢٦', 'تم الرفض']);
-    expect(update({ outcome: 'cancelled' })[3]).toBe('cancelled by HR');
+    expect(update({ outcome: 'cancelled' })[3]).toBe('cancelled');
     expect(update({ what: 'reimbursement', payMonth: '2026-11-01' })[3]).toBe('approved, to be paid with the November 2026 payroll');
     expect(update({ what: 'reimbursement', payMonth: '2026-11-01' }, 'ar')[3]).toBe('تمت الموافقة، وسيتم الصرف مع رواتب شهر نوفمبر ٢٠٢٦');
     expect(update({ what: 'home', outcome: 'first_step' })[3]).toBe('approved by HR, now with the CEO');

@@ -107,7 +107,7 @@ describe('the Type’s choices', () => {
 
 describe('a Super Admin’s edit in the log', () => {
   it('the step says who edited it, the comment what changed', () => {
-    expect(leaveStepText({ kind: 'edited', decision: null, comment: 'Type A → B' })).toBe('Edited by a Super Admin');
+    expect(leaveStepText({ kind: 'edited', decision: null, comment: 'Type A → B' })).toBe('Changed');
     expect(leaveDoneText({ done: 'edited' }, 'approved')).toEqual({ text: 'Leave edited.', tone: 'ok' });
   });
 });

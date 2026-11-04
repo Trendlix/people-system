@@ -123,7 +123,7 @@ describe('the request form’s live checks', () => {
 
   it('warns, not refuses, a day worked with no check-in kept', () => {
     expect(compensatoryFormWarning(typed('06/11/2026', '16/11/2026'), FORM)).toBeNull();
-    expect(compensatoryFormWarning(typed('10/11/2026', '16/11/2026'), FORM)).toBe('No check-in is kept on 10/11/2026: HR will ask to confirm you worked that day.');
+    expect(compensatoryFormWarning(typed('10/11/2026', '16/11/2026'), FORM)).toBe('No check-in is kept on 10/11/2026: that you worked that day is still to be confirmed.');
     expect(compensatoryFormWarning(typed('', ''), FORM)).toBeNull();
   });
 });

@@ -394,7 +394,7 @@ describe('Official duty (e2e)', () => {
       expect(said(await api().post(`/api/official-duty/${id}/cancel`).set('Cookie', hr).send({ comment: '' }).expect(400))).toEqual(['Write why the official duty is cancelled.']);
       const cancelled = (await api().post(`/api/official-duty/${id}/cancel`).set('Cookie', hr).send({ comment: 'Recorded by mistake' }).expect(200)).body as View;
       expect(cancelled.steps.at(-1)).toMatchObject({ kind: 'cancelled', comment: 'Recorded by mistake' });
-      expect((await inbox('ben')).at(-1)).toMatchObject({ kind: 'od_decided', title: 'Official duty cancelled by HR' });
+      expect((await inbox('ben')).at(-1)).toMatchObject({ kind: 'od_decided', title: 'Official duty cancelled' });
       expect((await lineOf(runId, 'ben')).inputs.noShowDays).toBe(was.inputs.noShowDays);
     });
   });

@@ -36,5 +36,5 @@ describe('the warning before restoring', () => {
 });
 
 it('words the restored step', () => {
-  expect(leaveStepText({ kind: 'restored', decision: null, comment: null })).toBe('Restored by a Super Admin');
+  expect(leaveStepText({ kind: 'restored', decision: null, comment: null })).toBe('Restored');
 });

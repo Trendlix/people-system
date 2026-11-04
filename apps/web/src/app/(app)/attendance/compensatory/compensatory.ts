@@ -283,7 +283,7 @@ export const compensatoryCashWaitsText = (dayWorked: string) => `Cash instead on
 export const compensatoryOutcomeText = (outcome: CompensatoryOutcome | null): string | null => (outcome ? COMPENSATORY_OUTCOME_LABELS[outcome] : null);
 
 /** How it came: asked by the employee or recorded by HR. */
-export const compensatorySourceText = (r: Pick<CompensatoryRequestView, 'recordedByHr'>): string => (r.recordedByHr ? 'Recorded by HR' : 'Asked by the employee');
+export const compensatorySourceText = (r: Pick<CompensatoryRequestView, 'recordedByHr'>): string => (r.recordedByHr ? 'Recorded' : 'Asked by the employee');
 
 /** Where a request stands, as a leave request's (who has it now, or how it ended, with a rejection's comment). */
 export function compensatoryProgressText(
@@ -533,7 +533,7 @@ export function compensatoryFormProblems(
 export function compensatoryFormWarning(typed: TypedCompensatory, form: Pick<CompensatoryForm, 'checkedIn' | 'today'> | null): string | null {
   const dayWorked = parseDate(typed.dayWorked);
   if (!form || !dayWorked || form.checkedIn.includes(dayWorked) || compensatoryUpcoming(dayWorked, form.today)) return null;
-  return `No check-in is kept on ${formatDate(dayWorked)}: HR will ask to confirm you worked that day.`;
+  return `No check-in is kept on ${formatDate(dayWorked)}: that you worked that day is still to be confirmed.`;
 }
 
 // ---------- the day worked, picked from a menu (owner, 31 October 2026) ----------

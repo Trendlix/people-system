@@ -216,7 +216,7 @@ export function compensatorySameMonthProblem(dayWorked: string, dayOff: string):
 /** An employee asks a day before the day off at the latest (as work from home): null when they do. */
 export function compensatoryNoticeProblem(dayOff: string, today: string): string | null {
   if (!isDate(dayOff)) return null;
-  if (dayOff < today) return `${shown(dayOff)} has gone by: only HR records a day off that is past.`;
+  if (dayOff < today) return `${shown(dayOff)} has gone by: a day off is asked for before it comes.`;
   if (dayOff === today) return `${shown(dayOff)} is today: ask for a compensatory day a day before the day off at the latest.`;
   return null;
 }
@@ -389,7 +389,7 @@ export function compensatoryEligibleDays(ctx: CompensatoryEligibleContext): Comp
 export function compensatoryEligibleNote(d: Pick<CompensatoryEligibleDay, 'when' | 'holiday' | 'checkedIn'>): string {
   const what = d.holiday ? `${d.holiday} (official holiday)` : 'rest day';
   if (d.when === 'upcoming') return what;
-  return `${what} · ${d.checkedIn ? 'check-in kept' : 'no check-in: HR will ask to confirm'}`;
+  return `${what} · ${d.checkedIn ? 'check-in kept' : 'no check-in: to be confirmed'}`;
 }
 
 /**

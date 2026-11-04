@@ -211,7 +211,7 @@ describe('historyRows', () => {
   it('says each row as the design’s table does: what, the day, how long, where it stands, opening its page', () => {
     expect(byKey('leave:l1')).toMatchObject({
       title: 'Casual leave',
-      sub: 'Recorded by HR 26/10/2026',
+      sub: 'Recorded 26/10/2026',
       date: 'Sunday 25/10/2026',
       duration: '1 day',
       status: 'Approved',

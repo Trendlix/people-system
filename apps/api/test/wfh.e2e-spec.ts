@@ -335,7 +335,7 @@ describe('Working from home (e2e)', () => {
       await record(ids.cleo, { date: addDays(firstDay(NEXT), 20), reason: 'Board day' }).expect(404);
     });
 
-    it('is cancelled by HR once approved, saying why; the employee may not', async () => {
+    it('is cancelled once approved, saying why; the employee may not', async () => {
       const [approved] = (await api().get(`/api/wfh?status=approved&employeeId=${ids.ben}`).set('Cookie', hr).expect(200)).body as View[];
       expect(said(await api().post(`/api/me/wfh/${approved.id}/cancel`).set('Cookie', sessions.ben).expect(409))).toEqual([
         'This work from home day is approved, so it can no longer be cancelled here. Ask HR to cancel it.',
@@ -344,7 +344,7 @@ describe('Working from home (e2e)', () => {
       const cancelled = (await api().post(`/api/wfh/${approved.id}/cancel`).set('Cookie', hr).send({ comment: 'Team day moved' }).expect(200)).body as View;
       expect(cancelled.status).toBe('cancelled');
       expect(cancelled.steps.at(-1)).toMatchObject({ kind: 'cancelled', comment: 'Team day moved' });
-      expect((await inbox('ben')).at(-1)).toMatchObject({ kind: 'wfh_decided', title: 'Work from home day cancelled by HR' });
+      expect((await inbox('ben')).at(-1)).toMatchObject({ kind: 'wfh_decided', title: 'Work from home day cancelled' });
       // the day is free again for Ben
       await ask('ben', { date: firstDay(NEXT) }).expect(201);
     });

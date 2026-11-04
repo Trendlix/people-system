@@ -72,14 +72,14 @@ abstract final class CorrectionWords {
 
   // its page
   static const pageTitle = 'Attendance correction';
-  static const correctedByHr = 'Corrected by HR';
+  static const correctedByHr = 'Corrected';
   static const sent = 'Sent';
   static const onRecordWhenAsked = 'On record when asked';
   static const rightTimes = 'The right times';
   static const asOnRecord = 'As on record';
   static const appliedFact = 'Day corrected';
-  static const correctedDirectly = 'Corrected by HR directly: no decision needed';
-  static const stepRecorded = 'Corrected by HR directly, approved at once';
+  static const correctedDirectly = 'Corrected directly: no decision needed';
+  static const stepRecorded = 'Corrected directly, approved at once';
   static const stepCancelled = 'Cancelled by the employee';
   static const cancelTitle = 'Cancel the correction';
   static const cancelButton = 'Cancel this correction';

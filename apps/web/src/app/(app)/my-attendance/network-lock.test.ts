@@ -46,7 +46,7 @@ describe('a press refused by the GPS lock (owner, 24 October 2026: "Yes, add a G
   const outside = gpsOutsideMessage({ name: 'Trendlix Al Mahrouki', distanceMetres: 1200 });
 
   it('is the API’s 409 with how far they are, or that the reading is too rough', () => {
-    expect(outside).toBe("You're about 1.2 km from Trendlix Al Mahrouki; check in at the office, or ask HR for an attendance correction.");
+    expect(outside).toBe("You're about 1.2 km from Trendlix Al Mahrouki; check in at the office, or ask for an attendance correction.");
     expect(locationLockRefused(409, [outside])).toBe(true);
     expect(locationLockRefused(409, [gpsOutsideMessage(null, true)])).toBe(true);
     expect(locationLockRefused(409, [GPS_TOO_ROUGH_MESSAGE])).toBe(true);

@@ -381,7 +381,8 @@ export type LeaveStepKind = (typeof LEAVE_STEP_KINDS)[number];
 export const LEAVE_STEP_KIND_LABELS: Record<LeaveStepKind, string> = {
   submitted: 'Sent',
   no_manager: 'No direct manager: sent to HR',
-  recorded_by_hr: 'Recorded by HR',
+  // never who acted for the employee (owner, 4 November 2026: "dont show the employee that anyone can do anything on their behalf")
+  recorded_by_hr: 'Recorded',
   manager_decision: 'Direct manager',
   hr_decision: 'HR',
   cancelled: 'Cancelled',
@@ -536,7 +537,7 @@ export const overBalanceWarning = (available: number, days: number): string => {
 };
 
 /** What a step says of leave beyond the balance, allowed by a Super Admin. */
-export const overBalanceStepText = (over: number): string => `Over the balance by ${daysText(over)}: allowed by a Super Admin`;
+export const overBalanceStepText = (over: number): string => `Over the balance by ${daysText(over)}: allowed`;
 
 // ---------- a request's problems ----------
 

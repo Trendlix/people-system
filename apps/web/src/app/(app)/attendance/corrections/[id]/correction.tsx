@@ -91,7 +91,7 @@ export async function CorrectionDetail({
         </div>
         <p className="text-muted">
           {r.employee.fullNameEn}
-          {place && ` · ${place}`} · {r.recordedByHr ? 'corrected by HR' : 'sent'} {formatDateTime(r.createdAt)}
+          {place && ` · ${place}`} · {r.recordedByHr ? 'corrected' : 'sent'} {formatDateTime(r.createdAt)}
         </p>
       </div>
       {done && (

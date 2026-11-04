@@ -168,7 +168,7 @@ function RequestsTable({ requests, order = 'department' }: { requests: LeaveList
                       <span className="font-semibold">{r.employee.fullNameEn}</span>
                       {r.confidential && <CLevelBadge className="ml-1.5" title={`The CEO decides HR’s stage of a C-level person’s ${ROW_WHAT[rowKind(r)]}.`} />}
                       <div className="text-xs text-muted">
-                        {isWfh(r) && r.source === 'zoho' ? 'Imported' : r.recordedByHr ? 'Recorded by HR' : 'Sent'} {formatDateTime(r.createdAt)}
+                        {isWfh(r) && r.source === 'zoho' ? 'Imported' : r.recordedByHr ? 'Recorded' : 'Sent'} {formatDateTime(r.createdAt)}
                       </div>
                     </td>
                     <td className="max-w-64 min-w-40">

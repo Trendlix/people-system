@@ -16,7 +16,7 @@ describe('the annual balance (owner, 18 October 2026: "can you apply the leaves 
     expect(annualFigures(annual, 2026).map((f) => [f.label, f.value, f.note])).toEqual([
       ['Entitlement 2026', '7.5', 'Usable from 01/09/2026'],
       ['Carried in', '0', null],
-      ['Adjusted by HR', '−1', null],
+      ['Adjusted', '−1', null],
       ['Taken', '2', null],
       ['Booked', '1', null],
       ['Waiting', '0.5', null],

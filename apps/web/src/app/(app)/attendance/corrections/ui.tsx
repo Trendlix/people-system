@@ -39,7 +39,7 @@ export function CorrectionsTable({ corrections, who = false, note }: { correctio
               <td className="whitespace-nowrap tabular-nums">{rightTimesText(c)}</td>
               <td>
                 <LeaveStatusBadge status={c.status} confidential={c.confidential} />
-                <div className="mt-1 text-xs text-muted">{c.recordedByHr ? 'Corrected by HR' : `Sent ${formatDateTime(c.createdAt)}`}</div>
+                <div className="mt-1 text-xs text-muted">{c.recordedByHr ? `Corrected ${formatDateTime(c.createdAt)}` : `Sent ${formatDateTime(c.createdAt)}`}</div>
               </td>
               <td className="text-right">
                 <Link href={correctionHref(c.id)} className={`btn min-h-9 px-3 no-underline ${c.waitingForYou ? 'btn-primary' : 'btn-secondary'}`}>

@@ -42,14 +42,16 @@ export function decidedText(kind: LeaveLikeKind, decision: 'approved' | 'rejecte
   return { kind: `${kind}_decided`, title: `${NAMES[kind].noun} ${decision}`, body: when, link };
 }
 
+// The employee is never told who acted for them (owner, 4 November 2026: "dont show the employee that anyone can do
+// anything on their behalf"): what happened, not by whom.
 const CANCELLED_BY_HR: Record<'leave' | 'permission' | 'wfh' | 'od' | 'compensatory' | 'correction', string> = {
   // an approved attendance correction cancelled (owner, 2 November 2026: "i want to cancel this")
-  correction: 'Attendance correction cancelled by HR',
-  leave: 'Leave cancelled by HR',
-  permission: 'Permission cancelled by HR',
-  wfh: 'Work from home day cancelled by HR',
-  od: 'Official duty cancelled by HR',
-  compensatory: 'Compensatory day cancelled by HR',
+  correction: 'Attendance correction cancelled',
+  leave: 'Leave cancelled',
+  permission: 'Permission cancelled',
+  wfh: 'Work from home day cancelled',
+  od: 'Official duty cancelled',
+  compensatory: 'Compensatory day cancelled',
 };
 
 /** HR cancelled the employee's approved leave, permission or work from home day. */
@@ -59,17 +61,17 @@ export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh' | 'od' | 
 
 /** HR recorded an official duty for the employee, approved at once (owner, 26 October 2026: "HR records it"). */
 export function recordedByHrText(kind: 'od', when: string, link: string): NotificationInput {
-  return { kind: `${kind}_decided`, title: 'Official duty recorded by HR', body: when, link };
+  return { kind: `${kind}_decided`, title: 'Official duty recorded', body: when, link };
 }
 
 /** A Super Admin edited the employee's approved leave (owner, 26 October 2026): told as HR's cancelling is, with its new days. */
 export function leaveEditedText(when: string, link: string): NotificationInput {
-  return { kind: 'leave_decided', title: 'Leave edited by a Super Admin', body: when, link };
+  return { kind: 'leave_decided', title: 'Leave changed', body: when, link };
 }
 
 /** A Super Admin undid the cancellation of the employee's leave (owner, 26 October 2026): told as an edit is, with its days. */
 export function leaveRestoredText(when: string, link: string): NotificationInput {
-  return { kind: 'leave_decided', title: 'Leave restored by a Super Admin', body: when, link };
+  return { kind: 'leave_decided', title: 'Leave restored', body: when, link };
 }
 
 /**

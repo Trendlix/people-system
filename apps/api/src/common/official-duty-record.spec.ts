@@ -34,7 +34,7 @@ import {
 } from '@trendlix/shared';
 import { recordedByHrText } from '../notifications/texts.js';
 
-// Official duty recorded by HR and imported (owner, 26 October 2026, asked "how to apply or import official duty":
+// Official duty recorded and imported (owner, 26 October 2026, asked "how to apply or import official duty":
 // "HR records it" and "Import (template + Zoho)"): packages/shared official-duty.ts and leave-import.ts. 2026-11-01 is a
 // Sunday.
 
@@ -64,11 +64,11 @@ describe('HR records an official duty (owner, 26 October 2026: "HR records it")'
 
   it('is logged as recorded by HR, or imported; the employee is told', () => {
     expect(OD_STEP_KINDS).toEqual(['submitted', 'no_manager', 'recorded_by_hr', 'manager_decision', 'hr_decision', 'cancelled', 'imported']);
-    expect(OD_STEP_KIND_LABELS.recorded_by_hr).toBe('Recorded by HR');
+    expect(OD_STEP_KIND_LABELS.recorded_by_hr).toBe('Recorded');
     expect(OD_STEP_KIND_LABELS.imported).toBe('Imported');
     expect(recordedByHrText('od', '15/11/2026–18/11/2026', '/attendance/official-duty/1')).toEqual({
       kind: 'od_decided',
-      title: 'Official duty recorded by HR',
+      title: 'Official duty recorded',
       body: '15/11/2026–18/11/2026',
       link: '/attendance/official-duty/1',
     });
@@ -77,9 +77,9 @@ describe('HR records an official duty (owner, 26 October 2026: "HR records it")'
   it('goes past the 3-day limit with a warning, marked so; within it, none', () => {
     expect(odPastLimitText('2026-11-09', TODAY)).toBeNull();
     expect(odPastLimitText('2026-11-20', TODAY)).toBeNull();
-    expect(odPastLimitText('2026-11-02', TODAY)).toBe('02/11/2026 is 10 days ago, past the 3 days an employee may ask after: recorded by HR after the limit.');
+    expect(odPastLimitText('2026-11-02', TODAY)).toBe('02/11/2026 is 10 days ago, past the 3 days an employee may ask after: recorded after the limit.');
     const past = odRecordCheck(input({ startDate: '2026-11-02', endDate: '2026-11-03' }), [fact('2026-11-02'), fact('2026-11-03')], MORNING, TODAY, 'Ben Away');
-    expect(past).toEqual({ problems: [], warnings: ['02/11/2026 is 10 days ago, past the 3 days an employee may ask after: recorded by HR after the limit.'] });
+    expect(past).toEqual({ problems: [], warnings: ['02/11/2026 is 10 days ago, past the 3 days an employee may ask after: recorded after the limit.'] });
     expect(odRecordCheck(input(), [fact('2026-11-15')], MORNING, TODAY, 'Ben Away')).toEqual({ problems: [], warnings: [] });
   });
 

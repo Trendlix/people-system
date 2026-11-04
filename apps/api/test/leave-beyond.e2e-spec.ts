@@ -94,7 +94,7 @@ describe('Leave beyond the balance and casual leave’s share (e2e)', () => {
 
     const made = (await record('ova', 'annual', d1, d2, owner).expect(201)).body as { id: string; status: string; steps: { kind: string; comment: string | null }[] };
     expect(made.status).toBe('approved');
-    expect(made.steps).toMatchObject([{ kind: 'recorded_by_hr', comment: 'Over the balance by 1 day: allowed by a Super Admin' }]);
+    expect(made.steps).toMatchObject([{ kind: 'recorded_by_hr', comment: 'Over the balance by 1 day: allowed' }]);
     expect(await available('ova')).toBe(-1);
     expect((await audits(made.id))[0].diff).toMatchObject({ overBalanceDays: 1, days: 2 });
   });
@@ -105,7 +105,7 @@ describe('Leave beyond the balance and casual leave’s share (e2e)', () => {
     // already at -1 and one day more: over by 2 in all (the leave itself, left out of the balance, takes it from -1 + 1)
     const edited = (await api().patch(`/api/leave/requests/${own.id}`).set('Cookie', owner).send({ endDate: day(NEXT, 9) }).expect(200)).body as { days: number; steps: { comment: string | null }[] };
     expect(edited.days).toBe(2);
-    expect(edited.steps.at(-1)?.comment).toMatch(/\nOver the balance by \d+(\.5)? days?: allowed by a Super Admin$/);
+    expect(edited.steps.at(-1)?.comment).toMatch(/\nOver the balance by \d+(\.5)? days?: allowed$/);
     expect((await audits(own.id)).at(-1)?.diff).toMatchObject({ overBalanceDays: expect.any(Number) });
     // HR still cannot edit at all
     await api().patch(`/api/leave/requests/${own.id}`).set('Cookie', hr).send({ reason: 'No' }).expect(403);

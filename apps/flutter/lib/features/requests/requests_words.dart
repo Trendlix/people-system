@@ -19,7 +19,7 @@ abstract final class RequestsWords {
   static String ringLabel(String percent, int year) => '$percent of your $year annual leave is still available';
   static const entitlement = 'Entitlement';
   static const carriedIn = 'Carried in';
-  static const adjusted = 'Adjusted by HR';
+  static const adjusted = 'Adjusted';
   static const taken = 'Taken';
   static const booked = 'Booked';
   static const waiting = 'Waiting';
@@ -100,8 +100,8 @@ abstract final class RequestsWords {
     'resignation': 'resignation',
   };
   static String sentOn(String date) => 'Sent $date';
-  static String recordedByHrOn(String date) => 'Recorded by HR $date';
-  static String correctedByHrOn(String date) => 'Corrected by HR $date';
+  static String recordedByHrOn(String date) => 'Recorded $date';
+  static String correctedByHrOn(String date) => 'Corrected $date';
   static String lastDayOf(String date) => 'Last day $date';
   static String noticeOf(String notice) => '$notice${notice.endsWith('s') ? '’' : '’s'} notice';
   static const homeTypes = {'home': 'Home location', 'remote_site': 'Remote site', 'client': 'Client location'};
@@ -135,21 +135,22 @@ abstract final class RequestsWords {
   static const rejected = 'Rejected';
   static String cancelledBy(String who) => 'Cancelled by $who';
   static const cancelled = 'Cancelled';
-  static const recordedByHr = 'Recorded by HR';
+  // never who acted for them (owner, 4 November 2026: "dont show the employee that anyone can do anything on their behalf")
+  static const recordedByHr = 'Recorded';
 
   // ---------- each step ----------
   static const stepSubmitted = 'Asked for by the employee';
   static const stepNoManager = 'No direct manager or lead: sent straight to HR';
   static const stepNoManagerCeo = 'No direct manager or lead: sent straight to HR’s stage';
-  static const stepRecordedByHr = 'Recorded by HR, approved at once';
+  static const stepRecordedByHr = 'Recorded, approved at once';
   static String stepApproved(String who) => '$who approved it';
   static String stepRejected(String who) => '$who rejected it';
   static const stepApprovedAtHr = 'Approved at HR’s stage';
   static const stepRejectedAtHr = 'Rejected at HR’s stage';
   static const stepCancelled = 'Cancelled';
   static const stepCoverChanged = 'Cover changed';
-  static const stepEdited = 'Edited by a Super Admin';
-  static const stepRestored = 'Restored by a Super Admin';
+  static const stepEdited = 'Changed';
+  static const stepRestored = 'Restored';
   static const stepImported = 'Imported, approved';
   static String standingIn(String name) => 'standing in for $name';
 
@@ -166,7 +167,7 @@ abstract final class RequestsWords {
   static const theRequest = 'The request';
   static const recordedPast = 'Recorded past';
   static String noneSentStraightTo(String who) => 'None: sent straight to $who';
-  static const recordedNoDecision = 'Recorded by HR: no decision needed';
+  static const recordedNoDecision = 'Recorded: no decision needed';
   static const keepIt = 'Keep it';
   static const moved = 'This request has moved on since you opened it.';
   static const notYours = 'This request couldn’t be found, or isn’t yours to see.';

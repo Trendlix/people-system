@@ -90,7 +90,7 @@ describe('An approved work from home day without a check-in counts full (e2e)', 
   /** An approved work from home day written as it was before the change: nothing refilled. */
   async function approvedBefore(key: string, date: string) {
     await prisma.wfhRequest.create({
-      data: { employeeId: ids[key], employmentId: employments[key], date: toDateOnly(date), reason: 'Recorded by HR', status: 'approved', recordedByHr: true, createdById: hrUserId },
+      data: { employeeId: ids[key], employmentId: employments[key], date: toDateOnly(date), reason: 'Recorded', status: 'approved', recordedByHr: true, createdById: hrUserId },
     });
   }
 
@@ -184,7 +184,7 @@ describe('An approved work from home day without a check-in counts full (e2e)', 
     });
 
     it('refills the draft line: the day’s 9 hours counted, no no-show, no attendance cut', async () => {
-      const made = await api().post('/api/wfh').set('Cookie', hr).send({ employeeId: ids.lam, date: work[DRAFT][5], reason: 'Recorded by HR' }).expect(201);
+      const made = await api().post('/api/wfh').set('Cookie', hr).send({ employeeId: ids.lam, date: work[DRAFT][5], reason: 'Recorded' }).expect(201);
       wfhId = made.body.id;
       const after = await lineOf(DRAFT, 'lam');
       expect(after.inputs.workedHours).toBe(hours + 9);
@@ -212,7 +212,7 @@ describe('An approved work from home day without a check-in counts full (e2e)', 
       expect(history.log.days.find((d) => d.date === work[DRAFT][5])).toMatchObject({ mode: 'wfh', attended: true, onTime: true, hours: 9, expected: true, counted: true });
     });
 
-    it('cancelled by HR, the day is a no-show again and the draft line follows', async () => {
+    it('cancelled, the day is a no-show again and the draft line follows', async () => {
       await api().post(`/api/wfh/${wfhId}/cancel`).set('Cookie', hr).send({ comment: 'Recorded by mistake' }).expect(200);
       const after = await lineOf(DRAFT, 'lam');
       expect(after.inputs.workedHours).toBe(hours);
@@ -237,7 +237,7 @@ describe('An approved work from home day without a check-in counts full (e2e)', 
     });
 
     it('HR records the approved day: the line is filled from the month’s days, the day’s 9 hours counted, no no-show, no cut', async () => {
-      await api().post('/api/wfh').set('Cookie', hr).send({ employeeId: ids.zoe, date: work[DRAFT][5], reason: 'Recorded by HR' }).expect(201);
+      await api().post('/api/wfh').set('Cookie', hr).send({ employeeId: ids.zoe, date: work[DRAFT][5], reason: 'Recorded' }).expect(201);
       const after = await lineOf(DRAFT, 'zoe');
       expect(after.inputs.workedHours).toBe(hours + 9);
       expect(after.inputs.workedHours).toBe(9 * work[DRAFT].length);

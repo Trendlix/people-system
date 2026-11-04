@@ -39,7 +39,7 @@ export function annualFigures(a: AnnualLeaveBalance, year: number): BalanceFigur
   return [
     { key: 'entitlement', label: `Entitlement ${year}`, value: daysNumber(a.entitlement), note: a.usableFrom > jan1 ? `Usable from ${formatDate(a.usableFrom)}` : null },
     { key: 'carriedIn', label: 'Carried in', value: signedDays(a.carriedIn), note: a.carriedIn ? `From before ${year}` : null },
-    { key: 'adjustments', label: 'Adjusted by HR', value: signedDays(a.adjustments), note: null },
+    { key: 'adjustments', label: 'Adjusted', value: signedDays(a.adjustments), note: null },
     { key: 'taken', label: 'Taken', value: daysNumber(a.taken), note: null },
     { key: 'booked', label: 'Booked', value: daysNumber(a.booked), note: null },
     { key: 'pending', label: 'Waiting', value: daysNumber(a.pending), note: null },

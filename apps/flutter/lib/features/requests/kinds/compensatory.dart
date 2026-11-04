@@ -28,7 +28,7 @@ abstract final class CompensatoryWords {
   static const groupWorked = 'Worked';
   static const groupUpcoming = 'Coming up this month';
   static String eligibleNote(String? holiday, bool upcoming, bool checkedIn) =>
-      '${holiday == null ? 'rest day' : '$holiday (official holiday)'}${upcoming ? '' : ' · ${checkedIn ? 'check-in kept' : 'no check-in: HR will ask to confirm'}'}';
+      '${holiday == null ? 'rest day' : '$holiday (official holiday)'}${upcoming ? '' : ' · ${checkedIn ? 'check-in kept' : 'no check-in: to be confirmed'}'}';
   static String noDaysUntil(String next) => 'No day can be asked for until $next.';
   static const noDays = 'No day can be asked for now.';
   static const hoursWorked = 'Hours worked';
@@ -61,7 +61,7 @@ abstract final class CompensatoryWords {
   static String sameMonth(String worked, String workedMonth, String off, String offMonth) =>
       'The day off must be in the same month as the day worked: $worked is in $workedMonth, $off in $offMonth.';
   static String withinDays(int n, String from, String to) => 'The day off must be within $n ${n == 1 ? 'day' : 'days'} after the day worked: from $from to $to.';
-  static String goneBy(String day) => '$day has gone by: only HR records a day off that is past.';
+  static String goneBy(String day) => '$day has gone by: a day off is asked for before it comes.';
   static String isToday(String day) => '$day is today: ask for a compensatory day a day before the day off at the latest.';
 
   // its page
@@ -83,7 +83,7 @@ abstract final class CompensatoryWords {
   static String daysPay(double n, String days) => n == 1 ? '1 day’s pay' : '$days days’ pay';
   static const reasonFact = 'Reason';
   static String withOd(String day) => 'With the official duty on $day.';
-  static const recordedByHr = 'Recorded by HR';
+  static const recordedByHr = 'Recorded';
   static const asked = 'Asked';
   static const stepCancelled = 'Cancelled';
   static const cancelTitle = 'Cancel the request';

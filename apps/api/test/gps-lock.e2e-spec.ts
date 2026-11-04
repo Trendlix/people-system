@@ -211,7 +211,7 @@ describe('The GPS lock and requested check-in locations (e2e)', () => {
 
   describe('an Office person', () => {
     it('is refused outside the circles, checking in and out alike, with how far they are; nothing kept; audited without the point', async () => {
-      const message = "You're about 1.2 km from " + MAIN.name + '; check in at the office, or ask HR for an attendance correction.';
+      const message = "You're about 1.2 km from " + MAIN.name + '; check in at the office, or ask for an attendance correction.';
       expect(said(await punch(sessions.olga, { kind: 'in', ...FAR }).expect(409))).toEqual([message]);
       expect(said(await punch(sessions.olgaApp, { kind: 'out', ...FAR }).expect(409))).toEqual([message]);
       expect(await punches('olga')).toBe(0);
@@ -302,7 +302,7 @@ describe('The GPS lock and requested check-in locations (e2e)', () => {
 
     it('refuses when both fail, saying both, in the audit log with the network’s reason', async () => {
       const res = said(await punch(sessions.olga, { kind: 'out', ...FAR }, signed(sessions.olga, OFF_NETWORK)).expect(409));
-      expect(res).toEqual([`You're about 1.2 km from ${MAIN.name} and not on the office network; check in at the office, or ask HR for an attendance correction.`]);
+      expect(res).toEqual([`You're about 1.2 km from ${MAIN.name} and not on the office network; check in at the office, or ask for an attendance correction.`]);
       expect((await refusals('olga')).at(-1)?.diff).toMatchObject({ reason: 'outside_locations', lock: 'locations', network: 'off_network' });
       expect(said(await punch(sessions.olga, { kind: 'out', locationError: 'denied' }).expect(409))).toEqual([OFF_NETWORK_MESSAGE]);
     });

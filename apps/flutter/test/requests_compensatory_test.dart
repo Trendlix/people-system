@@ -105,7 +105,7 @@ void main() {
       expect(find.text(CompensatoryWords.groupUpcoming), findsOneWidget);
       // 24/10 with its check-in; 30/10 (today) and 23/10 without; 31/10 to come
       expect(find.text('rest day · check-in kept'), findsOneWidget);
-      expect(find.text('rest day · no check-in: HR will ask to confirm'), findsNWidgets(2));
+      expect(find.text('rest day · no check-in: to be confirmed'), findsNWidgets(2));
       expect(find.text('Friday 30/10/2026'), findsOneWidget);
       expect(find.text('Friday 23/10/2026'), findsOneWidget);
       expect(find.text(CompensatoryWords.eligibleNote(null, true, false)), findsOneWidget);

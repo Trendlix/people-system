@@ -143,7 +143,7 @@ describe('the form', () => {
 
   it('refuses live a day asked too late, and offers no "worked remotely" any more (official duty instead)', () => {
     expect(correctionFormProblems(typed(), { ...ctx, askFrom: '2026-10-14' })).toEqual([
-      'It’s too late to ask to correct 12/10/2026: ask within 2 working days of the day. HR can still correct it for you.',
+      'It’s too late to ask to correct 12/10/2026: ask within 2 working days of the day.',
     ]);
     expect(correctionFormProblems(typed(), { ...ctx, askFrom: '2026-10-12' })).toEqual([]);
     expect(CORRECTION_KIND_OPTIONS.map((o) => o.value)).toEqual(['forgot_check_in', 'forgot_check_out', 'wrong_time']);

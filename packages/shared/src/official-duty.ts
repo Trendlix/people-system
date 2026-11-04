@@ -348,7 +348,7 @@ export function recordsOdFor(user: { roles: readonly Role[] }, confidential: boo
 export function odPastLimitText(startDate: string, today: string): string | null {
   if (!odTimingProblem(startDate, today)) return null;
   const days = daysBetween(startDate, today);
-  return `${shown(startDate)} is ${days} days ago, past the ${OD_AFTER_DAYS} days an employee may ask after: recorded by HR after the limit.`;
+  return `${shown(startDate)} is ${days} days ago, past the ${OD_AFTER_DAYS} days an employee may ask after: recorded after the limit.`;
 }
 
 /** A month's payroll as the official duty's checks read it: YYYY-MM and its status. */

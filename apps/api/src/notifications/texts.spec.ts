@@ -68,8 +68,8 @@ describe('notification texts', () => {
     expect(decidedText('leave', 'approved', '22/10/2026', '/leave/1')).toEqual({ kind: 'leave_decided', title: 'Leave request approved', body: '22/10/2026', link: '/leave/1' });
     expect(decidedText('permission', 'rejected', '22/10/2026', '/l').title).toBe('Permission request rejected');
     expect(decidedText('correction', 'approved', '19/10/2026', '/l')).toMatchObject({ kind: 'correction_decided', title: 'Attendance correction approved' });
-    expect(cancelledByHrText('leave', '22/10/2026', '/l')).toMatchObject({ kind: 'leave_decided', title: 'Leave cancelled by HR' });
-    expect(cancelledByHrText('permission', '22/10/2026', '/l').title).toBe('Permission cancelled by HR');
+    expect(cancelledByHrText('leave', '22/10/2026', '/l')).toMatchObject({ kind: 'leave_decided', title: 'Leave cancelled' });
+    expect(cancelledByHrText('permission', '22/10/2026', '/l').title).toBe('Permission cancelled');
     expect(claimDecidedText({ approved: true, payMonth: '2026-10-01' }, '/r')).toEqual({
       kind: 'reimbursement_decided',
       title: 'Reimbursement claim approved',

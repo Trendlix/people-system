@@ -44,6 +44,6 @@ describe('the restore step’s words', () => {
     expect(leaveRestoreComment('approved', 0, null)).toBe('Back to approved');
     expect(leaveRestoreComment('with_hr', 0, ' Wrong dates ')).toBe('Back to waiting for HR\nWhy: Wrong dates');
     expect(leaveRestoreComment('with_manager', 0, null)).toBe('Back to waiting for the direct manager');
-    expect(leaveRestoreComment('approved', 2, 'Needed')).toBe('Back to approved\nOver the balance by 2 days: allowed by a Super Admin\nWhy: Needed');
+    expect(leaveRestoreComment('approved', 2, 'Needed')).toBe('Back to approved\nOver the balance by 2 days: allowed\nWhy: Needed');
   });
 });

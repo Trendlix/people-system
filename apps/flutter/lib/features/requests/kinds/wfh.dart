@@ -44,10 +44,10 @@ abstract final class WfhWords {
   static const itsMonth = 'Its month';
   static String taken(int n) => '$n taken';
   static const imported = 'Imported from Zoho People';
-  static const recordedByHr = 'Recorded by HR';
+  static const recordedByHr = 'Recorded';
   static const asked = 'Asked by the employee';
   static const stepImported = 'Imported from Zoho People, approved';
-  static const stepRecorded = 'Recorded by HR, approved at once';
+  static const stepRecorded = 'Recorded, approved at once';
   static const stepCancelled = 'Cancelled';
   static const cancelTitle = 'Cancel the request';
   static const cancelButton = 'Cancel this request';

@@ -244,7 +244,7 @@ export function odWhenLine(r: Pick<OdRequestView, 'startDate' | 'endDate' | 'ful
 /** How it came: asked by the employee, recorded by HR (26 October 2026), or imported by a leave import. */
 export function odSourceText(r: Pick<OdRequestView, 'recordedByHr' | 'imported'>): string {
   if (r.imported) return 'Imported';
-  return r.recordedByHr ? 'Recorded by HR' : 'Asked by the employee';
+  return r.recordedByHr ? 'Recorded' : 'Asked by the employee';
 }
 
 /**
@@ -289,7 +289,7 @@ export function odDoneText(query: Query, status: LeaveStatus, manager?: Pick<Req
 /** A step as its timeline shows it: as a leave request's, HR's recording, an import and a cancelling in their words. */
 export function odStepText(s: Pick<OdRequestStep | LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
   if (s.kind === 'imported') return 'Imported, approved';
-  if (s.kind === 'recorded_by_hr') return 'Recorded by HR, approved at once';
+  if (s.kind === 'recorded_by_hr') return 'Recorded, approved at once';
   if (s.kind === 'cancelled') return 'Cancelled';
   return leaveStepText({ ...s, kind: s.kind as LeaveStepKind }, manager, confidential);
 }

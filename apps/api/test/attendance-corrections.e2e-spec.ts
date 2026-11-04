@@ -320,7 +320,7 @@ describe('Attendance corrections (e2e)', () => {
         const holidays = (await prisma.holiday.findMany({ select: { date: true } })).map((h) => fromDateOnly(h.date));
         const from = correctionAskFrom(TODAY, [0, 1, 2, 3, 4], holidays);
         const late = said(await ask('rami', { date: addDays(from, -1), kind: 'forgot_check_in', checkIn: '09:00', reason: 'Forgot' }).expect(400));
-        expect(late).toEqual([`It’s too late to ask to correct ${addDays(from, -1).split('-').reverse().join('/')}: ask within 2 working days of the day. HR can still correct it for you.`]);
+        expect(late).toEqual([`It’s too late to ask to correct ${addDays(from, -1).split('-').reverse().join('/')}: ask within 2 working days of the day.`]);
         // the earliest day still open: refused for something else (no reason), never for the time
         const open = said(await ask('rami', { date: from, kind: 'forgot_check_in', checkIn: '09:00' }).expect(400));
         expect(open.join(' ')).not.toContain('too late');
@@ -389,7 +389,7 @@ describe('Attendance corrections (e2e)', () => {
       expect(day).toMatchObject({ source: 'zoho', status: 'absent' });
       const zedUser = await prisma.user.findFirst({ where: { employeeId: ids.zed }, select: { id: true } });
       if (zedUser) {
-        const told = await prisma.notification.findMany({ where: { userId: zedUser.id, title: 'Attendance correction cancelled by HR' } });
+        const told = await prisma.notification.findMany({ where: { userId: zedUser.id, title: 'Attendance correction cancelled' } });
         expect(told).toHaveLength(1);
       }
       expect(await prisma.auditLog.findFirst({ where: { action: 'cancel', entityId: id }, orderBy: { at: 'desc' } })).toMatchObject({

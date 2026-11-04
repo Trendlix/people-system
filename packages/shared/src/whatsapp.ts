@@ -589,12 +589,13 @@ export type WhatsAppOutcome = 'approved' | 'rejected' | 'cancelled' | 'first_ste
 function outcomeText(o: { outcome: WhatsAppOutcome; payMonth?: string | null; firstStepBy?: 'hr' | 'ceo' | null }, lang: WhatsAppLanguage): string {
   if (lang === 'ar') {
     if (o.outcome === 'rejected') return 'تم الرفض';
-    if (o.outcome === 'cancelled') return 'تم الإلغاء من الموارد البشرية';
+    if (o.outcome === 'cancelled') return 'تم الإلغاء';
     if (o.outcome === 'first_step') return o.firstStepBy === 'ceo' ? 'تمت الموافقة من الرئيس التنفيذي' : 'تمت الموافقة من الموارد البشرية، وهو الآن لدى الرئيس التنفيذي';
     return o.payMonth ? `تمت الموافقة، وسيتم الصرف مع رواتب شهر ${whatsappMonth(o.payMonth, 'ar')}` : 'تمت الموافقة';
   }
   if (o.outcome === 'rejected') return 'rejected';
-  if (o.outcome === 'cancelled') return 'cancelled by HR';
+  // never who acted for them (owner, 4 November 2026: "dont show the employee that anyone can do anything on their behalf")
+  if (o.outcome === 'cancelled') return 'cancelled';
   if (o.outcome === 'first_step') return o.firstStepBy === 'ceo' ? 'approved by the CEO' : 'approved by HR, now with the CEO';
   return o.payMonth ? `approved, to be paid with the ${whatsappMonth(o.payMonth, 'en')} payroll` : 'approved';
 }

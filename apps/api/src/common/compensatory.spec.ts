@@ -102,7 +102,7 @@ describe('asking', () => {
   it('needs a day before the day off at the latest; a past or same-day off is only HR’s', () => {
     expect(compensatoryNoticeProblem('2026-11-13', TODAY)).toBeNull();
     expect(compensatoryNoticeProblem(TODAY, TODAY)).toBe('12/11/2026 is today: ask for a compensatory day a day before the day off at the latest.');
-    expect(compensatoryNoticeProblem('2026-11-10', TODAY)).toBe('10/11/2026 has gone by: only HR records a day off that is past.');
+    expect(compensatoryNoticeProblem('2026-11-10', TODAY)).toBe('10/11/2026 has gone by: a day off is asked for before it comes.');
   });
 
   it('is refused with every reason, the day worked first', () => {
@@ -230,7 +230,7 @@ describe('the days the day worked is picked from', () => {
 
   it('says what each is: a rest day or the holiday, and for one gone by its check-in', () => {
     expect(compensatoryEligibleNote({ when: 'worked', holiday: null, checkedIn: true })).toBe('rest day · check-in kept');
-    expect(compensatoryEligibleNote({ when: 'worked', holiday: 'Test Day', checkedIn: false })).toBe('Test Day (official holiday) · no check-in: HR will ask to confirm');
+    expect(compensatoryEligibleNote({ when: 'worked', holiday: 'Test Day', checkedIn: false })).toBe('Test Day (official holiday) · no check-in: to be confirmed');
     expect(compensatoryEligibleNote({ when: 'upcoming', holiday: null, checkedIn: false })).toBe('rest day');
     expect(COMPENSATORY_DAY_GROUP_LABELS).toEqual({ worked: 'Worked', upcoming: 'Coming up this month' });
   });
@@ -422,7 +422,7 @@ describe('the Compensatory Setup', () => {
     expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: null }, { claimed: false }, null, TODAY).problems).toEqual(['Enter the day off, e.g. 2026-11-10.']);
     // an employee's day off a day ahead at the latest; HR's past one a warning
     expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: '2026-11-10' }, { claimed: false }, off(), TODAY).problems).toEqual([
-      '10/11/2026 has gone by: only HR records a day off that is past.',
+      '10/11/2026 has gone by: a day off is asked for before it comes.',
     ]);
     expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: '2026-11-10' }, { claimed: false }, off(), TODAY, 'Ben')).toEqual({
       problems: [],

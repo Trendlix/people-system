@@ -146,7 +146,7 @@ describe('a request in words', () => {
     expect(leaveProgressText(request())).toEqual({ text: 'With the direct manager (Omar Said)', reason: null });
     expect(leaveProgressText(request({ status: 'with_hr' })).text).toBe('Waiting for HR');
     expect(leaveProgressText(request({ status: 'rejected', rejectedStage: 'hr', rejectReason: ' Busy week ' }))).toEqual({ text: 'Rejected by HR', reason: 'Busy week' });
-    expect(leaveProgressText(request({ status: 'approved', recordedByHr: true })).text).toBe('Recorded by HR');
+    expect(leaveProgressText(request({ status: 'approved', recordedByHr: true })).text).toBe('Recorded');
     expect(leaveProgressText(request({ status: 'approved' })).text).toBe('Approved');
     const cancelled = request({ status: 'cancelled', steps: [{ id: '1', kind: 'cancelled', decision: null, comment: 'Came back early', actor: 'Mona (HR)', at: '2026-10-26T10:00:00Z' }] });
     expect(leaveProgressText(cancelled)).toEqual({ text: 'Cancelled by Mona (HR)', reason: 'Came back early' });
@@ -176,7 +176,7 @@ describe('a request in words', () => {
   it('words each step of its log, and marks the decisions', () => {
     expect(leaveStepText({ kind: 'submitted', decision: null, comment: null })).toBe('Asked for by the employee');
     expect(leaveStepText({ kind: 'no_manager', decision: null, comment: null })).toBe('No direct manager or lead: sent straight to HR');
-    expect(leaveStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded by HR, approved at once');
+    expect(leaveStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded, approved at once');
     expect(leaveStepText({ kind: 'manager_decision', decision: 'approve', comment: null })).toBe('The direct manager approved it');
     expect(leaveStepText({ kind: 'hr_decision', decision: 'reject', comment: 'No' })).toBe('HR rejected it');
     // the manager stage by who decides it (19 October 2026)

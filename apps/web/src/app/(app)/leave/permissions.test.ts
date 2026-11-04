@@ -270,7 +270,7 @@ describe('what its page says once something is done', () => {
   it('logs each step as leave does, a cancelling giving the hours back', () => {
     expect(permissionStepText({ kind: 'cancelled', decision: null, comment: null })).toBe('Cancelled, the hours given back');
     expect(permissionStepText({ kind: 'manager_decision', decision: 'approve', comment: null }, { role: 'team_lead' })).toBe('The team lead approved it');
-    expect(permissionStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded by HR, approved at once');
+    expect(permissionStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded, approved at once');
   });
 
   it('has the decision form approve the permission at the last stage', () => {

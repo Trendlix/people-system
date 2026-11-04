@@ -213,7 +213,7 @@ describe('the time to ask for a correction', () => {
 
   it('refuses an employee’s day asked too late, and HR’s direct correction has no such check', () => {
     const late = correctionProblems({ date: '2026-10-12', kind: 'forgot_check_out', checkOut: '18:30', reason: 'Client meeting' }, ctx({ askFrom: '2026-10-15' }));
-    expect(late).toEqual(['It’s too late to ask to correct 12/10/2026: ask within 2 working days of the day. HR can still correct it for you.']);
+    expect(late).toEqual(['It’s too late to ask to correct 12/10/2026: ask within 2 working days of the day.']);
     expect(correctionProblems({ date: '2026-10-15', kind: 'forgot_check_out', checkOut: '18:30', reason: 'Client meeting' }, ctx({ askFrom: '2026-10-15', day: worked({ checkIn: at('09:05', '2026-10-15') }) }))).toEqual([]);
     expect(correctionProblems({ date: '2026-10-12', kind: 'forgot_check_out', checkOut: '18:30', reason: 'Client meeting' }, ctx({ askFrom: null }))).toEqual([]);
   });

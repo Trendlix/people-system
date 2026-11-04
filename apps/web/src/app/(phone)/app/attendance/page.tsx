@@ -68,7 +68,7 @@ async function Month({ searchParams }: { searchParams: PageProps<'/app/attendanc
             </h2>
             <DayList days={p.days} punches={view.punches ?? []} corrections={view.corrections} correctable={view.correctable} today={today} wfhDays={p.wfhDays} askFrom={view.ask?.from ?? null} />
           </section>
-          {imported && <p className="text-xs text-muted">Days from Zoho People imported by HR on {formatDate(imported)}.</p>}
+          {imported && <p className="text-xs text-muted">Days from Zoho People imported on {formatDate(imported)}.</p>}
         </>
       )}
     </div>

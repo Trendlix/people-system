@@ -192,7 +192,7 @@ describe('Leave edits and filters (e2e)', () => {
       });
       // the employee is told (the bell), as when HR cancels
       const told = await noticesOf('ana', 'leave_decided');
-      expect(told.map((n) => n.title)).toEqual(['Leave edited by a Super Admin', 'Leave edited by a Super Admin']);
+      expect(told.map((n) => n.title)).toEqual(['Leave changed', 'Leave changed']);
       expect(told[1].link).toBe(`/leave/${first.id}`);
     });
 
@@ -221,7 +221,7 @@ describe('Leave edits and filters (e2e)', () => {
       // 4 days against 3 free: one over, allowed
       const longer = (await edit(first.id, { endDate: longEnd }).expect(200)).body as View;
       expect(longer).toMatchObject({ startDate: b1, endDate: longEnd, days: 4 });
-      expect(longer.steps.at(-1)?.comment).toBe(`Dates ${shownDate(b1)}–${shownDate(b2)} → ${shownDate(b1)}–${shownDate(longEnd)}\nOver the balance by 1 day: allowed by a Super Admin`);
+      expect(longer.steps.at(-1)?.comment).toBe(`Dates ${shownDate(b1)}–${shownDate(b2)} → ${shownDate(b1)}–${shownDate(longEnd)}\nOver the balance by 1 day: allowed`);
       expect((await audits(first.id)).at(-1)?.diff).toMatchObject({ overBalanceDays: 1 });
       expect((await balances('ana')).annual.available).toBe(-1);
       // and back within it: nothing is said of the balance
@@ -317,7 +317,7 @@ describe('Leave edits and filters (e2e)', () => {
       expect((await balances('ben')).annual.available).toBe(before);
       // days that a cancelled leave doesn't take can be anyone's: no clash is asked of it
       expect(a.steps.at(-1)?.kind).toBe('edited');
-      expect(await noticesOf('ben', 'leave_decided').then((n) => n.filter((x) => x.title === 'Leave edited by a Super Admin'))).toEqual([]);
+      expect(await noticesOf('ben', 'leave_decided').then((n) => n.filter((x) => x.title === 'Leave changed'))).toEqual([]);
     });
   });
 

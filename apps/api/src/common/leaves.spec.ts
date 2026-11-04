@@ -461,8 +461,8 @@ describe('leave beyond the balance (owner, 26 October 2026: "only allow super ad
     expect(overBalanceDays(law('casual'), 1, 1.5)).toBe(0.5);
     expect(overBalanceDays(law('annual'), 5, 5)).toBe(0);
     expect(overBalanceDays(law('unpaid'), 0, 5)).toBe(0);
-    expect(overBalanceStepText(2)).toBe('Over the balance by 2 days: allowed by a Super Admin');
-    expect(overBalanceStepText(0.5)).toBe('Over the balance by 0.5 days: allowed by a Super Admin');
+    expect(overBalanceStepText(2)).toBe('Over the balance by 2 days: allowed');
+    expect(overBalanceStepText(0.5)).toBe('Over the balance by 0.5 days: allowed');
     expect(overBalanceWarning(3, 5)).toBe('This leaves the annual balance at −2 days.');
     expect(overBalanceWarning(4, 5)).toBe('This leaves the annual balance at −1 day.');
   });

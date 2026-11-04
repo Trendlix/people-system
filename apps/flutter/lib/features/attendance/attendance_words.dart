@@ -304,7 +304,7 @@ abstract final class AttendanceWords {
   static const rejectedBecause = 'Why it was rejected';
   static String appliedOn(String when) => 'The day was corrected $when';
   static String sentOn(String when) => 'Sent $when';
-  static const correctedByHr = 'Corrected by HR';
+  static const correctedByHr = 'Corrected';
   static const everyStep = 'Every step';
   static const statusLabels = {'with_manager': 'With the manager', 'with_hr': 'With HR', 'approved': 'Approved', 'rejected': 'Rejected', 'cancelled': 'Cancelled'};
 
@@ -328,7 +328,7 @@ abstract final class AttendanceWords {
       case 'no_manager':
         return confidential ? 'No direct manager or lead: sent straight to HR’s stage' : 'No direct manager or lead: sent straight to HR';
       case 'recorded_by_hr':
-        return 'Corrected by HR directly, approved at once';
+        return 'Corrected directly, approved at once';
       case 'cancelled':
         return 'Cancelled by the employee';
       case 'manager_decision':

@@ -282,7 +282,7 @@ describe('Notifications (e2e)', () => {
       expect(await kindsOf('hr2')).toEqual(['permission_waiting']);
 
       await api().post(`/api/leave/permissions/${id}/cancel`).set('Cookie', hr2).send({ comment: 'Invented: the day was changed' }).expect(200);
-      expect((await inbox('rami')).at(-1)).toEqual({ kind: 'permission_decided', title: 'Permission cancelled by HR', body: shownDate(permissionDay), link });
+      expect((await inbox('rami')).at(-1)).toEqual({ kind: 'permission_decided', title: 'Permission cancelled', body: shownDate(permissionDay), link });
     });
 
     it('a C-level person’s: the manager, then the CEO and HR with Super Admin, never HR', async () => {

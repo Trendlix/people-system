@@ -39,7 +39,7 @@ export interface HistoryRow {
   key: string;
   kind: HistoryKind;
   title: string;
-  /** The small line under the title: what it is about and when it was sent ("Recorded by HR 26/10/2026"). */
+  /** The small line under the title: what it is about and when it was sent ("Recorded 26/10/2026"). */
   sub: string;
   /** The day or days it is for; "—" for a request about no day. */
   date: string;
@@ -69,8 +69,8 @@ const NONE = '—';
 
 const join = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ');
 
-/** "Sent 26/10/2026", "Recorded by HR 26/10/2026": the day, in Cairo, it was asked. */
-const sentOn = (at: string, byHr = false, hrWords = 'Recorded by HR') => `${byHr ? hrWords : 'Sent'} ${formatDate(at)}`;
+/** "Sent 26/10/2026", "Recorded 26/10/2026": the day, in Cairo, it was asked. */
+const sentOn = (at: string, byHr = false, hrWords = 'Recorded') => `${byHr ? hrWords : 'Sent'} ${formatDate(at)}`;
 
 /** The leave-like requests (leave, permission, corrections, work from home, official duty, compensatory days). */
 export function leaveState(status: LeaveStatus): HistoryState {
@@ -171,7 +171,7 @@ export function historyRows(s: HistorySources): HistoryRow[] {
       key: `correction:${c.id}`,
       kind: 'correction' as const,
       title: 'Attendance correction',
-      sub: join(correctionKindName(c.correctionKind), sentOn(c.createdAt, c.recordedByHr, 'Corrected by HR')),
+      sub: join(correctionKindName(c.correctionKind), sentOn(c.createdAt, c.recordedByHr, 'Corrected')),
       date: correctionDayText(c),
       duration: NONE,
       status: leaveStatusLabel(c.status, c.confidential),
