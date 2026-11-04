@@ -68,7 +68,11 @@ describe('the app’s list', () => {
     const missing: string[] = [];
     for (const file of dartFiles(decodeURIComponent(lib))) {
       for (const m of readFileSync(file, 'utf8').matchAll(/'(\/api\/[^'?]*)/g)) {
-        const shape = m[1].replace(/\$\{[^}]*\}|\$\w+(\.\w+)*/g, '{x}').replace(/\/$/, '');
+        // a part glued to the end of the path ("/api/me/timesheet${_week(week)}") is its ?query, added by a helper
+        const shape = m[1]
+          .replace(/\$\{[^}]*\}|\$\w+(\.\w+)*/g, '{x}')
+          .replace(/([^/])\{x\}$/, '$1')
+          .replace(/\/$/, '');
         // a base the app adds an action to ("/api/me/leave/requests/{x}/cancel") is listed with it
         if (!shapes.has(shape) && ![...shapes].some((s) => s.startsWith(`${shape}/`))) missing.push(`${shape} (${file.split('/lib/')[1]})`);
       }

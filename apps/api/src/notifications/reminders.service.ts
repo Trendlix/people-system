@@ -191,6 +191,7 @@ export class RemindersService implements OnModuleDestroy {
             joinDate: true,
             endDate: true,
             employmentType: true,
+            worksOnTimesheets: true,
             shift: { select: { startTime: true, endTime: true, graceMinutes: true, countUntil: true, workingDays: true, daysPerWeek: true } },
           },
         },
@@ -209,6 +210,7 @@ export class RemindersService implements OnModuleDestroy {
           joinDate: fromDateOnly(m.joinDate),
           endDate: m.endDate ? fromDateOnly(m.endDate) : null,
           employmentType: m.employmentType,
+          worksOnTimesheets: m.worksOnTimesheets,
           shift: m.shift && shiftOf(m.shift),
         })),
       });

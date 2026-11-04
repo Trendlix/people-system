@@ -14,6 +14,7 @@ import { loadJson } from '../../payroll/load';
 import { StaffOnly } from '../../staff-only';
 import { AccountActions, AddAccount, AddTier, AssignmentActions, AssignPerson, TierActions } from './account-forms';
 import { AccountSection } from './account-section';
+import { CLIENT_HOURS_PATH } from '../hours/client-hours';
 import {
   accountAnchor,
   accountFacts,
@@ -55,8 +56,9 @@ import type { AssignmentView, ClientAccountsList, ClientAccountView, TierView } 
 // keep the sizes (Small, Medium, Large …: a size only fills in an account's default); Finance and a Super Admin read
 // them; a Super Admin deletes an assignment or a size made by mistake. The amounts only for those who see salaries; a
 // C-level person's assignments are the CEO's, counted for anyone else ("C-level (1 person) — hidden"). The address's
-// ?account= (the Audit Log's link) marks and scrolls to one account. The API checks every change again. Clients will
-// hold Projects and Timesheets later.
+// ?account= (the Audit Log's link, and Client Hours') marks and scrolls to one account. The API checks every change
+// again. Client Hours (4 November 2026: "Full salary, hours tracked"), the month's timesheet hours by client, is a button
+// away; Clients will hold Projects later.
 
 export const metadata: Metadata = { title: 'Client Accounts · People System' };
 
@@ -349,7 +351,13 @@ export default function ClientAccountsPage({ searchParams }: PageProps<'/clients
   return (
     <StaffOnly>
       <div>
-        <h1 className="page-title">Client Accounts</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="page-title">Client Accounts</h1>
+          {/* the month's timesheet hours by client (4 November 2026: "Full salary, hours tracked"), for the same people */}
+          <Link href={CLIENT_HOURS_PATH} className="btn btn-secondary">
+            Client Hours
+          </Link>
+        </div>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <AccountsView searchParams={searchParams} />

@@ -209,3 +209,111 @@ export interface TimesheetListItem {
 /** The decisions on a week. */
 export const TIMESHEET_DECISIONS = ['approve', 'reject'] as const;
 export type TimesheetDecision = (typeof TIMESHEET_DECISIONS)[number];
+
+// ---------- client hours ----------
+
+// Client hours (owner, 4 November 2026: "Full salary, hours tracked", the monthly pay's hours kept for the clients;
+// "Still to do: client reports"): a month's hours logged on timesheets, by client account and by person in it, the
+// approved ones apart from those still waiting for approval (a week not sent, or rejected, counts nothing). A line
+// without a client (a task alone) is under "No client". HR, the CEO, Finance and a Super Admin read it (those who read
+// the client accounts); a C-level person's hours only by those who see them, the others told how many aren't shown.
+
+/** Where a line's week stands: approved, or sent and waiting for approval. */
+export type ClientHoursStatus = 'approved' | 'submitted';
+
+export const CLIENT_HOURS_STATUS_LABELS: Record<ClientHoursStatus, string> = { approved: 'Approved', submitted: 'Waiting for approval' };
+
+/** What the lines without a client are under. */
+export const NO_CLIENT_LABEL = 'No client (tasks only)';
+
+export interface ClientHoursEmployee {
+  id: string;
+  fullNameEn: string;
+  employeeCode: string | null;
+}
+
+export interface ClientHoursClient {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
+/** A line of a week sent or approved, on a day of the month. */
+export interface ClientHoursLine {
+  date: string;
+  employee: ClientHoursEmployee;
+  client: ClientHoursClient | null;
+  task: string | null;
+  hours: number;
+  note: string | null;
+  status: ClientHoursStatus;
+}
+
+/** A person's hours on a client in the month. */
+export interface ClientHoursPerson {
+  employee: ClientHoursEmployee;
+  approved: number;
+  waiting: number;
+}
+
+/** A client's hours in the month (null: the lines without a client), and each person's. */
+export interface ClientHoursGroup {
+  client: ClientHoursClient | null;
+  approved: number;
+  waiting: number;
+  people: ClientHoursPerson[];
+}
+
+/** GET /reports/client-hours?month=YYYY-MM. */
+export interface ClientHoursReport {
+  month: string;
+  generatedAt: string;
+  groups: ClientHoursGroup[];
+  total: { approved: number; waiting: number; people: number };
+  /** C-level people with hours in the month whose hours aren't shown to the caller. */
+  hiddenPeople: number;
+}
+
+const hoursSum = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * A month's lines by client, the clients with the most hours first (then by name), "No client" last; in each, the
+ * people with the most hours first (then by name). Approved and waiting hours apart, to the hundredth.
+ */
+export function clientHoursGroups(lines: readonly ClientHoursLine[]): ClientHoursGroup[] {
+  const groups = new Map<string, { client: ClientHoursClient | null; people: Map<string, ClientHoursPerson> }>();
+  for (const l of lines) {
+    const key = l.client?.id ?? '';
+    const g = groups.get(key) ?? { client: l.client, people: new Map<string, ClientHoursPerson>() };
+    groups.set(key, g);
+    const p = g.people.get(l.employee.id) ?? { employee: l.employee, approved: 0, waiting: 0 };
+    g.people.set(l.employee.id, p);
+    if (l.status === 'approved') p.approved = hoursSum(p.approved + l.hours);
+    else p.waiting = hoursSum(p.waiting + l.hours);
+  }
+  const byHours = <T extends { approved: number; waiting: number }>(name: (t: T) => string) => (a: T, b: T) =>
+    b.approved + b.waiting - (a.approved + a.waiting) || name(a).localeCompare(name(b));
+  return [...groups.values()]
+    .map(({ client, people }) => {
+      const rows = [...people.values()].sort(byHours((p) => p.employee.fullNameEn));
+      return {
+        client,
+        approved: hoursSum(rows.reduce((n, p) => n + p.approved, 0)),
+        waiting: hoursSum(rows.reduce((n, p) => n + p.waiting, 0)),
+        people: rows,
+      };
+    })
+    .sort((a, b) => (a.client === null ? 1 : 0) - (b.client === null ? 1 : 0) || byHours<ClientHoursGroup>((g) => g.client?.name ?? '')(a, b));
+}
+
+/** The month's totals: approved and waiting hours, and how many people logged any. */
+export function clientHoursTotal(lines: readonly ClientHoursLine[]): ClientHoursReport['total'] {
+  return {
+    approved: hoursSum(lines.reduce((n, l) => n + (l.status === 'approved' ? l.hours : 0), 0)),
+    waiting: hoursSum(lines.reduce((n, l) => n + (l.status === 'submitted' ? l.hours : 0), 0)),
+    people: new Set(lines.map((l) => l.employee.id)).size,
+  };
+}
+
+/** "Hours of 1 C-level person aren’t shown." */
+export const hiddenPeopleNote = (n: number): string | null => (n > 0 ? `Hours of ${n} C-level ${n === 1 ? 'person aren’t' : 'people aren’t'} shown.` : null);

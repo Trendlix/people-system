@@ -45,6 +45,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   client_account: 'Client account',
   client_account_assignment: 'Client account assignment',
   client_account_tier: 'Client account size',
+  // a month's hours on timesheets by client (4 November 2026)
+  client_hours_report: 'Client hours report',
   company: 'Company',
   contract: 'Contract',
   contract_settings: 'Contract defaults',
@@ -406,6 +408,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   salary_raises_file: 'Downloaded the salary raises',
   contracts_report_file: 'Downloaded the contracts report',
   leave_report_file: 'Downloaded the leave report',
+  client_hours_file: 'Downloaded the client hours report',
   payroll_vs_insurance_file: 'Downloaded the payroll vs social insurance report',
   social_insurance_report_file: 'Downloaded the social insurance report',
   // a KPI scorecard's scoring sent by its manager, HR or the CEO (21 October 2026)

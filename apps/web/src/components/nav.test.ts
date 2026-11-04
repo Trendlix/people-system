@@ -8,6 +8,7 @@ import {
   ASSETS_TABS,
   AUDIT_LOG_PATH,
   CLIENT_ACCOUNTS_PATH,
+  CLIENT_HOURS_PATH,
   CLIENTS_NAV,
   decidesForTeam,
   DETAILS_CHANGES_PATH,
@@ -940,13 +941,19 @@ describe('Organization', () => {
 describe('Clients (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal with it?")', () => {
   const clients = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).find((n) => n.label === 'Clients') ?? null;
 
-  it('is a heading with Client Accounts, for HR, the CEO, Finance and a Super Admin; never an Admin’s or an employee’s', () => {
+  it('is a heading with Client Accounts and Client Hours, for HR, the CEO, Finance and a Super Admin; never an Admin’s or an employee’s', () => {
     expect(NAV).toContain(CLIENTS_NAV);
-    expect(CLIENTS_NAV.items?.map((i) => [i.label, i.href, i.roles])).toEqual([['Client Accounts', '/clients/accounts', ['hr', 'ceo', 'finance', 'super_admin']]]);
+    // Client Hours (4 November 2026: "Full salary, hours tracked"), the month's timesheet hours by client
+    expect(CLIENTS_NAV.items?.map((i) => [i.label, i.href, i.roles])).toEqual([
+      ['Client Accounts', '/clients/accounts', ['hr', 'ceo', 'finance', 'super_admin']],
+      ['Client Hours', '/clients/hours', ['hr', 'ceo', 'finance', 'super_admin']],
+    ]);
     for (const roles of [['hr'], ['ceo'], ['finance'], ['super_admin']] as Role[][]) {
-      expect(clients(...roles)).toMatchObject({ href: CLIENT_ACCOUNTS_PATH, items: [{ label: 'Client Accounts' }] });
+      expect(clients(...roles)).toMatchObject({ href: CLIENT_ACCOUNTS_PATH, items: [{ label: 'Client Accounts' }, { label: 'Client Hours' }] });
     }
     for (const roles of [['admin'], ['employee'], ['employee', 'manager']] as Role[][]) expect(clients(...roles)).toBeNull();
     expect(activeSubItem(CLIENTS_NAV, '/clients/accounts')?.label).toBe('Client Accounts');
+    expect(activeSubItem(CLIENTS_NAV, CLIENT_HOURS_PATH)?.label).toBe('Client Hours');
+    expect(activeSubItem(CLIENTS_NAV, '/clients/hours/excel')?.label).toBe('Client Hours');
   });
 });

@@ -348,7 +348,7 @@ export class AttendanceCorrectionsService {
     const employment = await this.prisma.employment.findFirst({
       where: { employeeId, joinDate: { lte: toDateOnly(dto.date) }, OR: [{ endDate: null }, { endDate: { gte: toDateOnly(dto.date) } }] },
       orderBy: { joinDate: 'desc' },
-      select: { id: true, employmentType: true, managerId: true, departmentId: true, employee: { select: { fullNameEn: true } }, shift: { select: { workingDays: true } } },
+      select: { id: true, employmentType: true, worksOnTimesheets: true, managerId: true, departmentId: true, employee: { select: { fullNameEn: true } }, shift: { select: { workingDays: true } } },
     });
     const name = byHr ? (employment?.employee.fullNameEn ?? null) : null;
     if (!employment) {
@@ -356,6 +356,10 @@ export class AttendanceCorrectionsService {
     }
     if (employment.employmentType === 'freelance') {
       throw new BadRequestException([`${name ? `${name} works` : 'You work'} freelance: freelance work is outside the labour law and its working hours, so there is no attendance to correct.`]);
+    }
+    // someone HR switched to timesheets (4 November 2026): their hours are on their timesheet, not checked in
+    if (employment.worksOnTimesheets) {
+      throw new BadRequestException([`${name ? `${name} logs` : 'You log'} hours on a timesheet instead of checking in, so there is no attendance to correct.`]);
     }
     const approver = byHr ? null : await approverFor(this.prisma, { employeeId, managerId: employment.managerId, departmentId: employment.departmentId });
     // an employee's own only within 2 working days of the day (owner, 31 October 2026); HR's directly, any day

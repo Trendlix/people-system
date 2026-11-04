@@ -147,6 +147,8 @@ describe('reminder rules', () => {
     expect(due([person('new', { joinDate: '2026-10-21' })], facts(), now)).toEqual([]);
     expect(due([person('gone', { endDate: '2026-10-19' })], facts(), now)).toEqual([]);
     expect(due([person('free', { employmentType: 'freelance' })], facts(), now)).toEqual([]);
+    // someone HR switched to timesheets logs hours instead (4 November 2026)
+    expect(due([person('hours', { worksOnTimesheets: true })], facts(), now)).toEqual([]);
     expect(due([person('noshift', { shift: null })], facts(), now)).toEqual([]);
     // someone else's leave is not Rami's
     expect(due([rami], facts({ leave: new Set([dayKey('e-other', DAY)]) }), now)).toEqual([`check_in_reminder:u-rami:${DAY}`]);

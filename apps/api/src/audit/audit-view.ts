@@ -517,6 +517,11 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       const account = stringAt(row.diff, 'accountId');
       return { href: account ? `/clients/accounts?account=${account}` : '/clients/accounts', label: 'Open client account', roles: CLIENTS };
     }
+    // a month's hours by client downloaded (4 November 2026)
+    case 'client_hours_report': {
+      const month = stringAt(row.diff, 'month');
+      return { href: month && MONTH.test(month) ? `/clients/hours?month=${month}` : '/clients/hours', label: 'Open client hours', roles: CLIENTS };
+    }
     case 'client_account_tier':
       return { href: '/clients/accounts', label: 'Open client accounts', roles: CLIENTS };
     case 'leave_type':

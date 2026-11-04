@@ -123,6 +123,7 @@ export const AUDIT_ENTITY_MODULES: Readonly<Record<string, AuditModule>> = {
   client_account: 'payroll',
   client_account_assignment: 'payroll',
   client_account_tier: 'payroll',
+  client_hours_report: 'payroll',
   // reimbursements
   reimbursement_claim: 'reimbursements',
   reimbursement_receipt: 'reimbursements',

@@ -1,4 +1,20 @@
-import { checkInRefusal, hoursOk, timesheetEditable, timesheetEntryProblems, timesheetRefusal, timesheetSubmitProblem, timesheetWeekDays, timesheetWeekOf, timesheetWeekShift, timesheetWeekText, totalHours } from '@trendlix/shared';
+import {
+  checkInRefusal,
+  clientHoursGroups,
+  clientHoursTotal,
+  hiddenPeopleNote,
+  hoursOk,
+  timesheetEditable,
+  timesheetEntryProblems,
+  timesheetRefusal,
+  timesheetSubmitProblem,
+  timesheetWeekDays,
+  timesheetWeekOf,
+  timesheetWeekShift,
+  timesheetWeekText,
+  totalHours,
+  type ClientHoursLine,
+} from '@trendlix/shared';
 
 // Timesheets (owner, 4 November 2026: "Timesheet in app/website", "Direct manager, weekly", "Only those HR switches on";
 // packages/shared timesheets.ts).
@@ -50,5 +66,50 @@ describe('who logs hours and what they may do', () => {
     expect(timesheetSubmitProblem('rejected', 1)).toBeNull();
     expect(timesheetSubmitProblem('draft', 0)).toBe('Log the hours of at least one day before sending the week.');
     expect(timesheetSubmitProblem('submitted', 2)).toBe('This week is waiting for approval already.');
+  });
+});
+
+describe('client hours (4 November 2026: "Full salary, hours tracked")', () => {
+  const nour = { id: 'e1', fullNameEn: 'Nour Adel', employeeCode: 'EMP-0001' };
+  const omar = { id: 'e2', fullNameEn: 'Omar Fathy', employeeCode: 'EMP-0002' };
+  const acme = { id: 'c1', name: 'Acme', code: 'ACM' };
+  const zed = { id: 'c2', name: 'Zed', code: null };
+  const line = (over: Partial<ClientHoursLine>): ClientHoursLine => ({ date: '2026-11-02', employee: nour, client: acme, task: null, hours: 1, note: null, status: 'approved', ...over });
+
+  it('adds up each client’s hours by person, the approved apart from those waiting, most hours first, No client last', () => {
+    const lines = [
+      line({ client: null, task: 'Admin', hours: 9 }),
+      line({ hours: 6 }),
+      line({ hours: 1.75, date: '2026-11-03' }),
+      line({ employee: omar, hours: 10, status: 'submitted' }),
+      line({ client: zed, hours: 2 }),
+    ];
+    const groups = clientHoursGroups(lines);
+    expect(groups.map((g) => [g.client?.name ?? null, g.approved, g.waiting])).toEqual([
+      ['Acme', 7.75, 10],
+      ['Zed', 2, 0],
+      [null, 9, 0],
+    ]);
+    expect(groups[0].people.map((p) => [p.employee.fullNameEn, p.approved, p.waiting])).toEqual([
+      ['Omar Fathy', 0, 10],
+      ['Nour Adel', 7.75, 0],
+    ]);
+    expect(clientHoursTotal(lines)).toEqual({ approved: 18.75, waiting: 10, people: 2 });
+    expect(clientHoursGroups([])).toEqual([]);
+    expect(clientHoursTotal([])).toEqual({ approved: 0, waiting: 0, people: 0 });
+  });
+
+  it('keeps clients with the same hours by name, and adds to the hundredth', () => {
+    const groups = clientHoursGroups([line({ client: zed, hours: 0.1 }), line({ client: zed, hours: 0.2 }), line({ client: acme, hours: 0.3 })]);
+    expect(groups.map((g) => [g.client?.name, g.approved])).toEqual([
+      ['Acme', 0.3],
+      ['Zed', 0.3],
+    ]);
+  });
+
+  it('says how many C-level people aren’t shown', () => {
+    expect(hiddenPeopleNote(0)).toBeNull();
+    expect(hiddenPeopleNote(1)).toBe('Hours of 1 C-level person aren’t shown.');
+    expect(hiddenPeopleNote(2)).toBe('Hours of 2 C-level people aren’t shown.');
   });
 });

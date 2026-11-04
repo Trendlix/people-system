@@ -218,17 +218,24 @@ export const AUDIT_LOG_PATH = '/audit';
 /** The Client Accounts page (app/(app)/clients/accounts), under Clients. */
 export const CLIENT_ACCOUNTS_PATH = '/clients/accounts';
 
+/** The Client Hours page (app/(app)/clients/hours), under Clients: a month's timesheet hours by client (4 November 2026). */
+export const CLIENT_HOURS_PATH = '/clients/hours';
+
 /**
  * Clients (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal with it?"; asked, a
  * "Client accounts list"): a heading with Client Accounts, the company's client accounts and the people assigned to each
  * with their dates and amounts (paid as the accounts allowance), for HR and the CEO, who change them, and Finance and a
- * Super Admin, who read them (the amounts for those who see salaries). The heading will later hold Projects and
- * Timesheets. Not in an employee's own sidebar: their current accounts are on My Profile.
+ * Super Admin, who read them (the amounts for those who see salaries). Client Hours beside it (owner, 4 November 2026:
+ * "Full salary, hours tracked"): a month's hours logged on timesheets by client and person, for the same people. The
+ * heading will later hold Projects. Not in an employee's own sidebar: their current accounts are on My Profile.
  */
 export const CLIENTS_NAV: NavItem = {
   href: CLIENT_ACCOUNTS_PATH,
   label: 'Clients',
-  items: [{ href: CLIENT_ACCOUNTS_PATH, label: 'Client Accounts', section: CLIENT_ACCOUNTS_PATH, roles: ['hr', 'ceo', 'finance', 'super_admin'] }],
+  items: [
+    { href: CLIENT_ACCOUNTS_PATH, label: 'Client Accounts', section: CLIENT_ACCOUNTS_PATH, roles: ['hr', 'ceo', 'finance', 'super_admin'] },
+    { href: CLIENT_HOURS_PATH, label: 'Client Hours', section: CLIENT_HOURS_PATH, roles: ['hr', 'ceo', 'finance', 'super_admin'] },
+  ],
 };
 
 /**

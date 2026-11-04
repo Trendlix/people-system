@@ -25,7 +25,7 @@ import { addDays, weekday } from '../common/date-only.js';
 // - "Still checked in?": checked in and not out by the time hours stop counting (the shift's "Count hours until" when
 //   set, else its end and grace: shiftWindowOn); sent within 4 hours of it, once a day, unless switched off.
 // Only for someone with an active user account and a current employment under a shift (not a freelancer: they don't
-// check in); never on a day kept from Zoho People's import, nor on a day they are exempt from check-in (owner, 25 October
+// check in; nor someone HR switched to timesheets, 4 November 2026: they log hours instead); never on a day kept from Zoho People's import, nor on a day they are exempt from check-in (owner, 25 October
 // 2026: "Optional check-in": no check-in or check-out reminder, on the bell, the phone or WhatsApp). A night shift's day
 // is the day it starts, so the day before today is looked at too. On a flexible days shift (owner, 31 October 2026: any N
 // of its days a week) the person chooses their days, so "You haven't checked in" isn't sent: a day only counts as absent
@@ -49,6 +49,8 @@ export interface ReminderEmployment {
   joinDate: string;
   endDate: string | null;
   employmentType: string;
+  /** They log hours on a timesheet instead of checking in (4 November 2026). */
+  worksOnTimesheets?: boolean;
   shift: ReminderShift | null;
 }
 
@@ -140,9 +142,9 @@ export function permissionCoversStart(spans: readonly PermissionSpan[] | undefin
   });
 }
 
-/** The employment covering a day, under the labour law's working hours (a freelancer never checks in). */
+/** The employment covering a day that checks in (a freelancer never does; nor someone on timesheets, 4 November 2026). */
 function employmentOn(employments: readonly ReminderEmployment[], day: string): ReminderEmployment | null {
-  return employments.find((e) => e.joinDate <= day && (e.endDate === null || e.endDate >= day) && e.employmentType !== 'freelance') ?? null;
+  return employments.find((e) => e.joinDate <= day && (e.endDate === null || e.endDate >= day) && e.employmentType !== 'freelance' && !e.worksOnTimesheets) ?? null;
 }
 
 /** A working day of the person's shift, as the reminders take it: the shift, its window, the day's key; else null. */

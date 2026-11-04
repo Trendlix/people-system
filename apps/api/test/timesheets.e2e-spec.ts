@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
-import type { MyTimesheetView, TimesheetListItem, TimesheetWeekView } from '@trendlix/shared';
+import type { ClientHoursReport, MyTimesheetView, TimesheetListItem, TimesheetWeekView } from '@trendlix/shared';
+import ExcelJS from 'exceljs';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, todayInCairo } from '../src/common/date-only.js';
@@ -26,6 +27,20 @@ const LAST_WEEK = addDays(sunday(TODAY), -7);
 const OLD_WEEK = addDays(sunday(firstDay(OLD)), 7);
 
 const said = (res: { body: { message: string | string[] } }) => ([] as string[]).concat(res.body.message);
+
+/** Reads a response body as bytes, whatever its type. */
+const bytes = (res: request.Response, done: (err: Error | null, body: Buffer) => void) => {
+  const chunks: Buffer[] = [];
+  res.on('data', (chunk: Buffer) => chunks.push(chunk));
+  res.on('end', () => done(null, Buffer.concat(chunks)));
+};
+
+/** A sheet's rows, each its cells' values. */
+function rowsOf(ws: ExcelJS.Worksheet): unknown[][] {
+  const rows: unknown[][] = [];
+  ws.eachRow((row) => rows.push((row.values as unknown[]).slice(1)));
+  return rows;
+}
 
 describe('Timesheets (e2e)', () => {
   let app: INestApplication<App>;
@@ -185,5 +200,54 @@ describe('Timesheets (e2e)', () => {
     await api().post(`/api/payroll/runs/${run.id}/attendance-refresh`).set('Cookie', hr).expect((res) => expect([200, 201]).toContain(res.status));
     const after = (await api().get(`/api/payroll/runs/${run.id}`).set('Cookie', hr).expect(200)).body.lines as typeof lines;
     expect(after.find((l) => l.employeeId === ids.mia)?.inputs).toMatchObject({ workedHours: null, noShowDays: null });
+  });
+
+  it('adds up a month’s hours by client, the approved apart from those waiting, for those who read the client accounts', async () => {
+    // owner, 4 November 2026: "Full salary, hours tracked": the client reports
+    const finance = await signIn(app, await createUser(prisma, ['finance']));
+    const developer = await signIn(app, await createUser(prisma, ['developer']));
+    const report = async (session: string) => (await api().get(`/api/reports/client-hours?month=${OLD}`).set('Cookie', session).expect(200)).body as ClientHoursReport;
+    /** The groups with only this run's people in them. */
+    const ours = (r: ClientHoursReport) => r.groups.map((g) => ({ ...g, people: g.people.filter((p) => people.includes(p.employee.id)) })).filter((g) => g.people.length);
+
+    // Tim's approved week of OLD (the payroll test): 8 hours on the client, 4.5 on a task alone; Mia's week not sent yet counts nothing
+    await save('mia', [{ date: day(3, OLD_WEEK), clientAccountId: clientId, hours: 3, note: 'Prep' }, { date: day(4, OLD_WEEK), task: 'Research', hours: 2 }], OLD_WEEK).expect(200);
+    let groups = ours(await report(hr));
+    expect(groups.find((g) => g.client?.id === clientId)).toMatchObject({ client: { name: `Client ${RUN}` }, people: [{ employee: { id: ids.tim }, approved: 8, waiting: 0 }] });
+    expect(groups.find((g) => g.client === null)?.people).toEqual([expect.objectContaining({ employee: expect.objectContaining({ id: ids.tim }), approved: 4.5, waiting: 0 })]);
+
+    // sent: waiting, apart from the approved; the clients first, "No client" last
+    await submit('mia', OLD_WEEK).expect(200);
+    const full = await report(finance);
+    expect(full.month).toBe(OLD);
+    expect(full.groups.at(-1)?.client).toBeNull();
+    groups = ours(full);
+    expect(groups.find((g) => g.client?.id === clientId)?.people.map((p) => [p.employee.id, p.approved, p.waiting])).toEqual([
+      [ids.tim, 8, 0],
+      [ids.mia, 0, 3],
+    ]);
+    expect(groups.find((g) => g.client === null)?.people.map((p) => [p.employee.id, p.approved, p.waiting])).toEqual([
+      [ids.tim, 4.5, 0],
+      [ids.mia, 0, 2],
+    ]);
+
+    // only those who read the client accounts; a month as YYYY-MM
+    await api().get(`/api/reports/client-hours?month=${OLD}`).set('Cookie', sessions.mona).expect(403);
+    await api().get(`/api/reports/client-hours?month=${OLD}`).set('Cookie', sessions.tim).expect(403);
+    expect(said(await api().get('/api/reports/client-hours?month=2026-13').set('Cookie', hr).expect(400))).toEqual(['Choose the month as YYYY-MM, e.g. 2026-11.']);
+
+    // the workbook: the summary with each client's total, and every line; never for a developer
+    const file = await api().get(`/api/reports/client-hours.xlsx?month=${OLD}`).set('Cookie', finance).buffer(true).parse(bytes).expect(200);
+    expect(file.headers['content-type']).toContain('spreadsheetml');
+    expect(file.headers['content-disposition']).toContain(`Client hours ${OLD}.xlsx`);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(file.body as ArrayBuffer);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Lines']);
+    const summary = rowsOf(wb.getWorksheet('Summary')!);
+    expect(summary[0]).toEqual(['Client', 'Client code', 'Employee code', 'Employee', 'People', 'Approved hours', 'Waiting for approval', 'Total hours']);
+    expect(summary.find((r) => r[0] === `Total: Client ${RUN}`)?.slice(4)).toEqual([2, 8, 3, 11]);
+    const lines = rowsOf(wb.getWorksheet('Lines')!);
+    expect(lines.find((r) => r[5] === 'Research' && String(r[2]).startsWith('Mia Monthly'))?.slice(3)).toEqual(['No client (tasks only)', undefined, 'Research', 2, undefined, 'Waiting for approval']);
+    await api().get(`/api/reports/client-hours.xlsx?month=${OLD}`).set('Cookie', developer).expect(403);
   });
 });
