@@ -14,7 +14,7 @@ import {
 import { fromDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import { hrMayCancel, isConfidentialRequest, isRequester, standingInFor, waitsFor, type Caller } from '../leave/access.js';
+import { hrMayCancel, isConfidentialRequest, isRequester, seesRecordedWarnings, standingInFor, waitsFor, type Caller } from '../leave/access.js';
 import { placeOf } from '../leave/views.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
 import type { PayrollLockedView } from '../payroll/locked-changes/locked-changes.js';
@@ -84,7 +84,8 @@ export function odView(r: OdRow, caller: Caller, names: ReadonlyMap<string, User
     // recorded by HR, approved at once (26 October 2026: "HR records it"), with what it was recorded past (the 3-day
     // limit); or imported by a leave import ("Import (template + Zoho)")
     recordedByHr: r.recordedByHr,
-    warnings: r.warnings,
+    // HR's and the CEO's only, never an employee's (5 November 2026: "never show any employee the HR capabilities")
+    warnings: seesRecordedWarnings(parties, caller) ? r.warnings : [],
     imported: r.importId !== null,
     // on a rest day or an official holiday (owner, 27 October 2026: "it should count in the compensatories"): its
     // compensatory day, decided and cancelled with it

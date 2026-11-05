@@ -25,6 +25,7 @@ import {
   odRequestedAfter,
   odRequestProblems,
   odSameRowText,
+  pastDatesOpen,
   recordsOdFor,
   shiftWorkHours,
   type CompensationAsked,
@@ -264,7 +265,8 @@ export class OdService {
     const caller = await this.caller(user);
     const today = todayInCairo();
     const employment = caller.employeeId ? await this.employmentOn(caller.employeeId, today) : null;
-    const earliest = addDays(today, -OD_AFTER_DAYS);
+    // any day of the year gone by while days gone by may be asked for (until the end of 2026: packages/shared past-dates.ts)
+    const earliest = pastDatesOpen(today) ? `${today.slice(0, 4)}-01-01` : addDays(today, -OD_AFTER_DAYS);
     const range = { gte: toDateOnly(earliest), lte: toDateOnly(addDays(today, 366)) };
     const [holidays, rules, compensated] = await Promise.all([
       this.prisma.holiday.findMany({ where: { date: range }, select: { date: true, nameEn: true }, orderBy: { date: 'asc' } }),

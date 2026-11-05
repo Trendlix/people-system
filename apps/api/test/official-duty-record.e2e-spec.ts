@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import type { Role } from '@trendlix/shared';
-import { zonedMoment } from '@trendlix/shared';
+import { pastDatesOpen, zonedMoment } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly } from '../src/common/date-only.js';
@@ -168,7 +168,10 @@ describe('HR records official duty (e2e)', () => {
     expect(past).toEqual({
       employee: { id: ids.ben, fullNameEn: `Ben Away ${RUN}` },
       problems: [],
-      warnings: [`${shown(a)} is ${Math.round((Date.parse(TODAY) - Date.parse(a)) / 86_400_000)} days ago, past the 3 days an employee may ask after: recorded after the limit.`],
+      // no 3-day limit to go past while anyone may ask for a day gone by (until the end of 2026, owner 5 November 2026)
+      warnings: pastDatesOpen(TODAY)
+        ? []
+        : [`${shown(a)} is ${Math.round((Date.parse(TODAY) - Date.parse(a)) / 86_400_000)} days ago, past the 3 days an employee may ask after: recorded after the limit.`],
       shift: { startTime: '09:00', endTime: '19:00', graceMinutes: 15 },
       // working days: no day off to compensate (27 October 2026)
       compensation: { onDayOff: false, needed: false, earned: null, cashDays: 0, already: null },
@@ -222,7 +225,10 @@ describe('HR records official duty (e2e)', () => {
       hrCanCancel: true,
       manager: { id: ids.mona, role: 'direct_manager' },
     });
-    expect(made.warnings).toEqual([expect.stringMatching(new RegExp(`^${shown(a).replace(/\//g, '\\/')} is \\d+ days ago, past the 3 days an employee may ask after`))]);
+    // no 3-day limit to go past until the end of 2026 (owner, 5 November 2026)
+    expect(made.warnings).toEqual(
+      pastDatesOpen(TODAY) ? [] : [expect.stringMatching(new RegExp(`^${shown(a).replace(/\//g, '\\/')} is \\d+ days ago, past the 3 days an employee may ask after`))],
+    );
     expect(made.steps.map((s) => s.kind)).toEqual(['recorded_by_hr']);
     // the draft line: both days attended for the shift's 9 hours, no longer no-shows
     const now = await lineOf(runId, 'ben');
@@ -233,7 +239,8 @@ describe('HR records official duty (e2e)', () => {
     expect(await inbox('mona')).toEqual([]);
     const logged = await prisma.auditLog.findFirst({ where: { entityType: 'od_request', entityId: made.id }, select: { action: true, diff: true } });
     expect(logged?.action).toBe('record');
-    expect(logged?.diff).toMatchObject({ employeeId: ids.ben, startDate: a, endDate: b, recordedByHr: true, status: 'approved', warnings: made.warnings });
+    // the warnings, when there are any
+    expect(logged?.diff).toMatchObject({ employeeId: ids.ben, startDate: a, endDate: b, recordedByHr: true, status: 'approved', ...(made.warnings.length > 0 && { warnings: made.warnings }) });
 
     // in Ben's own, and HR's list
     expect(((await api().get('/api/me/official-duty').set('Cookie', sessions.ben).expect(200)).body as View[]).map((r) => r.id)).toEqual([made.id]);

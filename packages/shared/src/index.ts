@@ -366,6 +366,7 @@ export * from './employment-types.js';
 // leave (Labour Law 14/2025, Arts. 54–57 and 124–133): the law's leave types, the annual leave's days, counting a leave's
 // days, the requests' statuses and steps, their problems, Year Closing, and the month's leave days for the payroll
 export * from './leaves.js';
+export * from './past-dates.js';
 
 // leave coverage (owner, 25 October 2026: "if there are leaves applied by an employee and another employee in the same
 // department is on a leave, how can we manage it without affecting the workflow?"; asked, "Warn and need HR", "Required

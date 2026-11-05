@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
-import { OFF_NETWORK_MESSAGE } from '@trendlix/shared';
+import { OFF_NETWORK_MESSAGE, pastDatesOpen } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly, weekday } from '../src/common/date-only.js';
@@ -268,9 +268,16 @@ describe('Working from home (e2e)', () => {
 
     it('needs a day’s notice: today refused, tomorrow fine; cancelled while being decided', async () => {
       expect(said(await ask('nia', { date: TODAY }).expect(400))).toEqual([`${shown(TODAY)} is today: ask for a work from home day a day before it at the latest.`]);
-      expect(said(await ask('nia', { date: addDays(TODAY, -3) }).expect(400))).toEqual([
-        `${shown(addDays(TODAY, -3))} has gone by: ask for a work from home day a day before it at the latest.`,
-      ]);
+      const goneBy = `${shown(addDays(TODAY, -3))} has gone by: ask for a work from home day a day before it at the latest.`;
+      const asked = await ask('nia', { date: addDays(TODAY, -3) });
+      if (pastDatesOpen(TODAY)) {
+        // until the end of 2026 a day gone by may be asked for (owner, 5 November 2026): taken back again when it is
+        if (asked.status === 201) await api().post(`/api/me/wfh/${(asked.body as View).id}/cancel`).set('Cookie', sessions.nia).expect(200);
+        else expect(said(asked)).not.toContain(goneBy);
+      } else {
+        expect(asked.status).toBe(400);
+        expect(said(asked)).toEqual([goneBy]);
+      }
       const tomorrow = (await ask('nia', { date: addDays(TODAY, 1) }).expect(201)).body as View;
       expect(tomorrow.status).toBe('with_manager');
       // cancelled by Nia while being decided, once; nobody else
@@ -357,14 +364,22 @@ describe('Working from home (e2e)', () => {
       await record(ids.ben, { date: past, reason: 'Forgot to ask' }, sessions.mona).expect(403);
       // what it would meet, before it is recorded
       const check = (await api().get(`/api/wfh/check?employeeId=${ids.ben}&date=${past}`).set('Cookie', hr).expect(200)).body;
-      expect(check).toMatchObject({ employee: { id: ids.ben }, problems: [], warnings: [`${shown(past)} has gone by: it is recorded after the day.`] });
+      // a day gone by is no warning while anyone may ask for one (until the end of 2026, owner 5 November 2026)
+      const pastWarnings = pastDatesOpen(TODAY) ? [] : [`${shown(past)} has gone by: it is recorded after the day.`];
+      expect(check).toMatchObject({ employee: { id: ids.ben }, problems: [], warnings: pastWarnings });
       const recorded = (await record(ids.ben, { date: past, reason: 'Forgot to ask' }).expect(201)).body as View;
-      expect(recorded).toMatchObject({ status: 'approved', recordedByHr: true, reason: 'Forgot to ask', hrCanCancel: true, warnings: [`${shown(past)} has gone by: it is recorded after the day.`] });
+      expect(recorded).toMatchObject({ status: 'approved', recordedByHr: true, reason: 'Forgot to ask', hrCanCancel: true, warnings: pastWarnings });
       expect(recorded.steps).toMatchObject([{ kind: 'recorded_by_hr', comment: 'Forgot to ask' }]);
       // a 3rd in next month for Ben, too close too: recorded, with both warnings
       const third = (await record(ids.ben, { date: addDays(firstDay(NEXT), 9), reason: 'Plumber' }).expect(201)).body as View;
       expect(third.warnings).toHaveLength(2);
       expect(third.warnings[1]).toContain('must be at least 7 days apart');
+      // what HR recorded it past is never an employee's to see: not Ben's, nor Mona's as his manager (owner, 5 November 2026:
+      // "never show any employee the HR capabilities")
+      expect(((await api().get(`/api/wfh/${third.id}`).set('Cookie', sessions.ben).expect(200)).body as View).warnings).toEqual([]);
+      expect(((await api().get('/api/me/wfh').set('Cookie', sessions.ben).expect(200)).body as View[]).find((r) => r.id === third.id)?.warnings).toEqual([]);
+      expect(((await api().get(`/api/wfh/${third.id}`).set('Cookie', sessions.mona).expect(200)).body as View).warnings).toEqual([]);
+      expect(((await api().get(`/api/wfh/${third.id}`).set('Cookie', hr).expect(200)).body as View).warnings).toEqual(third.warnings);
       const log = await prisma.auditLog.findFirst({ where: { entityType: 'wfh_request', entityId: third.id } });
       expect(log).toMatchObject({ action: 'record', diff: expect.objectContaining({ warnings: third.warnings }) });
       // the day itself still refuses: a holiday, the same day twice

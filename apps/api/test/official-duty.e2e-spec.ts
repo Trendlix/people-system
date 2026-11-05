@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { HIDDEN, OD_CHECK_IN_TEXT, OFF_NETWORK_MESSAGE, zonedMoment } from '@trendlix/shared';
+import { HIDDEN, OD_CHECK_IN_TEXT, OFF_NETWORK_MESSAGE, pastDatesOpen, zonedMoment } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly } from '../src/common/date-only.js';
@@ -177,7 +177,8 @@ describe('Official duty (e2e)', () => {
     it('reads the form: today, 3 days back, the shift', async () => {
       expect((await api().get('/api/me/official-duty/form').set('Cookie', sessions.ben).expect(200)).body).toEqual({
         today: TODAY,
-        earliest: addDays(TODAY, -3),
+        // this year's first day while any day gone by may be asked for (until the end of 2026, owner 5 November 2026)
+        earliest: pastDatesOpen(TODAY) ? `${TODAY.slice(0, 4)}-01-01` : addDays(TODAY, -3),
         shift: { startTime: '09:00', endTime: '19:00', graceMinutes: 15 },
         refusal: null,
         toCeo: false,
@@ -229,11 +230,12 @@ describe('Official duty (e2e)', () => {
       expect(late).toMatchObject({ startDate: after, late: true, status: 'with_manager' });
       ids.benAfter = late.id;
       ids.benAhead = sent.id;
-      // 4 days after: refused
+      // 4 days after: refused, but until the end of 2026, when any day gone by may be asked for (owner, 5 November 2026)
       const four = addDays(TODAY, -4);
-      expect(said(await ask('ben', { startDate: four }).expect(400))[0]).toBe(
-        `${shown(four)} is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from ${shown(addDays(TODAY, -3))}).`,
-      );
+      const tooLate = `${shown(four)} is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from ${shown(addDays(TODAY, -3))}).`;
+      const fourAfter = said(await ask('ben', { startDate: four, reason: '' }).expect(400));
+      if (pastDatesOpen(TODAY)) expect(fourAfter).not.toContain(tooLate);
+      else expect(fourAfter[0]).toBe(tooLate);
       // the reason and the place are required; part of a day is one day, inside the shift
       expect(said(await ask('ben', { startDate: free(addDays(TODAY, 20)), reason: '', place: '' }).expect(400))).toEqual([
         'Write where the official duty is, e.g. the client’s office in New Cairo.',

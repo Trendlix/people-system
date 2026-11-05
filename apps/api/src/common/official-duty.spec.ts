@@ -72,7 +72,10 @@ describe('an official duty request', () => {
     expect(odTimingProblem(TODAY, TODAY)).toBeNull();
     expect(odTimingProblem('2026-11-02', TODAY)).toBeNull();
     expect(odTimingProblem('2026-11-01', TODAY)).toBeNull();
-    expect(odTimingProblem('2026-10-31', TODAY)).toBe('31/10/2026 is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from 01/11/2026).');
+    // any day gone by may be asked for until the end of 2026 (owner, 5 November 2026); the 3 days again from 2027
+    expect(odTimingProblem('2026-10-31', TODAY)).toBeNull();
+    expect(odTimingProblem('2027-01-01', '2027-01-04')).toBeNull();
+    expect(odTimingProblem('2026-12-31', '2027-01-04')).toBe('31/12/2026 is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from 01/01/2027).');
     expect([odRequestedAfter('2026-11-02', TODAY), odRequestedAfter(TODAY, TODAY), odRequestedAfter('2026-11-05', TODAY)]).toEqual([true, false, false]);
   });
 
@@ -121,8 +124,12 @@ describe('an official duty request', () => {
   });
 
   it('says every reason to fix, in order', () => {
+    // the timing first: from 2027 (until then any day gone by may be asked for, owner, 5 November 2026)
+    expect(odRequestProblems(input({ startDate: '2026-10-30', endDate: '2026-10-30', fullDay: false, fromTime: '07:00', toTime: '08:00' }), [fact('2026-10-30', { workingDay: false })], MORNING, '2027-01-04')).toEqual([
+      `${shown('2026-10-30')} is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from 01/01/2027).`,
+      'Choose times within your shift, 9:00 AM to 7:00 PM.',
+    ]);
     expect(odRequestProblems(input({ startDate: '2026-10-30', endDate: '2026-10-30', fullDay: false, fromTime: '07:00', toTime: '08:00' }), [fact('2026-10-30', { workingDay: false })], MORNING, TODAY)).toEqual([
-      `${shown('2026-10-30')} is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from 01/11/2026).`,
       'Choose times within your shift, 9:00 AM to 7:00 PM.',
     ]);
     // an hour on a rest day earns nothing (27 October 2026), so nothing is asked for it

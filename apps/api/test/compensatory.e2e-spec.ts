@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { zonedMoment } from '@trendlix/shared';
+import { pastDatesOpen, zonedMoment } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly, weekday } from '../src/common/date-only.js';
@@ -284,7 +284,8 @@ describe('Compensatory days (e2e)', () => {
         outcome: 'day_off',
         recordedByHr: true,
         hrCanCancel: true,
-        warnings: [`${shown(work[5])} has gone by: it is recorded without a day's notice.`],
+        // a day off gone by is no warning while anyone may ask for one (until the end of 2026, owner 5 November 2026)
+        warnings: pastDatesOpen(TODAY) ? [] : [`${shown(work[5])} has gone by: it is recorded without a day's notice.`],
       });
       expect(recorded.steps.map((s) => s.kind)).toEqual(['recorded_by_hr']);
       const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'compensatory_request', entityId: recorded.id } });

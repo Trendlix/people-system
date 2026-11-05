@@ -77,9 +77,10 @@ describe('HR records an official duty (owner, 26 October 2026: "HR records it")'
   it('goes past the 3-day limit with a warning, marked so; within it, none', () => {
     expect(odPastLimitText('2026-11-09', TODAY)).toBeNull();
     expect(odPastLimitText('2026-11-20', TODAY)).toBeNull();
-    expect(odPastLimitText('2026-11-02', TODAY)).toBe('02/11/2026 is 10 days ago, past the 3 days an employee may ask after: recorded after the limit.');
-    const past = odRecordCheck(input({ startDate: '2026-11-02', endDate: '2026-11-03' }), [fact('2026-11-02'), fact('2026-11-03')], MORNING, TODAY, 'Ben Away');
-    expect(past).toEqual({ problems: [], warnings: ['02/11/2026 is 10 days ago, past the 3 days an employee may ask after: recorded after the limit.'] });
+    // no limit to go past while anyone may ask for a day gone by (until the end of 2026); from 2027 the 3 days again
+    expect(odPastLimitText('2026-11-02', TODAY)).toBeNull();
+    expect(odRecordCheck(input({ startDate: '2026-11-02', endDate: '2026-11-03' }), [fact('2026-11-02'), fact('2026-11-03')], MORNING, TODAY, 'Ben Away')).toEqual({ problems: [], warnings: [] });
+    expect(odPastLimitText('2027-01-02', '2027-01-12')).toBe('02/01/2027 is 10 days ago, past the 3 days an employee may ask after: recorded after the limit.');
     expect(odRecordCheck(input(), [fact('2026-11-15')], MORNING, TODAY, 'Ben Away')).toEqual({ problems: [], warnings: [] });
   });
 
@@ -136,7 +137,8 @@ describe('HR records an official duty (owner, 26 October 2026: "HR records it")'
     expect(odLockProblem('2026-09-30', '2026-10-01', [{ month: '2026-10', status: 'paid' }])).toMatch(/payroll is paid/);
     const locked = odRecordCheck(input({ startDate: '2026-10-28', endDate: '2026-10-28' }), [fact('2026-10-28')], MORNING, TODAY, 'Ben Away', runs);
     expect(locked.problems).toEqual([expect.stringMatching(/^The October 2026 payroll is approved/)]);
-    expect(locked.warnings).toHaveLength(1);
+    // no warning past the 3 days while anyone may ask for a day gone by (until the end of 2026)
+    expect(locked.warnings).toEqual([]);
   });
 });
 

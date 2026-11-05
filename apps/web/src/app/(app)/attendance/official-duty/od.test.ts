@@ -159,10 +159,11 @@ describe('the request form (owner, 23 October 2026: "Ahead or up to 3 days after
     expect(odFormProblems(typed({ span: 'part', fromTime: '', toTime: '' }), FORM)).toEqual(['Choose the time it starts, e.g. 10:00 AM.', 'Choose the time it ends, e.g. 2:00 PM.']);
   });
 
-  it('allows up to 3 days after; 4 days refused', () => {
+  it('allows up to 3 days after, and until the end of 2026 any day gone by (owner, 5 November 2026)', () => {
     expect(odFormProblems(typed({ startDate: '20/10/2026' }), FORM)).toEqual([]);
-    expect(odFormProblems(typed({ startDate: '19/10/2026' }), FORM)).toEqual([
-      '19/10/2026 is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from 20/10/2026).',
+    expect(odFormProblems(typed({ startDate: '19/10/2026' }), FORM)).toEqual([]);
+    expect(odFormProblems(typed({ startDate: '29/12/2026', endDate: '29/12/2026' }), { ...FORM, today: '2027-01-02' })).toEqual([
+      '29/12/2026 is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from 30/12/2026).',
     ]);
   });
 

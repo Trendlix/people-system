@@ -14,6 +14,7 @@
 
 import { daysBetween } from './payroll-adjustments.js';
 import { reimbursementPayMonth } from './reimbursements.js';
+import { pastDateAllowed } from './past-dates.js';
 
 // ---------- the kinds of leave ----------
 
@@ -629,7 +630,8 @@ export function leaveRequestProblems(input: LeaveRequestInput, type: LeaveTypeRu
       problems.push(`Only ${daysText(Math.max(0, balance.available))} left of the annual balance${type.balance === 'from_annual' ? `, which ${type.nameEn.toLowerCase()} is counted against` : ''}.`);
     }
   }
-  if (!input.byHr && type.noticeDays !== null && type.noticeDays > 0 && isDate(input.today)) {
+  // a first day gone by may be asked for until the end of 2026 (owner, 5 November 2026: past-dates.ts)
+  if (!input.byHr && type.noticeDays !== null && type.noticeDays > 0 && isDate(input.today) && !pastDateAllowed(input.startDate, input.today)) {
     const notice = input.startDate < input.today ? -1 : daysBetween(input.today, input.startDate);
     if (notice < type.noticeDays) {
       problems.push(`${type.nameEn} needs ${daysText(type.noticeDays)}' notice: the first day can be ${shown(plusDays(input.today, type.noticeDays))} at the earliest.`);

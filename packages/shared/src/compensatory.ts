@@ -16,6 +16,7 @@
 
 import type { SourcedDay } from './attendance-days.js';
 import { LEAVE_STEP_KIND_LABELS, LEAVE_STEP_KINDS } from './leaves.js';
+import { pastDateAllowed } from './past-dates.js';
 
 /** What the screens call the request, and the day off once approved. */
 export const COMPENSATORY_LABEL = 'Compensatory day';
@@ -215,7 +216,8 @@ export function compensatorySameMonthProblem(dayWorked: string, dayOff: string):
 
 /** An employee asks a day before the day off at the latest (as work from home): null when they do. */
 export function compensatoryNoticeProblem(dayOff: string, today: string): string | null {
-  if (!isDate(dayOff)) return null;
+  // a day off gone by may be asked for until the end of 2026 (owner, 5 November 2026: past-dates.ts)
+  if (!isDate(dayOff) || pastDateAllowed(dayOff, today)) return null;
   if (dayOff < today) return `${shown(dayOff)} has gone by: a day off is asked for before it comes.`;
   if (dayOff === today) return `${shown(dayOff)} is today: ask for a compensatory day a day before the day off at the latest.`;
   return null;
@@ -287,7 +289,8 @@ export function compensatoryRecordCheck(
     problems.push(...compensatoryOffProblems(dayOff, off, name));
     const same = compensatoryWindowProblem(dayWorked, dayOff, rules.offWithinDays);
     if (same) problems.push(same);
-    if (isDate(dayOff) && dayOff <= today) warnings.push(`${shown(dayOff)} ${dayOff === today ? 'is today' : 'has gone by'}: it is recorded without a day's notice.`);
+    // a day off gone by is no warning while anyone may ask for one (until the end of 2026: past-dates.ts)
+    if (isDate(dayOff) && dayOff <= today && !pastDateAllowed(dayOff, today)) warnings.push(`${shown(dayOff)} ${dayOff === today ? 'is today' : 'has gone by'}: it is recorded without a day's notice.`);
   }
   if (isDate(dayWorked) && !worked.checkedIn) warnings.push(NO_CHECK_IN_WARNING(dayWorked));
   return { problems, warnings };

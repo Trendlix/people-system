@@ -265,7 +265,7 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
       if (_halfDay && type.halfDays && _start != _end) LeaveWords.halfDayOneDay,
       if (daysBetween(_start, _end) >= 0 && days == 0) type.calendarDays ? LeaveWords.chooseDays : LeaveWords.noWorkingDays,
       if (type.balance != 'none' && type.balance != 'per_request' && _start.substring(0, 4) != _end.substring(0, 4)) LeaveWords.intoNextYear(year),
-      if ((type.noticeDays ?? 0) > 0 && daysBetween(today, _start) < type.noticeDays!)
+      if ((type.noticeDays ?? 0) > 0 && !pastDateAllowed(_start, today) && daysBetween(today, _start) < type.noticeDays!)
         LeaveWords.notice(type.nameEn, daysText(type.noticeDays!.toDouble()), dmy(addDays(today, type.noticeDays!))),
       if (type.takesFromAnnual && balances != null && balances.annual.usableFrom != null && balances.annual.usableFrom!.compareTo(_start) > 0)
         LeaveWords.usableFrom(dmy(balances.annual.usableFrom!)),

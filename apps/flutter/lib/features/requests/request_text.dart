@@ -282,3 +282,14 @@ DateTime? pickerDay(String? iso) {
 
 /// Today, YYYY-MM-DD, on the phone's clock.
 String todayIso() => isoDayOf(DateTime.now());
+
+/// The last day days gone by may be asked for (owner, 5 November 2026: "till the end of the year allow ... leaves and
+/// request with past dates"; asked, "Every employee's requests"), as the API allows (packages/shared past-dates.ts).
+const pastDatesOpenUntil = '2026-12-31';
+
+/// Whether [date] is a day gone by that may be asked for on [today]: before today, until the end of 2026.
+bool pastDateAllowed(String date, String today) => today.compareTo(pastDatesOpenUntil) <= 0 && date.compareTo(today) < 0;
+
+/// The first day a picker offers for a request asked a day ahead: this year's first while days gone by may be asked
+/// for, else tomorrow.
+String firstAskableDay(String today) => today.compareTo(pastDatesOpenUntil) <= 0 ? '${today.substring(0, 4)}-01-01' : addDays(today, 1);

@@ -76,7 +76,9 @@ describe('who needs a work from home day', () => {
 describe('the notice: a day before', () => {
   it('refuses today and a day gone by; tomorrow is fine', () => {
     expect(wfhNoticeProblem(TODAY, TODAY)).toBe('21/10/2026 is today: ask for a work from home day a day before it at the latest.');
-    expect(wfhNoticeProblem('2026-10-20', TODAY)).toBe('20/10/2026 has gone by: ask for a work from home day a day before it at the latest.');
+    // a day gone by may be asked for until the end of 2026 (owner, 5 November 2026), not from 2027
+    expect(wfhNoticeProblem('2026-10-20', TODAY)).toBeNull();
+    expect(wfhNoticeProblem('2027-01-20', '2027-01-21')).toBe('20/01/2027 has gone by: ask for a work from home day a day before it at the latest.');
     expect(wfhNoticeProblem('2026-10-22', TODAY)).toBeNull();
   });
 });
@@ -133,8 +135,10 @@ describe('HR recording a day', () => {
   it('is refused by the day itself, recorded past the notice and the limits with warnings', () => {
     expect(wfhRecordCheck('2026-10-20', RULES, day({ taken: ['2026-10-15'] }), TODAY, 'Mona Adel')).toEqual({
       problems: [],
-      warnings: ['20/10/2026 has gone by: it is recorded after the day.', "Two work from home days must be at least 7 days apart: 20/10/2026 is 5 days from Mona Adel's day on 15/10/2026."],
+      // a day gone by is no warning until the end of 2026
+      warnings: ["Two work from home days must be at least 7 days apart: 20/10/2026 is 5 days from Mona Adel's day on 15/10/2026."],
     });
+    expect(wfhRecordCheck('2027-01-20', RULES, day(), '2027-01-21', 'Mona Adel').warnings).toEqual(['20/01/2027 has gone by: it is recorded after the day.']);
     expect(wfhRecordCheck(TODAY, RULES, day(), TODAY, 'Mona Adel').warnings).toEqual(["21/10/2026 is today: it is recorded without a day's notice."]);
     expect(wfhRecordCheck('2026-11-22', RULES, day({ taken: ['2026-11-01', '2026-11-15'] }), TODAY, 'Mona Adel').warnings).toEqual([
       "November 2026's 2 days of working from home are already asked for for Mona Adel: 2 of 2.",

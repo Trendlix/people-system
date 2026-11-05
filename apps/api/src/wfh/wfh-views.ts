@@ -14,7 +14,7 @@ import {
 } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { LeaveSettings, Prisma } from '../generated/prisma/client.js';
-import { hrMayCancel, isConfidentialRequest, isRequester, standingInFor, waitsFor, type Caller } from '../leave/access.js';
+import { hrMayCancel, isConfidentialRequest, isRequester, seesRecordedWarnings, standingInFor, waitsFor, type Caller } from '../leave/access.js';
 import { placeOf } from '../leave/views.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
 import type { PayrollLockedView } from '../payroll/locked-changes/locked-changes.js';
@@ -112,7 +112,8 @@ export function wfhView(r: WfhRow, caller: Caller, names: ReadonlyMap<string, Us
     rejectReason: r.rejectReason,
     recordedByHr: r.recordedByHr,
     source: r.source as WfhSource,
-    warnings: r.warnings,
+    // HR's and the CEO's only, never an employee's (5 November 2026: "never show any employee the HR capabilities")
+    warnings: seesRecordedWarnings(parties, caller) ? r.warnings : [],
     steps: r.steps.map((s) => ({
       id: s.id.toString(),
       kind: s.kind as WfhStepKind,

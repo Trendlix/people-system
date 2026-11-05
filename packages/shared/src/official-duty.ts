@@ -38,6 +38,7 @@ import { decidesConfidentialStage } from './confidential.js';
 import type { Role } from './index.js';
 import { LEAVE_STEP_KIND_LABELS } from './leaves.js';
 import { shiftWorkHours } from './payroll.js';
+import { pastDatesOpen } from './past-dates.js';
 
 /** What the screens call it, its short badge, and a day of it. */
 export const OD_LABEL = 'Official duty';
@@ -151,7 +152,8 @@ export function odWhenProblems(input: Pick<OdInput, 'startDate' | 'endDate' | 'f
  * by (Cairo, `today`); null when it is. A day 4 days ago or more is refused.
  */
 export function odTimingProblem(startDate: string, today: string): string | null {
-  if (!isDate(startDate) || !isDate(today)) return null;
+  // any day gone by may be asked for until the end of 2026 (owner, 5 November 2026: past-dates.ts)
+  if (!isDate(startDate) || !isDate(today) || pastDatesOpen(today)) return null;
   const earliest = plusDays(today, -OD_AFTER_DAYS);
   if (startDate >= earliest) return null;
   return `${shown(startDate)} is more than ${OD_AFTER_DAYS} days ago: ask for an official duty ahead, or within ${OD_AFTER_DAYS} days after the day (from ${shown(earliest)}).`;

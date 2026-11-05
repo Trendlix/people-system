@@ -19,6 +19,7 @@
 import type { SourcedDay } from './attendance-days.js';
 import { expectedPlace } from './check-in.js';
 import { LEAVE_STEP_KIND_LABELS, LEAVE_STEP_KINDS } from './leaves.js';
+import { pastDateAllowed } from './past-dates.js';
 
 /** What the screens call the request, and the day once approved. */
 export const WFH_LABEL = 'Work from home';
@@ -128,7 +129,8 @@ export function wfhDayProblems(date: string, day: WfhDay, name: string | null = 
  * it is. Never the same day, nor a day gone by.
  */
 export function wfhNoticeProblem(date: string, today: string): string | null {
-  if (!isDate(date)) return null;
+  // a day gone by may be asked for until the end of 2026 (owner, 5 November 2026: past-dates.ts)
+  if (!isDate(date) || pastDateAllowed(date, today)) return null;
   if (date < today) return `${shown(date)} has gone by: ask for a work from home day a day before it at the latest.`;
   if (date === today) return `${shown(date)} is today: ask for a work from home day a day before it at the latest.`;
   return null;
@@ -177,7 +179,10 @@ export function wfhRecordCheck(date: string, rules: WfhRules, day: WfhDay, today
   const problems = wfhDayProblems(date, day, name);
   if (!isDate(date) || !wfhOffered(day.arrangement, day.officeDays)) return { problems, warnings: [] };
   const warnings: string[] = [];
-  if (date < today) warnings.push(`${shown(date)} has gone by: it is recorded after the day.`);
+  // a day gone by is no warning while anyone may ask for one (until the end of 2026: past-dates.ts)
+  if (date < today) {
+    if (!pastDateAllowed(date, today)) warnings.push(`${shown(date)} has gone by: it is recorded after the day.`);
+  }
   else if (date === today) warnings.push(`${shown(date)} is today: it is recorded without a day's notice.`);
   warnings.push(...wfhLimitProblems(date, rules, day.taken, name));
   return { problems, warnings };

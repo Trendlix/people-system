@@ -102,7 +102,9 @@ describe('asking', () => {
   it('needs a day before the day off at the latest; a past or same-day off is only HR’s', () => {
     expect(compensatoryNoticeProblem('2026-11-13', TODAY)).toBeNull();
     expect(compensatoryNoticeProblem(TODAY, TODAY)).toBe('12/11/2026 is today: ask for a compensatory day a day before the day off at the latest.');
-    expect(compensatoryNoticeProblem('2026-11-10', TODAY)).toBe('10/11/2026 has gone by: a day off is asked for before it comes.');
+    // a day off gone by may be asked for until the end of 2026 (owner, 5 November 2026), not from 2027
+    expect(compensatoryNoticeProblem('2026-11-10', TODAY)).toBeNull();
+    expect(compensatoryNoticeProblem('2027-01-10', '2027-01-12')).toBe('10/01/2027 has gone by: a day off is asked for before it comes.');
   });
 
   it('is refused with every reason, the day worked first', () => {
@@ -240,7 +242,9 @@ describe('HR recording one', () => {
   it('may record a past day off, with a warning', () => {
     const checked = compensatoryRecordCheck('2026-11-06', '2026-11-09', worked(), off(), TODAY, 'Ben');
     expect(checked.problems).toEqual([]);
-    expect(checked.warnings).toEqual(["09/11/2026 has gone by: it is recorded without a day's notice."]);
+    // no warning while anyone may ask for a day gone by (until the end of 2026)
+    expect(checked.warnings).toEqual([]);
+    expect(compensatoryRecordCheck('2027-01-06', '2027-01-09', worked(), off(), '2027-01-12', 'Ben').warnings).toEqual(["09/01/2027 has gone by: it is recorded without a day's notice."]);
   });
 
   it('warns, not refuses, a day worked with no check-in kept', () => {
@@ -420,13 +424,14 @@ describe('the Compensatory Setup', () => {
     expect(compensatoryForOdCheck('2026-11-06', asked, { claimed: false }, off(), TODAY)).toEqual({ problems: [], warnings: [] });
     expect(compensatoryForOdCheck('2026-11-06', asked, { claimed: true }, off(), TODAY, 'Ben').problems).toEqual(['Ben has asked to compensate 06/11/2026 already.']);
     expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: null }, { claimed: false }, null, TODAY).problems).toEqual(['Enter the day off, e.g. 2026-11-10.']);
-    // an employee's day off a day ahead at the latest; HR's past one a warning
-    expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: '2026-11-10' }, { claimed: false }, off(), TODAY).problems).toEqual([
-      '10/11/2026 has gone by: a day off is asked for before it comes.',
+    // an employee's day off a day ahead at the latest; HR's past one a warning (from 2027: until then a day gone by is fine)
+    expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: '2026-11-10' }, { claimed: false }, off(), TODAY)).toEqual({ problems: [], warnings: [] });
+    expect(compensatoryForOdCheck('2027-01-06', { outcome: 'day_off', dayOff: '2027-01-10' }, { claimed: false }, off(), '2027-01-12').problems).toEqual([
+      '10/01/2027 has gone by: a day off is asked for before it comes.',
     ]);
-    expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: '2026-11-10' }, { claimed: false }, off(), TODAY, 'Ben')).toEqual({
+    expect(compensatoryForOdCheck('2027-01-06', { outcome: 'day_off', dayOff: '2027-01-10' }, { claimed: false }, off(), '2027-01-12', 'Ben')).toEqual({
       problems: [],
-      warnings: ["10/11/2026 has gone by: it is recorded without a day's notice."],
+      warnings: ["10/01/2027 has gone by: it is recorded without a day's notice."],
     });
     // cash instead has no day off
     expect(compensatoryForOdCheck('2026-11-06', { outcome: 'cash', dayOff: null }, { claimed: false }, null, TODAY)).toEqual({ problems: [], warnings: [] });

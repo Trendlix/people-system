@@ -30,6 +30,14 @@ export interface Caller {
   standIn?: StandInView;
 }
 
+/**
+ * What HR recorded a request past (its warnings: "recorded after the limit" …) is HR's and the CEO's to see, never an
+ * employee's: not the request's own employee, nor one deciding it as a manager (owner, 5 November 2026: "never show any
+ * employee the HR capabilities").
+ */
+export const seesRecordedWarnings = (r: Pick<RequestParties, 'employeeId'>, caller: Caller) =>
+  seesEveryRequest(caller.user) && r.employeeId !== caller.employeeId;
+
 /** Whether the request is a C-level person's (its HR stage the CEO's). */
 export const isConfidentialRequest = (r: Pick<RequestParties, 'employeeId'>, caller: Caller) => caller.confidential?.all.has(r.employeeId) ?? false;
 

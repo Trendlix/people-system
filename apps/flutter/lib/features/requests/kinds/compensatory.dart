@@ -286,7 +286,7 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
               : CompensatoryWords.withinDays(within, dmy(addDays(w, 1)), dmy(addDays(w, within))),
         );
       }
-      if (off.compareTo(f.today) < 0) out.add(CompensatoryWords.goneBy(dmy(off)));
+      if (off.compareTo(f.today) < 0 && !pastDateAllowed(off, f.today)) out.add(CompensatoryWords.goneBy(dmy(off)));
       if (off == f.today) out.add(CompensatoryWords.isToday(dmy(off)));
     }
     return out;
@@ -404,7 +404,7 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
           child: PickDayField(
             label: byHours ? CompensatoryWords.dayForTheHoursOff : CompensatoryWords.dayOff,
             value: _dayOff,
-            first: addDays(f.today, 1),
+            first: firstAskableDay(f.today),
             last: f.to.isEmpty ? addDays(f.today, 120) : f.to,
             onChanged: (d) => setState(() {
               _dayOff = d;

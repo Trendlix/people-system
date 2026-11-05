@@ -69,7 +69,8 @@ String wfhAllowanceLine(WfhAllowance a, [String? date]) {
 List<String> wfhProblems(WfhAllowance a, String date) {
   final today = a.today.isEmpty ? todayIso() : a.today;
   final shown = dmy(date);
-  if (date.compareTo(today) < 0) return [WfhWords.goneBy(shown)];
+  // a day gone by may be asked for until the end of 2026; its limits still count
+  if (date.compareTo(today) < 0 && !pastDateAllowed(date, today)) return [WfhWords.goneBy(shown)];
   if (date == today) return [WfhWords.isToday(shown)];
   final others = [
     for (final t in a.taken)
@@ -165,7 +166,7 @@ class _WfhFormState extends ConsumerState<_WfhForm> {
         RulesNote(icon: CupertinoIcons.house, lines: [wfhAllowanceLine(a, date), WfhWords.rules(a.daysPerMonth, a.minGapDays)]),
         SheetField(
           label: WfhWords.day,
-          child: PickDayField(label: WfhWords.day, value: date, first: addDays(today, 1), last: addDays(today, 180), onChanged: (d) => setState(() => _date = d)),
+          child: PickDayField(label: WfhWords.day, value: date, first: firstAskableDay(today), last: addDays(today, 180), onChanged: (d) => setState(() => _date = d)),
         ),
         SheetField(
           label: WfhWords.reason,

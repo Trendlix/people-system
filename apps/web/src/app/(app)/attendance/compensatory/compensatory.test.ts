@@ -111,9 +111,10 @@ describe('the request form’s live checks', () => {
     ]);
   });
 
-  it('asks a day before at the latest: today and a past day off are refused', () => {
+  it('asks a day before at the latest: today is refused; a past day off only until the end of 2026', () => {
     expect(compensatoryFormProblems(typed('06/11/2026', '12/11/2026'), FORM)).toEqual(['12/11/2026 is today: ask for a compensatory day a day before the day off at the latest.']);
-    expect(compensatoryFormProblems(typed('06/11/2026', '09/11/2026'), FORM)).toEqual(['09/11/2026 has gone by: a day off is asked for before it comes.']);
+    // a day off gone by may be asked for until the end of 2026 (owner, 5 November 2026: packages/shared past-dates.ts)
+    expect(compensatoryFormProblems(typed('06/11/2026', '09/11/2026'), FORM)).toEqual([]);
   });
 
   it('says what refuses them at all, and leaves the rest to the API while the form couldn’t be read', () => {
