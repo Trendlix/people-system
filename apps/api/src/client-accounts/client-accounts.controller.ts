@@ -11,7 +11,7 @@ import {
   UpdateClientAccountDto,
   UpdateTierDto,
 } from './client-accounts.dto.js';
-import { ClientAccountsService, EDITS_ACCOUNTS, READS_ACCOUNTS } from './client-accounts.service.js';
+import { ADDS_ACCOUNTS, ClientAccountsService, EDITS_ACCOUNTS, LISTS_ACCOUNTS, READS_ACCOUNTS } from './client-accounts.service.js';
 
 // Clients → Client Accounts (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal with
 // it?"): HR, the CEO, Finance (read only) and a Super Admin read the accounts and their people; HR and the CEO add,
@@ -22,7 +22,8 @@ import { ClientAccountsService, EDITS_ACCOUNTS, READS_ACCOUNTS } from './client-
 export class ClientAccountsController {
   constructor(private readonly accounts: ClientAccountsService) {}
 
-  @Roles(...READS_ACCOUNTS)
+  // a manager too (5 November 2026: "allow managers to add clients"): the clients without their people or amounts
+  @Roles(...LISTS_ACCOUNTS)
   @Get('client-accounts')
   list(@CurrentUser() user: SessionUser) {
     return this.accounts.list(user);
@@ -73,7 +74,8 @@ export class ClientAccountsController {
     return this.accounts.get(id, user);
   }
 
-  @Roles(...EDITS_ACCOUNTS)
+  // a manager adds one too, without a size or an amount (5 November 2026: "HR sets it later"): the service checks
+  @Roles(...ADDS_ACCOUNTS)
   @Post('client-accounts')
   create(@Body() dto: CreateClientAccountDto, @CurrentUser() user: SessionUser) {
     return this.accounts.create(dto, user);

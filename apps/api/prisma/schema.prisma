@@ -2007,7 +2007,7 @@ model ClientAccount {
   code          String?                   @unique
   tierId        String?                   @map("tier_id") @db.Uuid
   tier          ClientAccountTier?        @relation(fields: [tierId], references: [id], onDelete: SetNull)
-  defaultAmount Decimal                   @map("default_amount") @db.Decimal(12, 2)
+  defaultAmount Decimal?                  @map("default_amount") @db.Decimal(12, 2) // none until HR sets it, for a client a manager added (5 November 2026)
   status        String                    @default("active")
   endedOn       DateTime?                 @map("ended_on") @db.Date
   notes         String?

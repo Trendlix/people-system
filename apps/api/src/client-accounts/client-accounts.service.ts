@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   ACCOUNTS_ALLOWANCE,
   changedDays,
@@ -47,11 +47,22 @@ interface Held {
 export const READS_ACCOUNTS = ['hr', 'ceo', 'finance', 'super_admin'] as const;
 /** The roles that add, change and end accounts and their assignments: HR and the CEO. */
 export const EDITS_ACCOUNTS = ['hr', 'ceo'] as const;
+/**
+ * A manager sees the clients and adds one (owner, 5 November 2026: "allow managers to add clients"; asked, "Anyone with
+ * the Manager role", "See the list and add", "HR sets it later"): the list without the people on them or any amount, and
+ * a new client without a size or an amount, which HR sets before assigning anyone.
+ */
+export const LISTS_ACCOUNTS = [...READS_ACCOUNTS, 'manager'] as const;
+export const ADDS_ACCOUNTS = [...EDITS_ACCOUNTS, 'manager'] as const;
+export const MANAGER_NO_AMOUNT = 'Only HR and the CEO set a client’s size and amount.';
 
 /** The latest day a payroll month is looked for (an open end runs on for good). */
 const LATEST = '2999-12-31';
 
 const edits = (user: SessionUser) => !user.developer && actsAs(user.roles, [...EDITS_ACCOUNTS]);
+/** Reads the people on the clients and the sizes: HR, the CEO, Finance, a Super Admin (not a manager alone). */
+const readsPeople = (user: SessionUser) => !!user.developer || actsAs(user.roles, [...READS_ACCOUNTS]);
+const adds = (user: SessionUser) => !user.developer && actsAs(user.roles, [...ADDS_ACCOUNTS]);
 const money = (n: Prisma.Decimal | number | null | undefined) => (n === null || n === undefined ? null : typeof n === 'number' ? n : n.toNumber());
 
 // Client accounts (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal with it?";
@@ -81,29 +92,42 @@ export class ClientAccountsService {
       this.tierRows(),
       this.confidential.view(user),
     ]);
-    const sees = seesSalary(user);
     const today = todayInCairo();
+    // a manager alone: the clients, never the people on them, the sizes or any amount
+    if (!readsPeople(user)) {
+      const accounts = rows.map((a) => ({ ...accountView({ ...a, assignments: [] }, false, confidential.hidden, today), hidden: 0 }));
+      return { accounts, tiers: [], seesAmounts: false, edits: false, adds: adds(user), readsPeople: false };
+    }
+    const sees = seesSalary(user);
     return {
       accounts: rows.map((a) => accountView(a, sees, confidential.hidden, today)),
       tiers: tiers.map((t) => this.tierView(t, sees)),
       seesAmounts: sees,
       edits: edits(user),
+      adds: adds(user),
+      readsPeople: true,
     };
   }
 
   async get(id: string, user: SessionUser) {
     const [row, confidential] = await Promise.all([this.accountRow(id), this.confidential.view(user)]);
+    if (!readsPeople(user)) return { ...accountView({ ...row, assignments: [] }, false, confidential.hidden, todayInCairo()), hidden: 0 };
     return accountView(row, seesSalary(user), confidential.hidden, todayInCairo());
   }
 
-  /** A new account: its default amount typed, else its size tier's. */
+  /**
+   * A new account: its default amount typed, else its size tier's. A manager's (5 November 2026) without a size or an
+   * amount: HR sets them later.
+   */
   async create(dto: CreateClientAccountDto, user: SessionUser) {
+    const byManager = !edits(user);
+    if (byManager && (dto.tierId || dto.defaultAmount !== undefined)) throw new ForbiddenException(MANAGER_NO_AMOUNT);
     await this.assertNameFree(dto.nameEn);
     if (dto.code) await this.assertCodeFree(dto.code);
     const tier = dto.tierId ? await this.tier(dto.tierId) : null;
     if (dto.departmentId) await this.assertDepartment(dto.departmentId);
     const defaultAmount = dto.defaultAmount ?? money(tier?.defaultAmount);
-    if (defaultAmount === null) throw new BadRequestException('Enter the default amount a month for the people on this account, or choose a size that has one.');
+    if (defaultAmount === null && !byManager) throw new BadRequestException('Enter the default amount a month for the people on this account, or choose a size that has one.');
     const row = await this.prisma.clientAccount.create({
       data: {
         nameEn: dto.nameEn,
@@ -128,7 +152,7 @@ export class ClientAccountsService {
         tier: tier?.nameEn ?? null,
         departmentId: row.departmentId,
         // money never goes to the audit log: only that it was set (as a contract's salary)
-        defaultAmount: 'changed',
+        defaultAmount: defaultAmount === null ? null : 'changed',
       },
     });
     return this.get(row.id, user);
@@ -153,7 +177,7 @@ export class ClientAccountsService {
     };
     await this.prisma.clientAccount.update({ where: { id }, data: { ...fields, ...(defaultAmount !== undefined && { defaultAmount }) } });
     const diff: Record<string, unknown> = changes(before as unknown as Record<string, unknown>, fields);
-    if (defaultAmount !== undefined && Math.round(defaultAmount * 100) !== Math.round(before.defaultAmount.toNumber() * 100)) diff.defaultAmount = 'changed';
+    if (defaultAmount !== undefined && Math.round(defaultAmount * 100) !== Math.round((money(before.defaultAmount) ?? 0) * 100)) diff.defaultAmount = 'changed';
     if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ACCOUNT, entityId: id, diff: { nameEn: before.nameEn, ...diff } });
     return this.get(id, user);
   }
@@ -208,7 +232,9 @@ export class ClientAccountsService {
     await this.confidential.assertVisible(user, dto.employeeId);
     const person = await this.person(dto.employeeId);
     const employment = await this.currentEmployment(person);
-    const amount = dto.amount ?? (await this.contractAmount(employment.id)) ?? account.defaultAmount.toNumber();
+    const amount = dto.amount ?? (await this.contractAmount(employment.id)) ?? money(account.defaultAmount);
+    // a client a manager added has no amount until HR sets it (5 November 2026)
+    if (amount === null) throw new BadRequestException(`${account.nameEn} has no amount a month yet: set it on the client, or type ${person.fullNameEn}’s amount.`);
     const after: Held = { from: dto.fromDate, to: dto.toDate ?? null, amount };
     this.assertDates(after, person.fullNameEn, employment, account);
     await this.assertEligible(person.fullNameEn, employment.id);

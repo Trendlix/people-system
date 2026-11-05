@@ -227,13 +227,15 @@ export const CLIENT_HOURS_PATH = '/clients/hours';
  * with their dates and amounts (paid as the accounts allowance), for HR and the CEO, who change them, and Finance and a
  * Super Admin, who read them (the amounts for those who see salaries). Client Hours beside it (owner, 4 November 2026:
  * "Full salary, hours tracked"): a month's hours logged on timesheets by client and person, for the same people. The
- * heading will later hold Projects. Not in an employee's own sidebar: their current accounts are on My Profile.
+ * heading will later hold Projects. Not in an employee's own sidebar: their current accounts are on My Profile. Client
+ * Accounts for anyone with the Manager role too (owner, 5 November 2026: "allow managers to add clients"; "See the list
+ * and add"), in their own sidebar after My Team; Client Hours not.
  */
 export const CLIENTS_NAV: NavItem = {
   href: CLIENT_ACCOUNTS_PATH,
   label: 'Clients',
   items: [
-    { href: CLIENT_ACCOUNTS_PATH, label: 'Client Accounts', section: CLIENT_ACCOUNTS_PATH, roles: ['hr', 'ceo', 'finance', 'super_admin'] },
+    { href: CLIENT_ACCOUNTS_PATH, label: 'Client Accounts', section: CLIENT_ACCOUNTS_PATH, roles: ['hr', 'ceo', 'finance', 'super_admin', 'manager'] },
     { href: CLIENT_HOURS_PATH, label: 'Client Hours', section: CLIENT_HOURS_PATH, roles: ['hr', 'ceo', 'finance', 'super_admin'] },
   ],
 };
@@ -430,6 +432,8 @@ function selfServiceNav(user: NavUser): NavItem[] {
     ...shownWithItems(user, RECRUITMENT_NAV),
     // a department's head or a team's lead too (19 October 2026), for what waits for them there
     ...(decidesForTeam(user) ? [{ href: MY_TEAM, label: 'My Team', section: MY_TEAM }] : []),
+    // Clients → Client Accounts, for anyone with the Manager role (owner, 5 November 2026: "allow managers to add clients")
+    ...shownWithItems(user, CLIENTS_NAV),
   ];
 }
 

@@ -40,7 +40,8 @@ describe('the headings that open and close', () => {
     expect(groupListId('requests')).toBe('nav-group-requests');
     expect(groupKey({ label: ' Leave & Attendance ' })).toBe('leave-attendance');
     // an employee's own sidebar has the KPIs' alone (owner, 21 October 2026)
-    expect(sidebar('employee', 'manager').filter(isGroup).map((item) => item.label)).toEqual(['KPIs']);
+    // a manager's Clients (Client Accounts; 5 November 2026: "allow managers to add clients")
+    expect(sidebar('employee', 'manager').filter(isGroup).map((item) => item.label)).toEqual(['KPIs', 'Clients']);
   });
 
   it('keep the page each heading linked to reachable as its first item, for everyone', () => {

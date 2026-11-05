@@ -8,14 +8,16 @@ import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { Department, FormState } from '@/lib/types';
 import { ActionButton, focusFirstField, useClosesOnSave } from '../../employees/[id]/contracts/contract-buttons';
-import { amountField, deleteAssignmentConfirm, deleteTierConfirm, endAccountConfirm, tierDefault } from './accounts';
+import { amountField, deleteAssignmentConfirm, deleteTierConfirm, endAccountConfirm, hasAmount, MANAGER_ADD_TEXT, NO_AMOUNT_ASSIGN_TEXT, tierDefault } from './accounts';
 import type { AssignmentView, ClientAccountView, PersonOption, TierView } from './types';
 
 // The Client Accounts page's forms (owner, 25 October 2026: "if an employee has an allowance per account, how can we
 // deal with it?"): an account added or changed (its size fills in its default amount, which HR can change), ended on a
 // day; a person assigned (the account's default filled in, changed when theirs differs), an assignment changed, ended
 // or, by a Super Admin, deleted; and the sizes. Each opens in place and closes once saved; a refusal stays open with the
-// API's reason. The API checks everything again.
+// API's reason. The API checks everything again. A manager's Add client (owner, 5 November 2026: "allow managers to add
+// clients"; "See the list and add", "HR sets it later"): the names, code, team and notes, no size or amount; HR's Edit of
+// such a client may leave its amount empty or set it, and Assign says to type the person's amount while it has none.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -82,21 +84,28 @@ function AmountField({
 
 // ---------- accounts ----------
 
-/** The account's fields: names, code, size (filling in the default), default amount, team and notes. */
+/**
+ * The account's fields: names, code, size (filling in the default), default amount, team and notes; `limited` (a
+ * manager's): no size or amount, HR sets them.
+ */
 function AccountFields({
   state,
   account,
   tiers,
   departments,
+  limited = false,
 }: {
   state: FormState;
   account: ClientAccountView | null;
   tiers: readonly TierView[];
   departments: Department[];
+  limited?: boolean;
 }) {
   const fid = useFieldIds();
   const [tierId, setTierId] = useState(valueOf(state, 'tierId', account?.tier?.id ?? ''));
   const [amount, setAmount] = useState(valueOf(state, 'defaultAmount', amountField(account?.defaultAmount)));
+  // a client a manager added: no amount yet, set here or left for later (5 November 2026)
+  const unset = !!account && !hasAmount(account);
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div>
@@ -142,38 +151,50 @@ function AccountFields({
           className="input"
         />
       </div>
-      <div>
-        <label htmlFor={fid('tierId')} className="label">
-          Size <span className="font-normal text-muted">(optional)</span>
-        </label>
-        <Select
-          id={fid('tierId')}
-          name="tierId"
-          value={tierId}
-          onChange={(e) => {
-            setTierId(e.target.value);
-            // a size fills in its default amount; HR can change it after
-            const filled = tierDefault(tiers, e.target.value);
-            if (filled) setAmount(filled);
-          }}
-          className="input"
-        >
-          <option value="">No size</option>
-          {tiers.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.nameEn}
-            </option>
-          ))}
-        </Select>
-      </div>
-      <AmountField
-        id={fid('defaultAmount')}
-        name="defaultAmount"
-        label="Default amount (EGP a month)"
-        value={amount}
-        onChange={setAmount}
-        required={!!account || !tierId}
-      />
+      {!limited && (
+        <div>
+          <label htmlFor={fid('tierId')} className="label">
+            Size <span className="font-normal text-muted">(optional)</span>
+          </label>
+          <Select
+            id={fid('tierId')}
+            name="tierId"
+            value={tierId}
+            onChange={(e) => {
+              setTierId(e.target.value);
+              // a size fills in its default amount; HR can change it after
+              const filled = tierDefault(tiers, e.target.value);
+              if (filled) setAmount(filled);
+            }}
+            className="input"
+          >
+            <option value="">No size</option>
+            {tiers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.nameEn}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+      {!limited && (
+        <div>
+          <AmountField
+            id={fid('defaultAmount')}
+            name="defaultAmount"
+            label="Default amount (EGP a month)"
+            value={amount}
+            onChange={setAmount}
+            required={account ? !unset : !tierId}
+          />
+          {unset && (
+            <>
+              <input type="hidden" name="amountUnset" value="1" />
+              <p className="mt-1 text-xs text-warn">Not set yet: set it before assigning people.</p>
+            </>
+          )}
+        </div>
+      )}
       <div>
         <label htmlFor={fid('departmentId')} className="label">
           Department or team that serves it <span className="font-normal text-muted">(optional)</span>
@@ -189,19 +210,34 @@ function AccountFields({
         </label>
         <textarea id={fid('notes')} name="notes" maxLength={500} rows={2} defaultValue={valueOf(state, 'notes', account?.notes)} className="input" />
       </div>
+      {limited && <p className="text-sm text-muted sm:col-span-2">{MANAGER_ADD_TEXT}</p>}
     </div>
   );
 }
 
-/** Add account: its form opens below the button, emptied once added for the next one. */
-export function AddAccount({ action, tiers, departments }: { action: Action; tiers: readonly TierView[]; departments: Department[] }) {
+/**
+ * Add account: its form opens below the button, emptied once added for the next one. `limited`: a manager's Add client,
+ * without a size or amount (5 November 2026).
+ */
+export function AddAccount({
+  action,
+  tiers,
+  departments,
+  limited = false,
+}: {
+  action: Action;
+  tiers: readonly TierView[];
+  departments: Department[];
+  limited?: boolean;
+}) {
   const { state, pending, form } = useKeptForm(action);
   const [open, setOpen] = useClosesOnSave(state);
+  const label = limited ? 'Add client' : 'Add account';
   if (!open) {
     return (
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" aria-expanded={false} onClick={() => setOpen(true)} className="btn btn-primary">
-          Add account
+          {label}
         </button>
         <Said state={state} />
       </div>
@@ -210,8 +246,8 @@ export function AddAccount({ action, tiers, departments }: { action: Action; tie
   return (
     <form {...form} ref={focusFirstField} aria-label="Add a client account" className="space-y-4 rounded-lg border border-line bg-canvas p-4">
       <FormErrors errors={state.errors} />
-      <AccountFields state={state} account={null} tiers={tiers} departments={departments} />
-      <Footer pending={pending} label="Add account" pendingText="Adding…" onClose={() => setOpen(false)} />
+      <AccountFields state={state} account={null} tiers={tiers} departments={departments} limited={limited} />
+      <Footer pending={pending} label={label} pendingText="Adding…" onClose={() => setOpen(false)} />
     </form>
   );
 }
@@ -350,14 +386,18 @@ export function AssignPerson({
           <DateInput id={fid('toDate')} name="toDate" defaultValue={valueOf(state, 'toDate', '')} />
         </div>
         {seesAmounts && (
-          <AmountField
-            id={fid('amount')}
-            name="amount"
-            label="Amount (EGP a month)"
-            value={amount}
-            onChange={setAmount}
-            required={false}
-          />
+          <div>
+            <AmountField
+              id={fid('amount')}
+              name="amount"
+              label="Amount (EGP a month)"
+              value={amount}
+              onChange={setAmount}
+              required={false}
+            />
+            {/* a client a manager added, before HR set its amount (5 November 2026) */}
+            {!hasAmount(account) && <p className="mt-1 text-xs text-warn">{NO_AMOUNT_ASSIGN_TEXT}</p>}
+          </div>
         )}
         <div className={seesAmounts ? undefined : 'sm:col-span-2'}>
           <label htmlFor={fid('note')} className="label">

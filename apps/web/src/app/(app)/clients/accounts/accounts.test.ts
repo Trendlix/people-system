@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   accountBody,
   accountFacts,
+  addsClients,
   amountField,
   amountText,
   assignable,
@@ -9,10 +10,15 @@ import {
   endAccountBody,
   endAssignmentBody,
   focusedAccount,
+  hasAmount,
   hiddenText,
+  listsClientAccounts,
+  missingAmounts,
+  missingAmountsText,
   peopleCount,
   peopleOf,
   periodText,
+  readsPeople,
   seesClientAccounts,
   sortedAccounts,
   standingBadge,
@@ -66,6 +72,36 @@ describe('who sees the page', () => {
   it('is HR, the CEO, Finance and a Super Admin; not an Admin or an employee', () => {
     for (const roles of [['hr'], ['ceo'], ['finance'], ['super_admin']] as const) expect(seesClientAccounts({ roles: [...roles] })).toBe(true);
     for (const roles of [['admin'], ['employee'], ['employee', 'manager']] as const) expect(seesClientAccounts({ roles: [...roles] })).toBe(false);
+  });
+
+  it('lists the accounts for anyone with the Manager role too (5 November 2026: "allow managers to add clients")', () => {
+    for (const roles of [['hr'], ['ceo'], ['finance'], ['super_admin'], ['manager'], ['employee', 'manager']] as const) {
+      expect(listsClientAccounts({ roles: [...roles] })).toBe(true);
+    }
+    for (const roles of [['admin'], ['employee']] as const) expect(listsClientAccounts({ roles: [...roles] })).toBe(false);
+  });
+
+  it('reads who adds and who reads the people from the API, an API from before it as before', () => {
+    expect(addsClients({ adds: true, edits: false })).toBe(true);
+    expect(addsClients({ adds: false, edits: false })).toBe(false);
+    expect(addsClients({ edits: true })).toBe(true);
+    expect(readsPeople({ readsPeople: false })).toBe(false);
+    expect(readsPeople({})).toBe(true);
+    expect(hasAmount({ amountSet: false })).toBe(false);
+    expect(hasAmount({})).toBe(true);
+  });
+
+  it('says how many active clients have no amount yet, the first by name', () => {
+    const accounts = [
+      account({ id: 'z', nameEn: 'Zed', amountSet: false }),
+      account({ id: 'b', nameEn: 'Bolt', amountSet: false }),
+      account({ id: 'o', nameEn: 'Old', amountSet: false, status: 'ended' }),
+      account({ id: 'a', nameEn: 'Acme' }),
+    ];
+    expect(missingAmounts(accounts).map((a) => a.id)).toEqual(['b', 'z']);
+    expect(missingAmountsText(2)).toBe('2 clients have no amount yet: set it before assigning people.');
+    expect(missingAmountsText(1)).toBe('1 client has no amount yet: set it before assigning people.');
+    expect(missingAmountsText(0)).toBeNull();
   });
 });
 
@@ -129,12 +165,28 @@ describe('the account form, as the API takes it', () => {
 
   it('needs a name, a default (or a size, when new) and a code of letters, digits and dashes', () => {
     expect(accountBody(form({ nameEn: '', defaultAmount: '1500' }), false).problems).toEqual(['Enter the account’s name in English (up to 150 characters), e.g. Acme Foods.']);
-    expect(accountBody(form({ nameEn: 'Acme' }), false).problems).toEqual(['Enter the default amount in EGP a month, e.g. 1500 or 1500.50.']);
+    expect(accountBody(form({ nameEn: 'Acme', defaultAmount: '' }), false).problems).toEqual(['Enter the default amount in EGP a month, e.g. 1500 or 1500.50.']);
     expect(accountBody(form({ nameEn: 'Acme', defaultAmount: '0' }), false).problems).toEqual(['Enter the default amount in EGP a month, more than 0, e.g. 1500 or 1500.50.']);
     expect(accountBody(form({ nameEn: 'Acme', defaultAmount: '100', code: 'AC ME' }), false).problems).toEqual([
       'Enter the code in up to 30 letters, digits and dashes, e.g. ACME-01, or leave it empty.',
     ]);
-    expect(accountBody(form({ nameEn: 'Acme', tierId: 't1' }), true).problems).toEqual(['Enter the default amount in EGP a month, e.g. 1500 or 1500.50.']);
+    expect(accountBody(form({ nameEn: 'Acme', tierId: 't1', defaultAmount: '' }), true).problems).toEqual(['Enter the default amount in EGP a month, e.g. 1500 or 1500.50.']);
+  });
+
+  it('a manager’s form has no size or amount: neither read nor sent (5 November 2026: "HR sets it later")', () => {
+    expect(accountBody(form({ nameEn: 'Acme', code: 'AC-1', departmentId: 'd1', notes: 'Retainer' }), false)).toEqual({
+      body: { nameEn: 'Acme', code: 'AC-1', departmentId: 'd1', notes: 'Retainer' },
+      problems: [],
+    });
+  });
+
+  it('a change to a client with no amount yet may leave it empty, or set it', () => {
+    const fields = { nameEn: 'Acme', nameAr: '', code: '', tierId: '', departmentId: '', notes: '', amountUnset: '1' };
+    expect(accountBody(form({ ...fields, defaultAmount: '' }), true)).toEqual({
+      body: { nameEn: 'Acme', nameAr: '', code: '', tierId: null, departmentId: null, notes: '' },
+      problems: [],
+    });
+    expect(accountBody(form({ ...fields, defaultAmount: '1500' }), true).body).toMatchObject({ defaultAmount: 1500 });
   });
 
   it('ending one needs its day', () => {

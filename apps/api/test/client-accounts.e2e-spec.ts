@@ -46,6 +46,8 @@ interface Account {
   endedOn: string | null;
   tier: { id: string; nameEn: string } | null;
   defaultAmount: number | null;
+  /** It has an amount a month (5 November 2026: a manager's client has none until HR sets it). */
+  amountSet: boolean;
   assignments: Assignment[];
   hidden: number;
 }
@@ -105,7 +107,7 @@ describe('Client accounts (e2e)', () => {
   let daliaAcme: Assignment;
   let runId: string;
 
-  const list = async (session = hr) => (await api().get('/api/client-accounts').set('Cookie', session).expect(200)).body as { accounts: Account[]; tiers: { id: string; nameEn: string; defaultAmount: number | null }[]; seesAmounts: boolean; edits: boolean };
+  const list = async (session = hr) => (await api().get('/api/client-accounts').set('Cookie', session).expect(200)).body as { accounts: Account[]; tiers: { id: string; nameEn: string; defaultAmount: number | null }[]; seesAmounts: boolean; edits: boolean; adds: boolean; readsPeople: boolean };
   const accountOf = async (id: string, session = hr) => (await list(session)).accounts.find((a) => a.id === id)!;
   const addAccount = (body: object, session = hr) => api().post('/api/client-accounts').set('Cookie', session).send(body);
   const assign = (accountId: string, body: object, session = hr) => api().post(`/api/client-accounts/${accountId}/assignments`).set('Cookie', session).send(body);
@@ -194,19 +196,47 @@ describe('Client accounts (e2e)', () => {
       await addAccount({ nameEn: `Bad ${RUN}`, defaultAmount: 0 }).expect(400);
       for (const session of [finance, admin, superAdmin, staff, manager, developer]) await addAccount({ nameEn: `Refused ${RUN}`, defaultAmount: 100 }, session).expect(403);
 
-      // reading: HR, the CEO, Finance (amounts), a Super Admin (no amounts); never an Admin, an employee or a manager
+      // reading: HR, the CEO, Finance (amounts), a Super Admin (no amounts); never an Admin or an employee (a manager: below)
       for (const session of [hr, ceo, finance]) expect(await list(session)).toMatchObject({ seesAmounts: true });
       expect((await list(finance)).edits).toBe(false);
       const bySuper = await list(superAdmin);
       expect(bySuper).toMatchObject({ seesAmounts: false, edits: false });
       expect(bySuper.accounts.find((a) => a.id === acme.id)!.defaultAmount).toBeNull();
       expect(bySuper.tiers.find((t) => t.id === large.body.id)!.defaultAmount).toBeNull();
-      for (const session of [admin, staff, manager]) await api().get('/api/client-accounts').set('Cookie', session).expect(403);
+      for (const session of [admin, staff]) await api().get('/api/client-accounts').set('Cookie', session).expect(403);
       await api().get('/api/client-accounts').expect(401);
 
       const changed = await api().patch(`/api/client-accounts/${beta.id}`).set('Cookie', hr).send({ code: 'BETA-1', defaultAmount: 950 }).expect(200);
       expect(changed.body).toMatchObject({ code: 'BETA-1', defaultAmount: 950 });
       await api().patch(`/api/client-accounts/${beta.id}`).set('Cookie', hr).send({ defaultAmount: 900 }).expect(200);
+    });
+
+    it('a manager sees the clients without their people or amounts, and adds one without a size or an amount, which HR sets before assigning', async () => {
+      // owner, 5 November 2026: "allow managers to add clients"; "Anyone with the Manager role", "See the list and add", "HR sets it later"
+      const made = (await addAccount({ nameEn: `Omega Studio ${RUN}`, departmentId, notes: 'Met at the expo' }, manager).expect(201)).body as Account;
+      expect(made).toMatchObject({ nameEn: `Omega Studio ${RUN}`, defaultAmount: null, amountSet: false, tier: null, assignments: [] });
+      expect((await addAccount({ nameEn: `Delta ${RUN}`, defaultAmount: 500 }, manager).expect(403)).body.message).toBe('Only HR and the CEO set a client’s size and amount.');
+      expect((await addAccount({ nameEn: `Omega Studio ${RUN}` }, manager).expect(409)).body.message).toContain('There is already a client account called');
+
+      // the manager's list: every client, none of their people, sizes or amounts
+      const seen = await list(manager);
+      expect(seen).toMatchObject({ readsPeople: false, seesAmounts: false, edits: false, adds: true, tiers: [] });
+      expect(seen.accounts.find((a) => a.id === acme.id)).toMatchObject({ defaultAmount: null, amountSet: true, assignments: [], hidden: 0 });
+      // they change nothing else
+      await api().patch(`/api/client-accounts/${made.id}`).set('Cookie', manager).send({ notes: 'Changed' }).expect(403);
+      await api().post(`/api/client-accounts/${made.id}/end`).set('Cookie', manager).send({ endedOn: firstDay(CURRENT) }).expect(403);
+
+      // HR: the amount not set, needed before anyone is assigned without one of their own
+      const byHr = await list(hr);
+      expect(byHr).toMatchObject({ adds: true, readsPeople: true });
+      expect(byHr.accounts.find((a) => a.id === made.id)).toMatchObject({ defaultAmount: null, amountSet: false });
+      expect((await assign(made.id, { employeeId: amal.id, fromDate: JOINED }).expect(400)).body.message).toBe(
+        `Omega Studio ${RUN} has no amount a month yet: set it on the client, or type Amal Accounts ${RUN}’s amount.`,
+      );
+      expect((await api().patch(`/api/client-accounts/${made.id}`).set('Cookie', hr).send({ defaultAmount: 700 }).expect(200)).body).toMatchObject({ defaultAmount: 700, amountSet: true });
+      // Finance reads it; an employee neither reads nor adds
+      expect((await accountOf(made.id, finance)).defaultAmount).toBe(700);
+      await addAccount({ nameEn: `Refused Too ${RUN}` }, staff).expect(403);
     });
   });
 

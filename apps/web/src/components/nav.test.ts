@@ -296,6 +296,8 @@ describe('the sidebar of an employee or a manager', () => {
       ['My Assets', MY_ASSETS],
       ['KPIs', '/kpis'],
       ['My Team', MY_TEAM],
+      // Client Accounts, for anyone with the Manager role (5 November 2026: "allow managers to add clients")
+      ['Clients', CLIENT_ACCOUNTS_PATH],
     ]);
     expect(links({ roles: ['manager'], employeeId: ME }).map(([label]) => label)).toContain('My Team');
   });
@@ -529,8 +531,8 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       for (const roles of [['employee'], ['manager'], ['employee', 'manager']] as Role[][]) {
         const shown = navFor({ roles, employeeId: 'x' });
         expect(shown.map((n) => n.label)).not.toContain('Requests');
-        // the KPIs' pages alone are under a heading (owner, 21 October 2026)
-        expect(shown.flatMap((n) => n.items ?? []).every((i) => i.href.startsWith('/kpis'))).toBe(true);
+        // the KPIs' pages alone are under a heading (owner, 21 October 2026), and a manager's Client Accounts (5 November 2026)
+        expect(shown.flatMap((n) => n.items ?? []).every((i) => i.href.startsWith('/kpis') || i.href === CLIENT_ACCOUNTS_PATH)).toBe(true);
         expect(shown.map((n) => n.href)).not.toContain(DETAILS_CHANGES_PATH);
         expect(shown.map((n) => n.href)).not.toContain(REIMBURSEMENTS_PATH);
         expect(shown.map((n) => n.href)).not.toContain(LEAVE_PATH);
@@ -943,15 +945,22 @@ describe('Clients (owner, 25 October 2026: "if an employee has an allowance per 
 
   it('is a heading with Client Accounts and Client Hours, for HR, the CEO, Finance and a Super Admin; never an Admin’s or an employee’s', () => {
     expect(NAV).toContain(CLIENTS_NAV);
-    // Client Hours (4 November 2026: "Full salary, hours tracked"), the month's timesheet hours by client
+    // Client Hours (4 November 2026: "Full salary, hours tracked"), the month's timesheet hours by client; Client
+    // Accounts for a manager too (5 November 2026: "allow managers to add clients")
     expect(CLIENTS_NAV.items?.map((i) => [i.label, i.href, i.roles])).toEqual([
-      ['Client Accounts', '/clients/accounts', ['hr', 'ceo', 'finance', 'super_admin']],
+      ['Client Accounts', '/clients/accounts', ['hr', 'ceo', 'finance', 'super_admin', 'manager']],
       ['Client Hours', '/clients/hours', ['hr', 'ceo', 'finance', 'super_admin']],
     ]);
     for (const roles of [['hr'], ['ceo'], ['finance'], ['super_admin']] as Role[][]) {
       expect(clients(...roles)).toMatchObject({ href: CLIENT_ACCOUNTS_PATH, items: [{ label: 'Client Accounts' }, { label: 'Client Hours' }] });
     }
-    for (const roles of [['admin'], ['employee'], ['employee', 'manager']] as Role[][]) expect(clients(...roles)).toBeNull();
+    // a manager: Client Accounts alone, in their own sidebar
+    for (const roles of [['manager'], ['employee', 'manager']] as Role[][]) {
+      expect(clients(...roles)?.items?.map((i) => i.label)).toEqual(['Client Accounts']);
+    }
+    for (const roles of [['admin'], ['employee']] as Role[][]) expect(clients(...roles)).toBeNull();
+    // a team's lead without the Manager role: not theirs
+    expect(navFor({ roles: ['employee'], employeeId: 'x', leads: true }).find((n) => n.label === 'Clients')).toBeUndefined();
     expect(activeSubItem(CLIENTS_NAV, '/clients/accounts')?.label).toBe('Client Accounts');
     expect(activeSubItem(CLIENTS_NAV, CLIENT_HOURS_PATH)?.label).toBe('Client Hours');
     expect(activeSubItem(CLIENTS_NAV, '/clients/hours/excel')?.label).toBe('Client Hours');

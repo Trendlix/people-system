@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
+import { ApiError } from '@/lib/api';
 import { todayInCairo } from '@/lib/date-picker';
 import { isHidden, shownCode } from '@/lib/hidden';
-import { canDelete } from '@/lib/roles';
+import { canDelete, isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { Department } from '@/lib/types';
 import { getOrNull } from '../../approvals/data';
@@ -11,22 +13,27 @@ import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
 import { profileHref } from '../../employees/tab-list';
 import { Empty, Loading } from '../../organization/ui';
 import { loadJson } from '../../payroll/load';
-import { StaffOnly } from '../../staff-only';
 import { AccountActions, AddAccount, AddTier, AssignmentActions, AssignPerson, TierActions } from './account-forms';
 import { AccountSection } from './account-section';
 import { CLIENT_HOURS_PATH } from '../hours/client-hours';
 import {
   accountAnchor,
   accountFacts,
+  addsClients,
   amountText,
   assignable,
   deleteAssignmentConfirm,
   deleteTierConfirm,
   focusedAccount,
+  hasAmount,
   hiddenText,
+  listsClientAccounts,
+  missingAmounts,
+  missingAmountsText,
   peopleCount,
   peopleOf,
   periodText,
+  readsPeople,
   seesClientAccounts,
   sortedAccounts,
   standingBadge,
@@ -58,13 +65,18 @@ import type { AssignmentView, ClientAccountsList, ClientAccountView, TierView } 
 // C-level person's assignments are the CEO's, counted for anyone else ("C-level (1 person) — hidden"). The address's
 // ?account= (the Audit Log's link, and Client Hours') marks and scrolls to one account. The API checks every change
 // again. Client Hours (4 November 2026: "Full salary, hours tracked"), the month's timesheet hours by client, is a button
-// away; Clients will hold Projects later.
+// away; Clients will hold Projects later. Managers (owner, 5 November 2026: "allow managers to add clients"; asked,
+// "Anyone with the Manager role", "See the list and add", the amount "HR sets it later") open it too: the accounts
+// without their people, sizes or amounts, and Add client (names, code, team, notes); HR and the CEO see such a client as
+// "Amount not set", with a note at the top while any active one has none.
 
 export const metadata: Metadata = { title: 'Client Accounts · People System' };
 
 type Query = Record<string, string | string[] | undefined>;
 
 const dash = <span className="text-muted">—</span>;
+
+const NOT_YOURS = 'Only HR, the CEO, Finance, a Super Admin and managers can see the client accounts.';
 
 /** One person on an account: name and code, dates, amount, note, where it stands, and HR's buttons. */
 function AssignmentRow({
@@ -211,8 +223,12 @@ function AccountCard({
 }) {
   const id = accountAnchor(account.id);
   const badge = statusBadge(account);
-  const facts = accountFacts(account);
+  const withPeople = readsPeople(list);
+  // a manager's list: no sizes (5 November 2026)
+  const facts = accountFacts(withPeople ? account : { ...account, tier: null });
   const amount = list.seesAmounts ? amountText(account.defaultAmount) : null;
+  // a client a manager added, before HR set its amount: said to those who keep the accounts
+  const noAmount = withPeople && !hasAmount(account);
   const edits = list.edits;
   return (
     <AccountSection id={id} focused={focused} labelledBy={`${id}-name`}>
@@ -230,11 +246,13 @@ function AccountCard({
             <span className={`badge ${badge.tone}`}>{badge.label}</span>
           </div>
           {facts && <p className="text-sm text-muted">{facts}</p>}
-          <p className="text-sm">
-            {amount ? <>Default {amount}</> : null}
-            {amount && ' · '}
-            <span className="text-muted">{peopleCount(account.assignments, account.hidden)}</span>
-          </p>
+          {withPeople && (
+            <p className="text-sm">
+              {noAmount ? <span className="badge bg-warn-soft text-warn">Amount not set</span> : amount ? <>Default {amount}</> : null}
+              {(noAmount || amount) && ' · '}
+              <span className="text-muted">{peopleCount(account.assignments, account.hidden)}</span>
+            </p>
+          )}
           {account.notes && <p className={`max-w-prose text-sm break-words ${isHidden(account.notes) ? 'text-muted' : ''}`}>{account.notes}</p>}
         </div>
         {edits && (
@@ -248,8 +266,8 @@ function AccountCard({
           />
         )}
       </div>
-      <People account={account} seesAmounts={list.seesAmounts} edits={edits} removes={removes} today={today} />
-      {edits && account.status === 'active' && people && (
+      {withPeople && <People account={account} seesAmounts={list.seesAmounts} edits={edits} removes={removes} today={today} />}
+      {withPeople && edits && account.status === 'active' && people && (
         <AssignPerson action={addAssignment.bind(null, account.id)} account={account} options={assignable(people, account)} seesAmounts={list.seesAmounts} />
       )}
     </AccountSection>
@@ -298,7 +316,11 @@ function Sizes({ tiers, seesAmounts, edits, removes }: { tiers: readonly TierVie
 
 async function AccountsView({ searchParams }: { searchParams: Promise<Query> }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (!seesClientAccounts(user)) return <Empty>Only HR, the CEO, Finance and a Super Admin can see the client accounts.</Empty>;
+  if (!listsClientAccounts(user)) {
+    // an employee: to their dashboard, as the pages that aren't theirs (staff-only.tsx)
+    if (isSelfService(user)) redirect('/');
+    return <Empty>{NOT_YOURS}</Empty>;
+  }
   const loaded = await loadJson<ClientAccountsList>('/client-accounts');
   if (loaded.kind !== 'ok') {
     return (
@@ -306,21 +328,36 @@ async function AccountsView({ searchParams }: { searchParams: Promise<Query> }) 
         {loaded.kind === 'unavailable'
           ? 'Client accounts aren’t available yet.'
           : loaded.kind === 'forbidden'
-            ? 'Only HR, the CEO, Finance and a Super Admin can see the client accounts.'
+            ? NOT_YOURS
             : `The client accounts could not be loaded. ${loaded.messages.join(' ')}`}
       </Empty>
     );
   }
   const list = loaded.value;
-  // what HR's and the CEO's forms choose from: the teams, and the people (their current employments)
-  const [departments, people] = list.edits ? await Promise.all([getOrNull<Department[]>('/departments'), getOrNull<PersonRow[]>('/employees')]) : [null, null];
+  const adds = addsClients(list);
+  // what the forms choose from: the teams (a manager's Add client too), and the people for HR's and the CEO's Assign
+  const [departments, people] = await Promise.all([
+    adds || list.edits ? getOrNull<Department[]>('/departments') : null,
+    list.edits ? getOrNull<PersonRow[]>('/employees') : null,
+  ]);
   const today = todayInCairo();
   const focus = focusedAccount(query);
   const removes = canDelete(user);
   const accounts = sortedAccounts(list.accounts);
+  // the active clients a manager added that have no amount yet, for those who keep the accounts (5 November 2026)
+  const unset = readsPeople(list) ? missingAmounts(list.accounts) : [];
+  const unsetText = missingAmountsText(unset.length);
   return (
     <div className="space-y-6">
-      {list.edits && <AddAccount action={createAccount} tiers={list.tiers} departments={departments ?? []} />}
+      {unsetText && (
+        <p role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+          {unsetText}{' '}
+          <Link href={`/clients/accounts?account=${unset[0].id}`} className="font-semibold text-warn">
+            {unset.length === 1 ? `Open ${unset[0].nameEn}` : `Open the first, ${unset[0].nameEn}`}
+          </Link>
+        </p>
+      )}
+      {adds && <AddAccount action={createAccount} tiers={list.tiers} departments={departments ?? []} limited={!list.edits} />}
       <section aria-labelledby="accounts-list" className="space-y-4">
         <h2 id="accounts-list" className="font-semibold">
           {accounts.length === 1 ? '1 Account' : `${accounts.length} Accounts`}
@@ -342,28 +379,42 @@ async function AccountsView({ searchParams }: { searchParams: Promise<Query> }) 
           <Empty>No client accounts yet.</Empty>
         )}
       </section>
-      <Sizes tiers={list.tiers} seesAmounts={list.seesAmounts} edits={list.edits} removes={removes} />
+      {readsPeople(list) && <Sizes tiers={list.tiers} seesAmounts={list.seesAmounts} edits={list.edits} removes={removes} />}
     </div>
   );
 }
 
-export default function ClientAccountsPage({ searchParams }: PageProps<'/clients/accounts'>) {
+/** Client Hours, a button away, for those who see it: never a manager's (5 November 2026). */
+async function ClientHoursLink() {
+  try {
+    if (!seesClientAccounts(await getCurrentUser())) return null;
+  } catch (err) {
+    if (err instanceof ApiError) return null;
+    throw err;
+  }
   return (
-    <StaffOnly>
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="page-title">Client Accounts</h1>
-          {/* the month's timesheet hours by client (4 November 2026: "Full salary, hours tracked"), for the same people */}
-          <Link href={CLIENT_HOURS_PATH} className="btn btn-secondary">
-            Client Hours
-          </Link>
-        </div>
-        <div className="mt-6">
-          <Suspense fallback={<Loading />}>
-            <AccountsView searchParams={searchParams} />
-          </Suspense>
-        </div>
+    <Link href={CLIENT_HOURS_PATH} className="btn btn-secondary">
+      Client Hours
+    </Link>
+  );
+}
+
+export default function ClientAccountsPage({ searchParams }: PageProps<'/clients/accounts'>) {
+  // not behind StaffOnly: a manager opens it too (5 November 2026); AccountsView sends an employee to their dashboard
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="page-title">Client Accounts</h1>
+        {/* the month's timesheet hours by client (4 November 2026: "Full salary, hours tracked") */}
+        <Suspense fallback={null}>
+          <ClientHoursLink />
+        </Suspense>
       </div>
-    </StaffOnly>
+      <div className="mt-6">
+        <Suspense fallback={<Loading />}>
+          <AccountsView searchParams={searchParams} />
+        </Suspense>
+      </div>
+    </div>
   );
 }

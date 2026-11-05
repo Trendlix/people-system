@@ -9,14 +9,51 @@ import type { AssignmentStanding, AssignmentView, ClientAccountView, PersonOptio
 // it?"; asked, a "Client accounts list", the rate "variable", a part month "By days"): the company's client accounts,
 // each with the people assigned to it from a day to a day at an amount a month (the account's default unless HR types
 // another), paid by payroll as the accounts allowance to those whose contract has it. HR and the CEO add, change and end
-// them; Finance and a Super Admin read them; the amounts only for those who see salaries. Pure code, tested: who sees
-// the page, the forms read into what the API takes, and what the rows say. The API checks every value again. Relative
-// imports: the tests run without the "@/" alias.
+// them; Finance and a Super Admin read them; the amounts only for those who see salaries. Managers (owner, 5 November
+// 2026: "allow managers to add clients"; asked, "Anyone with the Manager role", "See the list and add", the amount "HR
+// sets it later") read the list without its people and add a client without a size or amount, which HR sets before
+// assigning anyone. Pure code, tested: who sees the page, the forms read into what the API takes, and what the rows say.
+// The API checks every value again. Relative imports: the tests run without the "@/" alias.
 
 type WithRoles = { roles: readonly Role[] };
 
-/** Who opens the page: HR, the CEO, Finance (read only) and a Super Admin (read only, unless HR or the CEO too). */
+/**
+ * Who sees everything about the client accounts, Client Hours too: HR, the CEO, Finance (read only) and a Super Admin
+ * (read only, unless HR or the CEO too).
+ */
 export const seesClientAccounts = (user: WithRoles): boolean => hasRole(user, 'hr', 'ceo', 'finance', 'super_admin');
+
+/**
+ * Who opens the Client Accounts page: those above, and anyone with the Manager role (owner, 5 November 2026: "allow
+ * managers to add clients"), who reads the accounts without their people and adds clients.
+ */
+export const listsClientAccounts = (user: WithRoles): boolean => seesClientAccounts(user) || hasRole(user, 'manager');
+
+/** Whether the caller adds clients (HR, the CEO, a manager); an API from before it: those who edit them. */
+export const addsClients = (list: { adds?: boolean; edits: boolean }): boolean => list.adds ?? list.edits;
+
+/** Whether the caller reads the accounts' people and sizes; false for a manager's list (an API from before it: true). */
+export const readsPeople = (list: { readsPeople?: boolean }): boolean => list.readsPeople !== false;
+
+/** Whether an account has its amount a month: not a client a manager added until HR sets it (an API from before it: yes). */
+export const hasAmount = (a: { amountSet?: boolean }): boolean => a.amountSet !== false;
+
+/** The active accounts with no amount yet, the first by name, for HR's note at the top. */
+export function missingAmounts<A extends Pick<ClientAccountView, 'status' | 'nameEn' | 'amountSet'>>(accounts: readonly A[]): A[] {
+  return sortedAccounts(accounts.filter((a) => a.status === 'active' && !hasAmount(a)));
+}
+
+/** "1 client has no amount yet: set it before assigning people."; null for none. */
+export function missingAmountsText(count: number): string | null {
+  if (count < 1) return null;
+  return `${count === 1 ? '1 client has' : `${count} clients have`} no amount yet: set it before assigning people.`;
+}
+
+/** What Assign says of a client without an amount: the amount is to be typed. */
+export const NO_AMOUNT_ASSIGN_TEXT = 'This client has no amount a month yet: type this person’s amount, unless their contract sets a rate per account.';
+
+/** What a manager's Add client form says of the amount. */
+export const MANAGER_ADD_TEXT = 'HR sets the client’s size and amount a month. You can log hours against it on timesheets straight away.';
 
 /** "Active" or "Ended", with the badge's colours. */
 export function statusBadge(a: Pick<ClientAccountView, 'status' | 'endedOn'>): {
@@ -146,7 +183,9 @@ export interface AccountBody {
  * The account form read into what the API takes (POST /client-accounts, PATCH /client-accounts/:id): the English name
  * (required, up to 150 characters), the Arabic name, the code (letters, digits and dashes, up to 30), the size, the
  * default amount (a new account's may be left to its size's), the team and the notes. A new one sends only what is
- * filled in; a change sends every field, an empty one clearing it.
+ * filled in; a change sends every field, an empty one clearing it. A manager's form has no size or amount (5 November
+ * 2026: "HR sets it later"): neither is read nor sent. A change to a client without an amount yet (its form says so,
+ * `amountUnset`) may leave the amount empty.
  */
 export function accountBody(fd: FormData, changing: boolean): { body: AccountBody | null; problems: string[] } {
   const problems: string[] = [];
@@ -157,12 +196,14 @@ export function accountBody(fd: FormData, changing: boolean): { body: AccountBod
   const code = text(fd, 'code');
   if (code && !/^[A-Za-z0-9][A-Za-z0-9-]{0,29}$/.test(code))
     problems.push('Enter the code in up to 30 letters, digits and dashes, e.g. ACME-01, or leave it empty.');
+  const sized = fd.has('tierId');
   const tierId = text(fd, 'tierId');
   const departmentId = text(fd, 'departmentId');
   const notes = text(fd, 'notes');
   if (notes.length > 500) problems.push('Keep the notes to 500 characters or fewer.');
-  // a new account's default may come from its size; a change keeps one
-  const defaultAmount = amountOf(fd, 'defaultAmount', 'default amount', problems, changing || !tierId);
+  // a new account's default may come from its size; a change keeps one, unless it has none yet (a manager's client)
+  const unset = fd.get('amountUnset') === '1';
+  const defaultAmount = fd.has('defaultAmount') ? amountOf(fd, 'defaultAmount', 'default amount', problems, changing ? !unset : !tierId) : null;
   if (problems.length) return { body: null, problems };
   if (changing) {
     return {
@@ -170,7 +211,7 @@ export function accountBody(fd: FormData, changing: boolean): { body: AccountBod
         nameEn,
         nameAr,
         code,
-        tierId: tierId || null,
+        ...(sized && { tierId: tierId || null }),
         ...(defaultAmount !== null && { defaultAmount }),
         departmentId: departmentId || null,
         notes,

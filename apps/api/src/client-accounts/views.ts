@@ -66,8 +66,13 @@ export interface ClientAccountView {
   notes: string | null;
   tier: { id: string; nameEn: string } | null;
   department: { id: string; name: string } | null;
-  /** The default amount a month for the people assigned; null for anyone who doesn't see salaries. */
+  /** The default amount a month for the people assigned; null for anyone who doesn't see salaries, and while not set. */
   defaultAmount: number | null;
+  /**
+   * It has an amount a month: false for a client a manager added (owner, 5 November 2026: "allow managers to add
+   * clients"; "HR sets it later") until HR sets it. Said to everyone who reads the clients: no figure in it.
+   */
+  amountSet: boolean;
   /** Its people, current first (by name), then those yet to start, then the past ones (latest first). */
   assignments: AssignmentView[];
   /** The C-level people's assignments left out for the caller. */
@@ -114,7 +119,8 @@ export function accountView(a: AccountRow, seesAmounts: boolean, hidden: Readonl
     notes: a.notes,
     tier: a.tier,
     department: a.department ? { id: a.department.id, name: departmentName(a.department)! } : null,
-    defaultAmount: seesAmounts ? a.defaultAmount.toNumber() : null,
+    defaultAmount: seesAmounts && a.defaultAmount ? a.defaultAmount.toNumber() : null,
+    amountSet: a.defaultAmount !== null,
     assignments: shown.map((x) => assignmentView(x, seesAmounts, today)).sort(byStanding),
     hidden: a.assignments.length - shown.length,
   };
