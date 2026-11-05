@@ -40,7 +40,7 @@ import { interviewWhen, MY_HIRING_PATH } from '../../hiring';
 import { FeedbackForm, MoveInterview, ScheduleInterview, SuggestForm, type PersonOption } from '../../hiring-forms';
 import { vacancyOptions } from '../../pickers';
 import { APPLICANTS_PATH, applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
-import { commentsOfRecord, kb, ownCv } from '../../screening';
+import { commentsOfRecord, kb, ownCv, showsRecordComments } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
 import { ScorecardRoleBadge, ScorecardSummary } from '../../scorecard-ui';
 import { ownScorecardRole, scorecardHeading } from '../../scorecards';
@@ -565,7 +565,11 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
       )}
 
       {/* HR's notes are screening comments now (24 October 2026), the earlier ones moved in as "HR (earlier notes)" */}
-      <ScreeningCommentsCard data={comments} notLoaded={commentsNotLoaded} mode="record" comments={comments ? commentsOfRecord(comments, ownKey) : []} defaultTarget={ownKey} />
+      {/* written at HR Screening only (owner, 5 November 2026: "I need it to appear only during the HR Screening stage"):
+          before it nothing; after it, the comments written, to read */}
+      {showsRecordComments(comments, ownKey, comments ? commentsOfRecord(comments, ownKey).length : 0) && (
+        <ScreeningCommentsCard data={comments} notLoaded={commentsNotLoaded} mode="record" comments={comments ? commentsOfRecord(comments, ownKey) : []} defaultTarget={ownKey} />
+      )}
 
       {a.offers.length > 0 && !participant && (
         <section aria-labelledby="applicant-offers" className="card space-y-2 p-6">

@@ -154,6 +154,16 @@ export function commentFilters(data: Pick<ScreeningComments, 'comments' | 'targe
 }
 
 /**
+ * The targets a new comment may be about now (owner, 5 November 2026: "I need it to appear only during the HR Screening
+ * stage"): an application at HR Screening, the person in general, a general CV; an API from before it says nothing: all.
+ */
+export const openTargets = <T extends Pick<ScreeningTarget, 'open'>>(targets: readonly T[]): T[] => targets.filter((t) => t.open !== false);
+
+/** Whether a record's Screening Comments card shows: while comments are added on it, or when it has some to read. */
+export const showsRecordComments = (data: Pick<ScreeningComments, 'targets'> | null, key: string, comments: number): boolean =>
+  !data || comments > 0 || openTargets(data.targets).some((t) => t.key === key);
+
+/**
  * Where a new comment goes by default: the page's own record (General on the candidate's profile) when it is one of the
  * targets, else, in the CV window, the CV's record (or the one holding the same CV), else the first target.
  */

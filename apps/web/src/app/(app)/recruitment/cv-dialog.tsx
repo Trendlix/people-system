@@ -249,7 +249,8 @@ function CvWindow({ cvs, index, data, pageKey, commentsNotLoaded }: { cvs: reado
           ) : (
             <div className="space-y-4">
               <CommentList comments={shown} data={data} ownKey={cv.key} empty="No comments on this CV yet." />
-              <CommentForm key={cv.key} data={data} defaultTarget={defaultTargetKey(data.targets, pageKey, cv)} />
+              {/* about this CV alone, and only while it is open to comments (an application at HR Screening; 5 November 2026) */}
+              <CommentForm key={cv.key} data={data} defaultTarget={defaultTargetKey(data.targets, pageKey, cv)} only />
             </div>
           )}
         </aside>

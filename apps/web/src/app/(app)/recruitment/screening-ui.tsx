@@ -5,6 +5,7 @@ import {
   aboutKey,
   filteredComments,
   SCREENING_AUTHOR_ROLE_LABELS,
+  SCREENING_COMMENTS_CLOSED,
   SCREENING_VERDICT_LABELS,
   SCREENING_VERDICTS,
   type ScreeningCommentView,
@@ -17,7 +18,7 @@ import { Select } from '@/components/select';
 import { formatDateTime } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import { addScreeningComment, deleteScreeningComment, editScreeningComment } from './comment-actions';
-import { authorName, chipOf, COMMENT_MAX, commentFilters, insertMention, keptMentions, mentionParts, mentionQueryAt, mentionSuggestions, verdictBadge } from './screening';
+import { authorName, chipOf, COMMENT_MAX, commentFilters, insertMention, keptMentions, mentionParts, mentionQueryAt, mentionSuggestions, openTargets, verdictBadge } from './screening';
 
 // Screening comments on the site (owner, 24 October 2026, on a candidate's profile: "is there a way to add screening
 // comments?", then "and i can add genearrl comments"; asked, "Yes: Good fit / Maybe / Not a fit" and "HR + hiring manager
@@ -206,10 +207,16 @@ function VerdictChoice({ name, defaultValue }: { name: string; defaultValue: Scr
 
 const mentionableOf = (data: ScreeningComments, key: string): string[] => data.targets.find((t) => t.key === key)?.mentionable ?? [];
 
-/** A new comment: what it is about (`defaultTarget` first chosen), the text with @mentions, the optional verdict. */
-export function CommentForm({ data, defaultTarget }: { data: ScreeningComments; defaultTarget: string }) {
+/**
+ * A new comment: what it is about (`defaultTarget` first chosen), the text with @mentions, the optional verdict. Only
+ * about what is open to comments now (owner, 5 November 2026: "I need it to appear only during the HR Screening stage":
+ * an application at HR Screening, the person in general, a general CV); `only`: about `defaultTarget` alone (the CV
+ * window's CV), nothing when it is closed.
+ */
+export function CommentForm({ data, defaultTarget, only = false }: { data: ScreeningComments; defaultTarget: string; only?: boolean }) {
   const fid = useId();
-  const [target, setTarget] = useState(data.targets.some((t) => t.key === defaultTarget) ? defaultTarget : (data.targets[0]?.key ?? ''));
+  const open = openTargets(data.targets).filter((t) => !only || t.key === defaultTarget);
+  const [target, setTarget] = useState(open.some((t) => t.key === defaultTarget) ? defaultTarget : (open[0]?.key ?? ''));
   // a fresh form after each comment added
   const [round, setRound] = useState(0);
   const [state, formAction, pending] = useActionState(async (prev: FormState, fd: FormData) => {
@@ -217,7 +224,7 @@ export function CommentForm({ data, defaultTarget }: { data: ScreeningComments; 
     if (next.message && !next.errors) setRound((r) => r + 1);
     return next;
   }, {});
-  if (!data.can.add || !data.targets.length) return null;
+  if (!data.can.add || !open.length) return null;
   const typedBack = (k: string) => {
     const v = state.errors ? state.values?.[k] : undefined;
     return typeof v === 'string' ? v : '';
@@ -230,13 +237,13 @@ export function CommentForm({ data, defaultTarget }: { data: ScreeningComments; 
           {state.message}
         </p>
       )}
-      {data.targets.length > 1 ? (
+      {open.length > 1 ? (
         <div>
           <label htmlFor={`${fid}-target`} className="label">
             About
           </label>
           <Select id={`${fid}-target`} name="target" value={target} onChange={(e) => setTarget(e.target.value)} className="input">
-            {data.targets.map((t) => (
+            {open.map((t) => (
               <option key={t.key} value={t.key}>
                 {t.label}
               </option>
@@ -417,7 +424,12 @@ export function ScreeningCommentsCard({
             </div>
           )}
           <CommentList comments={shown} data={data} ownKey={mode === 'record' ? defaultTarget : undefined} empty={filter === 'all' ? 'No comments yet.' : 'No comments about this yet.'} />
-          <CommentForm data={data} defaultTarget={defaultTarget} />
+          {/* a record past HR Screening: its comments to read, none to add (5 November 2026) */}
+          {mode === 'record' && !openTargets(data.targets).some((t) => t.key === defaultTarget) ? (
+            <p className="text-sm text-muted">{SCREENING_COMMENTS_CLOSED}</p>
+          ) : (
+            <CommentForm data={data} defaultTarget={defaultTarget} />
+          )}
         </>
       )}
     </section>

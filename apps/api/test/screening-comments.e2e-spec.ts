@@ -156,10 +156,11 @@ describe('Screening comments (e2e)', () => {
         .expect(201)
     ).body.id;
     candidateId = (await prisma.generalCv.findUniqueOrThrow({ where: { id: generalCvId }, select: { candidateId: true } })).candidateId!;
-    apps.mine = await application(mine, 'Sara', 'final_review', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV.pdf' });
-    apps.other = await application(other, 'Sara', 'final_review', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV 2.pdf' });
-    apps.chief = await application(chief, 'Sara', 'final_review', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV 3.pdf' });
-    apps.adam = await application(mine, 'Adam', 'final_review', null, { data: DOCX, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fileName: 'Adam CV.docx' });
+    // at HR Screening, where screening comments are written (owner, 5 November 2026)
+    apps.mine = await application(mine, 'Sara', 'screening', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV.pdf' });
+    apps.other = await application(other, 'Sara', 'screening', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV 2.pdf' });
+    apps.chief = await application(chief, 'Sara', 'screening', candidateId, { data: PDF, mimeType: 'application/pdf', fileName: 'Sara CV 3.pdf' });
+    apps.adam = await application(mine, 'Adam', 'screening', null, { data: DOCX, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', fileName: 'Adam CV.docx' });
     // Ivan interviews Sara for the Video Editor
     await prisma.interview.create({ data: { applicationId: apps.mine, startsAt: new Date(Date.now() + 7 * DAY), minutes: 45, kind: 'in_person', interviewers: { create: [{ employeeId: people.iv }] } } });
   });
@@ -239,7 +240,26 @@ describe('Screening comments (e2e)', () => {
       expect(cvs.map((c) => [c.id, c.verdict])).toEqual([[generalCvId, 'not_a_fit']]);
       expect(((await get('hr', `/recruitment/general-cvs?q=${RUN}&verdict=none`).expect(200)).body as GeneralCvListItem[]).map((c) => c.id)).toEqual([]);
       // the verdict moves no stage
-      expect((await get('hr', `/recruitment/applications/${apps.mine}`).expect(200)).body.stage).toBe('final_review');
+      expect((await get('hr', `/recruitment/applications/${apps.mine}`).expect(200)).body.stage).toBe('screening');
+    });
+
+    it('adds a comment on an application only at HR Screening; its comments stay readable at every stage', async () => {
+      // owner, 5 November 2026: "This screen appears in all stages, which doesn't make sense. I need it to appear only during the HR Screening stage"
+      await prisma.jobApplication.update({ where: { id: apps.other }, data: { stage: 'interview' } });
+      try {
+        expect(said(await comment('hr', { applicationId: apps.other, comment: 'Late note.' }).expect(409))).toEqual(['Screening comments are added at the HR Screening stage.']);
+        const all = (await get('hr', `/recruitment/candidates/${candidateId}/comments`).expect(200)).body as ScreeningComments;
+        expect(all.targets.map((t) => [t.key, t.open])).toEqual([
+          ['general', true],
+          [`application:${apps.other}`, false],
+          [`application:${apps.mine}`, true],
+          [`general_cv:${generalCvId}`, true],
+        ]);
+        // the person in general and a general CV any time
+        await comment('hr', { candidateId, comment: 'Still keen.' }).expect(201);
+      } finally {
+        await prisma.jobApplication.update({ where: { id: apps.other }, data: { stage: 'screening' } });
+      }
     });
 
     it('edits their own comment within 24 hours ("edited"), never someone else’s, nor after', async () => {

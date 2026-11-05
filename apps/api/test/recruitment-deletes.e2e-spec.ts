@@ -185,8 +185,10 @@ describe('Deleting applicants and vacancies with applicants (e2e)', () => {
 
     it('goes when rejected, with its steps, comments, interviews past and cancelled, draft offer and notifications; its last record taking the profile', async () => {
       const a = await apply(A, 'rana');
-      ok(await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'rejected', reasons: ['attitude'], feedback: 'Made-up reason' }));
+      // a screening comment is written at HR Screening (5 November 2026), before the rejection
+      await prisma.jobApplication.update({ where: { id: a.id }, data: { stage: 'screening' } });
       ok(await post('hr', '/recruitment/comments', { applicationId: a.id, comment: 'Made-up comment', verdict: 'maybe' }), 201);
+      ok(await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'rejected', reasons: ['attitude'], feedback: 'Made-up reason' }));
       await interview(a.id, 'done', new Date(Date.now() - 3 * 86_400_000));
       await interview(a.id, 'cancelled', new Date(Date.now() + 5 * 86_400_000));
       const draft = await offer(a.id, 'draft', 1);

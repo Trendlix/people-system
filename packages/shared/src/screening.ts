@@ -240,7 +240,22 @@ export interface ScreeningTarget {
   verdict: ScreeningVerdict | null;
   /** Who may read a comment on it, so may be mentioned (ScreeningComments.people's ids). */
   mentionable: string[];
+  /**
+   * New comments may be written about it now (owner, 5 November 2026: "This screen appears in all stages, which doesn't
+   * make sense. I need it to appear only during the HR Screening stage"): an application only while at HR Screening;
+   * the person in general and a general CV always. Its comments stay readable whatever. Left out by an API from before it.
+   */
+  open?: boolean;
 }
+
+/** The stage an application's screening comments are written at (5 November 2026): HR Screening. */
+export const SCREENING_COMMENTS_STAGE = 'screening';
+
+/** Whether new screening comments may be written about an application at `stage`: only at HR Screening. */
+export const screeningCommentsOpenAt = (stage: string): boolean => stage === SCREENING_COMMENTS_STAGE;
+
+/** Why no comment may be added about an application now. */
+export const SCREENING_COMMENTS_CLOSED = 'Screening comments are added at the HR Screening stage.';
 
 /** A CV the candidate sent, for the CV window: what it belongs to (its key), and the record holding the same CV. */
 export interface ScreeningCv extends CandidateCv {

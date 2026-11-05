@@ -15,8 +15,10 @@ import {
   newlyMentioned,
   readerRoleOf,
   refusedMentions,
+  SCREENING_COMMENTS_CLOSED,
   SCREENING_VERDICT_LABELS,
   screeningCommentProblems,
+  screeningCommentsOpenAt,
   uniqueMentions,
   type CandidateTimelineItem,
   type ScreeningAbout,
@@ -53,7 +55,9 @@ import { moveEarlierNotes, SCREENING_ENTITY } from './screening-notes.js';
 // their phone: names only, never the comment). Who reads and writes: screening-access.ts. Its author edits it for 24
 // hours; only a Super Admin deletes one; each write audited (without the text). The latest verdict of an application, a
 // general CV and a candidate for the lists' badges and their Verdict filter; the profile's timeline lines. HR's notes of
-// before moved into first comments (screening-notes.ts).
+// before moved into first comments (screening-notes.ts). A new comment about an application only while it is at HR
+// Screening (owner, 5 November 2026: "I need it to appear only during the HR Screening stage"); the person in general and
+// a general CV any time; the comments written stay readable at every stage.
 
 const NOT_FOUND = 'Comment not found.';
 const NO_CANDIDATE = 'They have no candidate profile yet. Try again in a few minutes.';
@@ -361,15 +365,15 @@ export class ScreeningCommentsService {
     const linkOfApp = new Map(gcvs.filter((g) => g.applicationId && appIds.has(g.applicationId)).map((g) => [g.applicationId!, g.id]));
     const all = new Set<string>();
     const targets: ScreeningTarget[] = [];
-    const add = (about: ScreeningAbout, linkedKey: string | null, mayRead: Set<string>) => {
+    const add = (about: ScreeningAbout, linkedKey: string | null, mayRead: Set<string>, open: boolean) => {
       const key = aboutKey(about);
       const own = rows.filter((r) => aboutKey(aboutOf(r)) === key);
       for (const id of mayRead) all.add(id);
-      targets.push({ key, about, label: aboutLabel(about), linkedKey, count: own.length, verdict: latestVerdict(own), mentionable: [...mayRead].filter((id) => id !== c.user.id) });
+      targets.push({ key, about, label: aboutLabel(about), linkedKey, count: own.length, verdict: latestVerdict(own), mentionable: [...mayRead].filter((id) => id !== c.user.id), open });
     };
-    add(GENERAL, null, generalReaders(readers, hrSees));
-    for (const a of apps) add(appAbout(a), linkOfApp.has(a.id) ? generalCvKey(linkOfApp.get(a.id)!) : null, applicationReaders(a, readers, accounts));
-    for (const g of gcvs) add(gcvAbout(g), g.applicationId && appIds.has(g.applicationId) ? applicationKey(g.applicationId) : null, generalReaders(readers, true));
+    add(GENERAL, null, generalReaders(readers, hrSees), true);
+    for (const a of apps) add(appAbout(a), linkOfApp.has(a.id) ? generalCvKey(linkOfApp.get(a.id)!) : null, applicationReaders(a, readers, accounts), screeningCommentsOpenAt(a.stage));
+    for (const g of gcvs) add(gcvAbout(g), g.applicationId && appIds.has(g.applicationId) ? applicationKey(g.applicationId) : null, generalReaders(readers, true), true);
     const titles = await this.portfolioTitles(apps, gcvs);
     const cvs: ScreeningCv[] = [
       ...apps.filter((a) => a.cv && (!linkOfApp.has(a.id) || a.cvUpdatedAt)).map((a) => this.appCv(a, linkOfApp.has(a.id) ? generalCvKey(linkOfApp.get(a.id)!) : null, titles)),
@@ -396,14 +400,15 @@ export class ScreeningCommentsService {
     const mayRead = applicationReaders(a, readers, accounts);
     const about = appAbout(a);
     const mentionable = [...mayRead].filter((id) => id !== c.user.id);
+    const open = screeningCommentsOpenAt(a.stage);
     return {
       candidateId: a.candidateId,
       comments: await this.views(rows, c),
-      targets: [{ key: aboutKey(about), about, label: aboutLabel(about), linkedKey: null, count: rows.length, verdict: latestVerdict(rows), mentionable }],
+      targets: [{ key: aboutKey(about), about, label: aboutLabel(about), linkedKey: null, count: rows.length, verdict: latestVerdict(rows), mentionable, open }],
       people: await this.people(mentionable, readers, [a]),
       cvs: a.cv ? await this.withFits([this.appCv(a, null, await this.portfolioTitles([a], []))], [a], a.candidateId, c) : [],
       verdict: latestVerdict(rows),
-      can: { add: !!a.candidateId },
+      can: { add: !!a.candidateId && open },
     };
   }
 
@@ -467,6 +472,8 @@ export class ScreeningCommentsService {
     if (problems.length) throw new BadRequestException(problems);
     const c = await this.caller(user);
     const t = await this.target(c, dto);
+    // about an application: only while it is at HR Screening (5 November 2026)
+    if (t.application && !screeningCommentsOpenAt(t.application.stage)) throw new ConflictException(SCREENING_COMMENTS_CLOSED);
     const mentions = await this.checkedMentions(dto.mentions, t.mayRead);
     const made = await this.create(t, { text: dto.comment!.trim(), verdict: dto.verdict ?? null, mentions, role: authorRoleOf(c, t.application) }, user);
     return this.viewOf(made, c);

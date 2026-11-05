@@ -211,6 +211,8 @@ describe('Suggested From Earlier CVs (e2e)', () => {
     const hana = await apply(P, 'hana');
     await prisma.jobApplication.update({ where: { id: hana.id }, data: { stage: 'hired' } });
     const nadia = await apply(P, 'nadia');
+    // a screening comment is written at HR Screening (5 November 2026)
+    await prisma.jobApplication.update({ where: { id: nadia.id }, data: { stage: 'screening' } });
     ok(await post('hr', '/recruitment/comments', { applicationId: nadia.id, comment: 'Invented screening note', verdict: 'not_a_fit' }), 201);
     const filt = await apply(P, 'filt');
     await prisma.jobApplication.update({ where: { id: filt.id }, data: { filteredOut: true } });

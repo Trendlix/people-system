@@ -23,8 +23,10 @@ import {
   mentionParts,
   mentionQueryAt,
   mentionSuggestions,
+  openTargets,
   ownCv,
   readCvParam,
+  showsRecordComments,
   stepCv,
   targetBody,
   verdictBadge,
@@ -309,5 +311,21 @@ describe('the comment form', () => {
     expect(targetBody('general', null)).toBeNull();
     expect(targetBody('', CAN)).toBeNull();
     expect(targetBody('application:', CAN)).toBeNull();
+  });
+});
+
+describe('comments only at HR Screening (owner, 5 November 2026: "I need it to appear only during the HR Screening stage")', () => {
+  it('offers only the targets open to comments, all of them from an API from before it', () => {
+    const targets = [target('general', { open: true }), target(`application:${APP}`, { open: false }), target(`application:${APP2}`, { open: true }), target(`general_cv:${GCV}`)];
+    expect(openTargets(targets).map((t) => t.key)).toEqual(['general', `application:${APP2}`, `general_cv:${GCV}`]);
+  });
+
+  it('shows a record’s card while it takes comments, or when it has some to read; before HR Screening with none, nothing', () => {
+    const data = { targets: [target(`application:${APP}`, { open: false }), target(`application:${APP2}`, { open: true })] };
+    expect(showsRecordComments(data, `application:${APP2}`, 0)).toBe(true);
+    expect(showsRecordComments(data, `application:${APP}`, 0)).toBe(false);
+    expect(showsRecordComments(data, `application:${APP}`, 2)).toBe(true);
+    // not loaded: the card says so
+    expect(showsRecordComments(null, `application:${APP}`, 0)).toBe(true);
   });
 });
