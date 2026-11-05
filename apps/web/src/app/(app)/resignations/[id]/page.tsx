@@ -19,8 +19,9 @@ import { profileHref } from '../../employees/ui';
 // the document"): its reason, the preferred day, the notice day and the rule's last day. For its employee, with Withdraw
 // while it waits; for HR (the CEO for a C-level person), with "Record the resignation" and Return; for the direct
 // manager, what was sent and where it stands, without the reason and the letters. Nothing here decides for the manager.
-// The letter (owner, 31 October 2026: "on the resignation, the letter is auto generated, viewed by the employee but
-// uploaded by the HR"): People's, to view and print, and the signed copy HR (the CEO for a C-level person) uploads.
+// The letter (owner, 31 October 2026: "on the resignation, the letter is auto generated ... uploaded by the HR"; 5 November
+// 2026: "make the HR generate the templete not the employee"): HR (the CEO for a C-level person) generates People's from
+// the request, to print for signing, and uploads the signed copy. The employee only applies: the API sends them neither.
 
 export const metadata: Metadata = { title: 'Resignation Request · People System' };
 
@@ -40,7 +41,7 @@ function Item({ label, wide = false, children }: { label: string; wide?: boolean
   );
 }
 
-/** The letter People prepares, to view or save, and the signed copy: for the employee, HR and the CEO; HR uploads it. */
+/** The letter HR generates from the request, to view or save, and the signed copy HR uploads: HR's and the CEO's. */
 function Letter({ r }: { r: ResignationRequestView }) {
   return (
     <div className="card mt-4 space-y-4 p-5">
@@ -50,7 +51,7 @@ function Letter({ r }: { r: ResignationRequestView }) {
           {r.preparedLetter === 'ready' ? (
             <span className="flex flex-wrap gap-x-4 gap-y-1">
               <a href={generatedLetterHref(r.id)} target="_blank" rel="noreferrer" className="font-semibold">
-                View letter
+                Generate letter
               </a>
               <a href={generatedLetterHref(r.id, true)} className="font-semibold">
                 Download PDF

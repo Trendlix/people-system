@@ -12,11 +12,10 @@ import '../sheet_parts.dart';
 // A resignation request (Decree 187/2025: a resignation counts once certified at the labour office): the reason, the
 // preferred last working day and the box saying they understand; HR records it (the CEO for a C-level person), and it
 // may be withdrawn until then (POST /api/me/resignation, JSON). Offered only when People's form says so (an employment
-// under the labour law, the rule on, none waiting already). The letter (owner, 31 October 2026: "on the resignation, the
-// letter is auto generated, viewed by the employee but uploaded by the HR"): nothing is attached; People prepares it from
-// the request, opened from its page in the phone's PDF viewer to print and sign, and HR uploads the signed copy, which
-// opens there too. Words from apps/web resignations (forms.tsx, resignation.ts, [id]/page.tsx) and packages/shared
-// resignation-request.ts.
+// under the labour law, the rule on, none waiting already). The employee only applies (owner, 5 November 2026: "make the
+// HR generate the templete not the employee. the employee can just apply for the resignation"): nothing is attached, and
+// the letter and its signed copy aren't theirs to open. Words from apps/web resignations (forms.tsx, resignation.ts,
+// [id]/page.tsx) and packages/shared resignation-request.ts.
 
 /// The resignation's words, in one place (ready for Arabic).
 abstract final class ResignationWords {
@@ -52,8 +51,6 @@ abstract final class ResignationWords {
   static String ruleLastDayValue(String day, String notice) => '$day ($notice from the notice day)';
   static const preferredFact = 'Preferred last working day';
   static const noneGiven = 'None given';
-  static const letterFact = 'Signed copy';
-  static const notUploaded = 'Not uploaded yet';
   static const returned = 'Returned';
   static const returnedNoReason = 'with a reason for the employee';
   static const withdrawn = 'Withdrawn';
@@ -71,13 +68,6 @@ abstract final class ResignationWords {
   static const withdrawButton = 'Withdraw my request';
   static const withdrawDone = 'Request withdrawn.';
 
-  // the letter (owner, 31 October 2026), as the website's request page says it
-  static const letterTitle = 'Resignation letter';
-  static const viewLetter = 'View letter';
-  static const viewSigned = 'View signed copy';
-  static const letterFileName = 'Resignation letter.pdf';
-  static const noTemplate = 'HR hasn’t set up the resignation letter template yet.';
-  static const noViewer = 'No app on this phone opens the letter: install a PDF viewer.';
 }
 
 /// Opens the sheet to send a resignation request, from the tab's [context].
@@ -188,12 +178,10 @@ class _ResignationFormState extends ConsumerState<_ResignationForm> {
 
 // ---------- its page ----------
 
-/// What a resignation request's page shows: its notice, the days, the reason, what became of it, the letter to view
-/// (owner, 31 October 2026) with its signed copy, and Withdraw until HR records it.
+/// What a resignation request's page shows: its notice, the days, the reason, what became of it, and Withdraw until HR
+/// records it. No letter: HR's (owner, 5 November 2026).
 RequestDetail resignationDetail(ResignationRequest r) {
   final returned = r.status == 'returned' || r.returnedAt != null;
-  final id = Uri.encodeComponent(r.id);
-  final signed = r.letter;
   return RequestDetail(
     title: ResignationWords.pageTitle,
     status: statusLabelOf(r),
@@ -204,7 +192,6 @@ RequestDetail resignationDetail(ResignationRequest r) {
       (label: ResignationWords.ruleLastDay, value: ResignationWords.ruleLastDayValue(dmy(r.ruleLastDay), r.notice), note: null),
       (label: ResignationWords.preferredFact, value: r.preferredLastDay == null ? ResignationWords.noneGiven : dmy(r.preferredLastDay!), note: null),
       if (r.reason != null) (label: ResignationWords.reason, value: r.reason!, note: null),
-      (label: ResignationWords.letterFact, value: signed?.fileName ?? ResignationWords.notUploaded, note: null),
       if (returned)
         (
           label: ResignationWords.returned,
@@ -215,19 +202,6 @@ RequestDetail resignationDetail(ResignationRequest r) {
       if (r.recordedAt != null) (label: ResignationWords.recorded, value: dateTimeWords(r.recordedAt!), note: null),
       (label: ResignationWords.confirmedFact, value: ResignationWords.confirmation, note: null),
     ],
-    // People's letter once HR has set its template up, and the signed copy HR uploaded; none for an API from before it
-    opens: r.preparedLetter == null
-        ? null
-        : (
-            title: ResignationWords.letterTitle,
-            files: [
-              if (r.preparedLetter == 'ready')
-                (button: ResignationWords.viewLetter, path: '/api/resignation-requests/$id/generated-letter', fileName: ResignationWords.letterFileName, mimeType: 'application/pdf'),
-              if (signed != null) (button: ResignationWords.viewSigned, path: '/api/resignation-requests/$id/letter', fileName: signed.fileName, mimeType: signed.mimeType),
-            ],
-            notes: [if (r.preparedLetter != 'ready') ResignationWords.noTemplate],
-            noViewer: ResignationWords.noViewer,
-          ),
     steps: [
       (text: ResignationWords.stepSent, comment: null, who: [if (r.employeeName.isNotEmpty) r.employeeName, dateTimeWords(r.createdAt)].join(' · '), tone: null),
       if (r.returnedAt != null) (text: ResignationWords.stepReturned, comment: r.returnedReason, who: dateTimeWords(r.returnedAt!), tone: RequestState.closed),

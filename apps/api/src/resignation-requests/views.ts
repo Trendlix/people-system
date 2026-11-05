@@ -19,20 +19,23 @@ export const REQUEST_OMIT = { letterData: true } satisfies Prisma.ResignationReq
 export type RequestRow = Prisma.ResignationRequestGetPayload<{ include: typeof REQUEST_INCLUDE; omit: typeof REQUEST_OMIT }>;
 
 /**
- * How the caller stands to a request: `self` (their own: all of it), `full` (HR, the CEO and a Super Admin: all of it),
- * `manager` (the direct manager: that it was sent, its dates and where it stands, but not the reason nor the letter).
+ * How the caller stands to a request: `self` (their own: all of it but the letters), `full` (HR, the CEO and a Super
+ * Admin: all of it), `manager` (the direct manager: that it was sent, its dates and where it stands, but not the reason
+ * nor the letters).
  */
 export type Viewer = 'self' | 'full' | 'manager';
 
 /**
  * A resignation request as `viewer` may see it. `confidential`: a C-level person's (their request is the CEO's, not HR's).
  * The reason, HR's return reason and the letters are personal: the reason is free text for the developer masking.
- * `letterReady`: whether the Resignation request template is published, so the letter People prepares can be opened
- * (owner, 31 October 2026: "on the resignation, the letter is auto generated, viewed by the employee but uploaded by the HR").
+ * `letterReady`: whether the Resignation request template is published, so the letter People prepares can be generated.
+ * The letters are HR's and the CEO's (owner, 5 November 2026: "make the HR generate the templete not the employee. the
+ * employee can just apply for the resignation"): the employee sees neither the letter nor the signed copy.
  */
 export function requestView(r: RequestRow, viewer: Viewer, confidential: boolean, letterReady: boolean) {
   const sees = viewer !== 'manager';
-  const preparedLetter: ResignationLetterState | null = sees ? (letterReady ? 'ready' : 'no_template') : null;
+  const letters = viewer === 'full';
+  const preparedLetter: ResignationLetterState | null = letters ? (letterReady ? 'ready' : 'no_template') : null;
   return {
     id: r.id,
     employee: r.employee,
@@ -45,10 +48,10 @@ export function requestView(r: RequestRow, viewer: Viewer, confidential: boolean
     sentOn: fromDateOnly(r.sentOn),
     notice: noticeSentence(r.noticeAmount, r.noticeUnit),
     ruleLastDay: fromDateOnly(r.ruleLastDay),
-    // the letter People prepares from the request, to view and print (GET :id/generated-letter); none for the manager
+    // the letter People prepares from the request, for HR to generate and print (GET :id/generated-letter); HR's and the CEO's
     preparedLetter,
-    // the signed copy HR uploads (GET :id/letter), or the one the employee attached before 31 October 2026
-    letter: sees && r.letterName ? { letterFileName: r.letterName, mimeType: r.letterMime!, sizeBytes: r.letterSize! } : null,
+    // the signed copy HR uploads (GET :id/letter), or the one the employee attached before 31 October 2026; HR's and the CEO's
+    letter: letters && r.letterName ? { letterFileName: r.letterName, mimeType: r.letterMime!, sizeBytes: r.letterSize! } : null,
     withdrawnAt: r.withdrawnAt,
     returned: r.status === 'returned' ? { reason: sees ? r.returnedReason : null, at: r.returnedAt, by: r.returnedBy && { email: r.returnedBy.email } } : null,
     recorded: r.status === 'recorded' ? { at: r.recordedAt, by: r.recordedBy && { email: r.recordedBy.email }, endingId: r.endingId, endingStatus: r.ending?.status ?? null } : null,

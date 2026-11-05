@@ -84,14 +84,17 @@ describe('the letter on a request', () => {
     updatedAt: new Date('2026-10-31T09:00:00Z'),
   } as unknown as RequestRow;
 
-  it('is ready once the template is published, for the employee and HR; never shown to the manager', () => {
-    expect(requestView(row, 'self', false, true).preparedLetter).toBe('ready');
+  // the letters are HR's and the CEO's (owner, 5 November 2026: "the employee can just apply for the resignation")
+  it('is ready once the template is published, for HR and the CEO; never shown to the employee nor the manager', () => {
+    expect(requestView(row, 'full', false, true).preparedLetter).toBe('ready');
     expect(requestView(row, 'full', false, false).preparedLetter).toBe('no_template');
+    expect(requestView(row, 'self', false, true)).toMatchObject({ preparedLetter: null, letter: null });
     expect(requestView(row, 'manager', false, true)).toMatchObject({ preparedLetter: null, letter: null, reason: null });
   });
 
-  it('shows the signed copy HR uploaded, or the one the employee attached before', () => {
+  it('shows HR the signed copy uploaded, or the one the employee attached before; never the employee', () => {
     const signed = { ...row, letterName: 'signed.pdf', letterMime: 'application/pdf', letterSize: 1200 } as RequestRow;
-    expect(requestView(signed, 'self', false, true).letter).toEqual({ letterFileName: 'signed.pdf', mimeType: 'application/pdf', sizeBytes: 1200 });
+    expect(requestView(signed, 'full', false, true).letter).toEqual({ letterFileName: 'signed.pdf', mimeType: 'application/pdf', sizeBytes: 1200 });
+    expect(requestView(signed, 'self', false, true).letter).toBeNull();
   });
 });

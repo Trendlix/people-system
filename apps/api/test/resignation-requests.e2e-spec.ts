@@ -16,8 +16,8 @@ import { createApp, createUser, signIn } from './helpers.js';
 // generates the document"): sent from My Requests; HR told and the direct manager shown it; a C-level person's to the CEO
 // and never HR; withdrawn until recorded; HR records the ending from it (notice day, link back, Recorded) or returns it;
 // one waiting at a time; masked for a developer; audited. Every name is invented and ends with RUN; what is made is deleted.
-// The letter (owner, 31 October 2026: "on the resignation, the letter is auto generated, viewed by the employee but
-// uploaded by the HR"): no file with the request; People's letter filled in from the owner's real resignation template
+// The letter (owner, 31 October 2026: "on the resignation, the letter is auto generated ... uploaded by the HR"; 5 November
+// 2026: HR generates it, the employee only applies): no file with the request; People's letter filled in from the owner's real resignation template
 // once published (the converter stood in for, as in documents.e2e-spec.ts), for the employee and HR, never the manager;
 // the signed copy uploaded by HR (the CEO for a C-level person), replaceable, and opened by the employee.
 
@@ -153,7 +153,8 @@ describe('Resignation requests (e2e)', () => {
     const v = (await api().post('/api/me/resignation').set('Cookie', sessions.sara).send({ reason: 'A new chapter', preferredLastDay: preferred, confirmed: true }).expect(201)).body;
     sentId = v.id;
     expect(v).toMatchObject({ status: 'sent', reason: 'A new chapter', sentOn: TODAY, preferredLastDay: preferred, notice: '3 months', mine: true, confidential: false });
-    expect(v).toMatchObject({ letter: null, preparedLetter: 'no_template' });
+    // the letters are HR's (owner, 5 November 2026: "the employee can just apply for the resignation")
+    expect(v).toMatchObject({ letter: null, preparedLetter: null });
     expect(await inbox({ userId: hrUserId })).toEqual([{ kind: 'resignation_new', title: 'A resignation request was sent', body: `Sara Sending ${RUN}`, link: `/resignations/${sentId}` }]);
     expect((await inbox('mona')).map((n) => n.title)).toEqual(['A resignation request from your team']);
     expect(await inbox({ userId: ceoUserId })).toEqual([]);
@@ -161,33 +162,45 @@ describe('Resignation requests (e2e)', () => {
     await api().get(`/api/resignation-requests/${sentId}`).set('Cookie', sessions.omar).expect(404);
   });
 
-  it('the manager sees it without the reason and the letters; HR and the employee see all', async () => {
+  it('the manager sees it without the reason and the letters; the employee without the letters; HR all', async () => {
     const asManager = (await api().get('/api/resignation-requests').set('Cookie', sessions.mona).expect(200)).body as { id: string; reason: string | null; letter: unknown }[];
     expect(asManager.find((r) => r.id === sentId)).toMatchObject({ reason: null, letter: null, preparedLetter: null });
     await api().get(`/api/resignation-requests/${sentId}/letter`).set('Cookie', sessions.mona).expect(403);
     await generated(sentId, sessions.mona).expect(403);
     const asHr = (await api().get(`/api/resignation-requests/${sentId}`).set('Cookie', hr).expect(200)).body;
     expect(asHr).toMatchObject({ reason: 'A new chapter', canRecord: true, canUploadLetter: true, letter: null });
-    expect((await api().get(`/api/resignation-requests/${sentId}`).set('Cookie', sessions.sara).expect(200)).body).toMatchObject({ canRecord: false, canUploadLetter: false });
-    expect(saidBytes(await api().get(`/api/resignation-requests/${sentId}/letter`).set('Cookie', sessions.sara).buffer(true).parse(bytes).expect(404))).toEqual(['The signed letter hasn’t been uploaded yet.']);
+    expect(asHr.preparedLetter).toBe('no_template');
+    expect((await api().get(`/api/resignation-requests/${sentId}`).set('Cookie', sessions.sara).expect(200)).body).toMatchObject({
+      reason: 'A new chapter',
+      canRecord: false,
+      canUploadLetter: false,
+      letter: null,
+      preparedLetter: null,
+    });
+    expect(saidBytes(await api().get(`/api/resignation-requests/${sentId}/letter`).set('Cookie', sessions.sara).buffer(true).parse(bytes).expect(403))).toEqual(['The resignation letter is kept by the company.']);
+    expect(saidBytes(await api().get(`/api/resignation-requests/${sentId}/letter`).set('Cookie', hr).buffer(true).parse(bytes).expect(404))).toEqual(['The signed letter hasn’t been uploaded yet.']);
     expect((await api().get('/api/resignation-requests?status=recorded').set('Cookie', hr).expect(200)).body.some((r: { id: string }) => r.id === sentId)).toBe(false);
   });
 
   it('the letter waits for HR to publish the Resignation request template', async () => {
-    expect(saidBytes(await generated(sentId, sessions.sara).expect(409))).toEqual([RESIGNATION_LETTER_NO_TEMPLATE]);
     expect(saidBytes(await generated(sentId, hr).expect(409))).toEqual([RESIGNATION_LETTER_NO_TEMPLATE]);
+    // never the employee's to generate
+    expect(saidBytes(await generated(sentId, sessions.sara).expect(403))).toEqual(['The resignation letter is kept by the company.']);
     expect(convert).not.toHaveBeenCalled();
   });
 
-  it('once published, People fills the letter in from the request for the employee and HR, as a protected PDF', async () => {
+  it('once published, HR generates the letter from the request, as a protected PDF; the employee never', async () => {
     const draft = await api().post('/api/templates/resignation_request/versions').set('Cookie', hrSuper).attach('file', realTemplate('Resignation'), 'resignation_request.docx').expect(201);
     templateId = draft.body.id as string;
     // a draft isn't enough
-    expect((await api().get('/api/me/resignation').set('Cookie', sessions.sara).expect(200)).body.requests[0].preparedLetter).toBe('no_template');
+    const prepared = async () => (await api().get(`/api/resignation-requests/${sentId}`).set('Cookie', hr).expect(200)).body.preparedLetter;
+    expect(await prepared()).toBe('no_template');
     await api().post(`/api/templates/versions/${templateId}/publish`).set('Cookie', hrSuper).expect(200);
-    expect((await api().get('/api/me/resignation').set('Cookie', sessions.sara).expect(200)).body.requests[0].preparedLetter).toBe('ready');
+    expect(await prepared()).toBe('ready');
+    expect((await api().get('/api/me/resignation').set('Cookie', sessions.sara).expect(200)).body.requests[0].preparedLetter).toBeNull();
+    await generated(sentId, sessions.sara).expect(403);
 
-    const pdf = await generated(sentId, sessions.sara).expect(200);
+    const pdf = await generated(sentId, hr).expect(200);
     expect(pdf.headers['content-type']).toBe('application/pdf');
     expect(pdf.headers['content-disposition']).toMatch(/^inline/);
     expect((pdf.body as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
@@ -207,12 +220,12 @@ describe('Resignation requests (e2e)', () => {
 
   it('an Arabic reason is printed as written', async () => {
     const id = (await api().post('/api/me/resignation').set('Cookie', sessions.omar).send({ reason: 'لظروف عائلية', confirmed: true }).expect(201)).body.id as string;
-    await generated(id, sessions.omar).expect(200);
+    await generated(id, hr).expect(200);
     expect(textOf(convert.mock.calls.at(-1)![0])).toContain('من العمل داخل الشركة لظروف عائلية وذلك');
     await api().post(`/api/me/resignation/${id}/withdraw`).set('Cookie', sessions.omar).expect(200);
   });
 
-  it('HR uploads the signed letter, and may replace it; the employee opens it, the manager never', async () => {
+  it('HR uploads the signed letter, and may replace it; neither the employee nor the manager opens it', async () => {
     expect(said(await upload(sentId, sessions.sara, PDF).expect(403))[0]).toBe('HR keeps the signed copy of your letter: hand it to HR.');
     expect(said(await upload(sentId, sessions.mona, PDF).expect(403))[0]).toBe('Only HR uploads the signed letter.');
     expect(said(await upload(sentId, ceo, PDF).expect(403))[0]).toBe('Only HR uploads the signed letter.');
@@ -222,9 +235,10 @@ describe('Resignation requests (e2e)', () => {
 
     const kept = (await upload(sentId, hr, PDF, 'سارة.pdf').expect(200)).body;
     expect(kept).toMatchObject({ id: sentId, status: 'sent', letter: { letterFileName: 'سارة.pdf', mimeType: 'application/pdf', sizeBytes: PDF.length } });
-    const letter = await api().get(`/api/resignation-requests/${sentId}/letter`).set('Cookie', sessions.sara).expect(200);
+    await api().get(`/api/resignation-requests/${sentId}/letter`).set('Cookie', sessions.sara).expect(403);
+    expect((await api().get(`/api/resignation-requests/${sentId}`).set('Cookie', sessions.sara).expect(200)).body).toMatchObject({ letter: null });
+    const letter = await api().get(`/api/resignation-requests/${sentId}/letter`).set('Cookie', hr).expect(200);
     expect(letter.headers['content-type']).toMatch(/pdf/);
-    await api().get(`/api/resignation-requests/${sentId}/letter`).set('Cookie', hr).expect(200);
     expect((await api().get(`/api/resignation-requests/${sentId}`).set('Cookie', sessions.mona).expect(200)).body).toMatchObject({ letter: null });
 
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
