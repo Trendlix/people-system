@@ -1,4 +1,4 @@
-import { cairoClock, kpiMonthName, kpiMonthOnly, timeOfDayText, type KpiReminder, type NotificationKind, type PayrollStatus } from '@trendlix/shared';
+import { cairoClock, kpiMonthName, kpiMonthOnly, timeOfDayText, timesheetWeekDays, type KpiReminder, type NotificationKind, type PayrollStatus } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import { monthName } from '../payroll/months.js';
 import { STATUS_TEXT } from '../payroll/status.js';
@@ -96,6 +96,19 @@ export function manualChangeText(kind: LeaveLikeKind, action: ManualAction, by: 
         ? `${by} recorded ${n.a} for ${forName}`
         : `${by} ${action === 'edited' ? 'changed' : action} ${forName}’s ${n.of}`;
   return { kind: 'manual_change', title, body: when, link };
+}
+
+/**
+ * Hours uploaded for someone (owner, 5 November 2026: "how to upload a bulk time log?"), told to the uploader's direct
+ * manager as a manual change: "Sara Ali uploaded hours for Omar Adel", the week ("Week of 01/11/2026 to 07/11/2026") or
+ * the weeks ("3 weeks, 18/10/2026 to 07/11/2026"), and the first week's page.
+ */
+export function timesheetsUploadedText(by: string, forName: string, weekStarts: readonly string[], link: string): NotificationInput {
+  const sorted = [...weekStarts].sort();
+  const first = shownDate(sorted[0]);
+  const last = shownDate(timesheetWeekDays(sorted[sorted.length - 1])[6]);
+  const body = sorted.length === 1 ? `Week of ${first} to ${last}` : `${sorted.length} weeks, ${first} to ${last}`;
+  return { kind: 'manual_change', title: `${by} uploaded hours for ${forName}`, body, link };
 }
 
 /** HR recorded an official duty for the employee, approved at once (owner, 26 October 2026: "HR records it"). */

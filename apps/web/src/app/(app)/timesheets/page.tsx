@@ -2,14 +2,16 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { TIMESHEET_FILTERS, timesheetWeekText } from '@trendlix/shared';
+import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../organization/ui';
 import { loadTimesheets } from './data';
-import { readTimesheetsQuery, TIMESHEET_FILTER_LABELS, timesheetsHref } from './timesheets';
+import { readTimesheetsQuery, TIMESHEET_FILTER_LABELS, TIMESHEETS_UPLOAD_PATH, timesheetsHref, uploadsHoursForOthers } from './timesheets';
 import { TimesheetTable } from './ui';
 
 // Timesheets (owner, 4 November 2026: "Direct manager, weekly"): the weeks of hours sent, by where they stand (those
 // waiting for the user first): the one who approves a person's weeks sees those sent to them, HR and the CEO everyone's
-// (a C-level person's only those who see them). Each opens its page, with Decide when it waits for the user.
+// (a C-level person's only those who see them). Each opens its page, with Decide when it waits for the user. HR, the
+// CEO and a Super Admin upload hours from Excel (owner, 5 November 2026: "how to upload a bulk time log?"): Upload hours.
 
 export const metadata: Metadata = { title: 'Timesheets · People System' };
 
@@ -49,10 +51,26 @@ async function Weeks({ searchParams }: { searchParams: PageProps<'/timesheets'>[
   );
 }
 
+/** Upload hours, for HR, the CEO and a Super Admin. */
+async function UploadLink() {
+  const user = await getCurrentUser();
+  if (!uploadsHoursForOthers(user)) return null;
+  return (
+    <Link href={TIMESHEETS_UPLOAD_PATH} className="btn btn-secondary">
+      Upload hours
+    </Link>
+  );
+}
+
 export default function TimesheetsPage({ searchParams }: PageProps<'/timesheets'>) {
   return (
     <div>
-      <h1 className="page-title">Timesheets</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="page-title">Timesheets</h1>
+        <Suspense fallback={null}>
+          <UploadLink />
+        </Suspense>
+      </div>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Weeks searchParams={searchParams} />

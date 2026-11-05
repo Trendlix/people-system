@@ -4,6 +4,17 @@ import {
   clientGroups,
   dayHead,
   entriesOf,
+  hoursUploadProblem,
+  MY_TIMESHEET_UPLOAD_API,
+  MY_TIMESHEET_UPLOAD_PATH,
+  replacedText,
+  TIMESHEET_TEMPLATE_API,
+  TIMESHEET_TEMPLATE_HREF,
+  TIMESHEETS_UPLOAD_API,
+  TIMESHEETS_UPLOAD_PATH,
+  uploadDoneText,
+  uploadedWeeks,
+  uploadsHoursForOthers,
   lineTotals,
   lineWhat,
   linesOf,
@@ -109,5 +120,54 @@ describe('the words', () => {
     expect(lineWhat({ client: null, task: 'Edit' })).toBe('Edit');
     expect(lineWhat({ client: null, task: null })).toBe('—');
     expect(dayHead('2026-11-01')).toBe('Sun 01/11');
+  });
+});
+
+describe('uploading hours (5 November 2026: "how to upload a bulk time log?")', () => {
+  const week = (name: string, weekStart: string) => ({
+    id: `${name}-${weekStart}`,
+    employee: { id: name, fullNameEn: name, employeeCode: null },
+    weekStart,
+    lines: 2,
+    totalHours: 8,
+    status: 'submitted' as const,
+    replaced: 0,
+  });
+
+  it('has its pages, the template’s download and the API’s addresses', () => {
+    expect(MY_TIMESHEET_UPLOAD_PATH).toBe('/my-timesheet/upload');
+    expect(TIMESHEETS_UPLOAD_PATH).toBe('/timesheets/upload');
+    expect(TIMESHEET_TEMPLATE_HREF).toBe('/timesheets/template');
+    expect(TIMESHEET_TEMPLATE_API).toBe('/timesheets/upload/template');
+    expect(MY_TIMESHEET_UPLOAD_API).toBe('/me/timesheet/upload');
+    expect(TIMESHEETS_UPLOAD_API).toBe('/timesheets/upload');
+  });
+
+  it('checks the file before it is sent: an .xlsx of up to 5 MB', () => {
+    expect(hoursUploadProblem(null)).toBe('Choose the hours file to upload (.xlsx).');
+    expect(hoursUploadProblem({ name: 'hours.xlsx', size: 0 })).toBe('Choose the hours file to upload (.xlsx).');
+    expect(hoursUploadProblem({ name: 'hours.csv', size: 10 })).toMatch(/^Choose an Excel workbook/);
+    expect(hoursUploadProblem({ name: 'hours.xlsx', size: 6 * 1024 * 1024 })).toBe('The file must be 5 MB or smaller.');
+    expect(hoursUploadProblem({ name: 'Hours Nov.XLSX', size: 1000 })).toBeNull();
+  });
+
+  it('is for HR, the CEO and a Super Admin to upload for others', () => {
+    expect(uploadsHoursForOthers({ roles: ['hr'] })).toBe(true);
+    expect(uploadsHoursForOthers({ roles: ['ceo'] })).toBe(true);
+    expect(uploadsHoursForOthers({ roles: ['super_admin'] })).toBe(true);
+    expect(uploadsHoursForOthers({ roles: ['employee', 'manager'] })).toBe(false);
+    expect(uploadsHoursForOthers({ roles: ['finance'] })).toBe(false);
+  });
+
+  it('says what was done, and lists the weeks by person then week', () => {
+    expect(uploadDoneText({ weeks: [week('a', WEEK)], totalHours: 8, sent: true })).toBe('Sent 1 week for approval (8 hours).');
+    expect(uploadDoneText({ weeks: [week('a', WEEK), week('a', '2026-11-08')], totalHours: 38.5, sent: false })).toBe(
+      'Saved 2 weeks (38.5 hours). Send each week for approval from My Timesheet.',
+    );
+    expect(replacedText(0)).toBeNull();
+    expect(replacedText(1)).toBe('Replaced 1 earlier line');
+    expect(replacedText(4)).toBe('Replaced 4 earlier lines');
+    const sorted = uploadedWeeks({ weeks: [week('Omar', '2026-11-08'), week('Nour', '2026-11-08'), week('Omar', WEEK)] });
+    expect(sorted.map((w) => w.id)).toEqual(['Nour-2026-11-08', `Omar-${WEEK}`, 'Omar-2026-11-08']);
   });
 });

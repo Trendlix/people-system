@@ -317,3 +317,61 @@ export function clientHoursTotal(lines: readonly ClientHoursLine[]): ClientHours
 
 /** "Hours of 1 C-level person aren’t shown." */
 export const hiddenPeopleNote = (n: number): string | null => (n > 0 ? `Hours of ${n} C-level ${n === 1 ? 'person aren’t' : 'people aren’t'} shown.` : null);
+
+// ---------- uploading hours ----------
+
+// Uploading hours from a file (owner, 5 November 2026: "how to upload a bulk time log?"; asked, "Our own Excel
+// template", "each person and HR", HR's "Sent to the approver"): the template's rows (a day, the employee's code, a client
+// or a task, the hours, a note) put into the weeks they fall in, each week in the file replacing that week's hours (the
+// same file uploaded twice changes nothing). Someone on timesheets uploads their own (saved, or saved and sent); HR, the
+// CEO or a Super Admin uploads anyone's they see, each week sent to whoever approves it. Nothing is saved while any row
+// has a problem: every one is said, by its row.
+
+export const TIMESHEET_UPLOAD_MAX_MB = 5;
+export const TIMESHEET_UPLOAD_MAX_ROWS = 2000;
+/** The template's rows made ready (formatted, with the lists). */
+export const TIMESHEET_TEMPLATE_ROWS = 500;
+export const TIMESHEET_TEMPLATE_NAME = 'Timesheet upload template.xlsx';
+export const TIMESHEET_TEMPLATE_SHEETS = { hours: 'Hours', help: 'How to fill' } as const;
+export const TIMESHEET_TEMPLATE_HEADINGS = ['Date', 'Employee code', 'Employee name', 'Client', 'Task', 'Hours', 'Note'] as const;
+/** At most this many problems are said; the rest are counted. */
+export const TIMESHEET_UPLOAD_PROBLEMS_SHOWN = 50;
+
+/** Hours as written: "1.5", "1,5", "7:45" (7.75), "8"; null unless quarter hours from 0.25 to 24. */
+export function readHours(text: string): number | null {
+  const t = text.trim().replace(',', '.');
+  let h: number;
+  const clock = /^(\d{1,2}):([0-5]\d)$/.exec(t);
+  if (clock) h = Number(clock[1]) + Number(clock[2]) / 60;
+  else if (/^\d{1,2}(\.\d{1,4})?$/.test(t)) h = Number(t);
+  else return null;
+  return hoursOk(h) ? Math.round(h * 100) / 100 : null;
+}
+
+/** The problems as said: the first ones, then how many more. */
+export function uploadProblemsShown(problems: readonly string[]): string[] {
+  if (problems.length <= TIMESHEET_UPLOAD_PROBLEMS_SHOWN) return [...problems];
+  const more = problems.length - TIMESHEET_UPLOAD_PROBLEMS_SHOWN;
+  return [...problems.slice(0, TIMESHEET_UPLOAD_PROBLEMS_SHOWN), `… and ${more} more ${more === 1 ? 'problem' : 'problems'}. Put them right in the file and upload it again.`];
+}
+
+/** A week the upload saved: whose, which, its lines and hours now, where it stands, and how many lines it had before. */
+export interface TimesheetUploadWeek {
+  id: string;
+  employee: { id: string; fullNameEn: string; employeeCode: string | null };
+  weekStart: string;
+  lines: number;
+  totalHours: number;
+  status: TimesheetStatus;
+  /** The lines the week had before (0: none), replaced by the file's. */
+  replaced: number;
+}
+
+/** POST /me/timesheet/upload and POST /timesheets/upload. */
+export interface TimesheetUploadResult {
+  weeks: TimesheetUploadWeek[];
+  lines: number;
+  totalHours: number;
+  /** The weeks were sent for approval. */
+  sent: boolean;
+}

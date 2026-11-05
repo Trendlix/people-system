@@ -2,6 +2,10 @@ import {
   isTimesheetFilter,
   isYmd,
   TIMESHEET_HOURS_STEP,
+  TIMESHEET_UPLOAD_MAX_MB,
+  timesheetHoursText,
+  type Role,
+  type TimesheetUploadResult,
   timesheetEntryProblems,
   timesheetWeekOf,
   type TimesheetClientOption,
@@ -10,6 +14,7 @@ import {
   type TimesheetFilter,
   type TimesheetStatus,
 } from '@trendlix/shared';
+import { hasRole } from '../../../lib/roles';
 
 // Timesheets on the site (owner, 4 November 2026: "Timesheet in app/website", "Direct manager, weekly", "Only those HR
 // switches on"; packages/shared timesheets.ts): the addresses, the week asked for, the lists' filters, and the lines
@@ -164,3 +169,57 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 /** "Sun 01/11": a day as the week's rows head it. */
 export const dayHead = (date: string): string => `${DAYS[new Date(`${date}T00:00:00Z`).getUTCDay()] ?? ''} ${date.slice(8, 10)}/${date.slice(5, 7)}`;
+
+// ---------- uploading hours ----------
+
+// Uploading hours from Excel (owner, 5 November 2026: "how to upload a bulk time log?"; asked, "Our own Excel template",
+// "each person and HR", HR's "Sent to the approver"): the pages, the template's download, the API's addresses, the file
+// checked before it is sent (an .xlsx of up to TIMESHEET_UPLOAD_MAX_MB; the API reads it by its content and checks every
+// row again), and what was done in words.
+
+/** Someone on timesheets uploads their own hours here; HR, the CEO and a Super Admin anyone's on Timesheets'. */
+export const MY_TIMESHEET_UPLOAD_PATH = `${MY_TIMESHEET_PATH}/upload`;
+export const TIMESHEETS_UPLOAD_PATH = `${TIMESHEETS_PATH}/upload`;
+
+/** The template, served from the API under the web domain (template/route.ts): a plain link, never prefetched. */
+export const TIMESHEET_TEMPLATE_HREF = `${TIMESHEETS_PATH}/template`;
+
+/** The API's template, the caller's own upload (saved, or saved and sent) and an upload for others (sent). */
+export const TIMESHEET_TEMPLATE_API = '/timesheets/upload/template';
+export const MY_TIMESHEET_UPLOAD_API = '/me/timesheet/upload';
+export const TIMESHEETS_UPLOAD_API = '/timesheets/upload';
+
+/** Who uploads hours for others: HR, the CEO and a Super Admin (the API checks again). */
+export const uploadsHoursForOthers = (user: { roles: readonly Role[] }): boolean => hasRole(user, 'hr', 'ceo', 'super_admin');
+
+/** What the file input takes. */
+export const HOURS_UPLOAD_ACCEPT = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Why a chosen file isn't sent (null: it is): none chosen, not an .xlsx, or too large. */
+export function hoursUploadProblem(file: Pick<File, 'name' | 'size'> | null | undefined): string | null {
+  if (!file || file.size === 0) return 'Choose the hours file to upload (.xlsx).';
+  if (!/\.xlsx$/i.test(file.name)) return 'Choose an Excel workbook (.xlsx): the template filled in.';
+  if (file.size > TIMESHEET_UPLOAD_MAX_MB * 1024 * 1024) return `The file must be ${TIMESHEET_UPLOAD_MAX_MB} MB or smaller.`;
+  return null;
+}
+
+/** What an upload form keeps: what was done, or why nothing was. */
+export interface HoursUploadState {
+  errors?: string[];
+  result?: TimesheetUploadResult;
+}
+
+const weeksText = (n: number) => `${n} ${n === 1 ? 'week' : 'weeks'}`;
+
+/** "Saved 3 weeks (38.5 hours).", "Sent 1 week for approval (8 hours)." */
+export function uploadDoneText(r: Pick<TimesheetUploadResult, 'weeks' | 'totalHours' | 'sent'>): string {
+  const hours = timesheetHoursText(r.totalHours);
+  return r.sent ? `Sent ${weeksText(r.weeks.length)} for approval (${hours}).` : `Saved ${weeksText(r.weeks.length)} (${hours}). Send each week for approval from My Timesheet.`;
+}
+
+/** "Replaced 4 earlier lines"; null when the week had none. */
+export const replacedText = (n: number): string | null => (n > 0 ? `Replaced ${n} earlier ${n === 1 ? 'line' : 'lines'}` : null);
+
+/** The weeks as the result lists them: by person, then week. */
+export const uploadedWeeks = (r: Pick<TimesheetUploadResult, 'weeks'>) =>
+  [...r.weeks].sort((a, b) => a.employee.fullNameEn.localeCompare(b.employee.fullNameEn) || a.weekStart.localeCompare(b.weekStart));

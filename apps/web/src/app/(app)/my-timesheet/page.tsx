@@ -6,14 +6,15 @@ import { todayInCairo } from '@/lib/date-picker';
 import { Empty, Loading } from '../organization/ui';
 import { loadMyTimesheet } from '../timesheets/data';
 import { TimesheetForm } from '../timesheets/timesheet-form';
-import { myTimesheetHref, weekFrom } from '../timesheets/timesheets';
+import { MY_TIMESHEET_UPLOAD_PATH, myTimesheetHref, weekFrom } from '../timesheets/timesheets';
 import { TimesheetStatusBadge, WeekLines } from '../timesheets/ui';
 
 // My Timesheet (owner, 4 November 2026: "i have a group of employees working on timesheets being paid per hour or
 // monthly"; "Timesheet in app/website", "Direct manager, weekly", "Only those HR switches on"): for someone HR switched
 // to timesheets, the week (Sunday to Saturday) with the week before and after, where it stands and who approves it, why
 // it was rejected, the weeks before still not sent, and the form to log each day's hours against a client or a task
-// and send the week; once sent or approved, its lines as they are. Anyone else is told why they don't log hours.
+// and send the week; once sent or approved, its lines as they are. Anyone else is told why they don't log hours. Many
+// days at once from Excel (owner, 5 November 2026: "how to upload a bulk time log?"): Upload from Excel.
 
 export const metadata: Metadata = { title: 'My Timesheet · People System' };
 
@@ -45,6 +46,9 @@ async function Week({ searchParams }: { searchParams: PageProps<'/my-timesheet'>
             Week after ›
           </Link>
         )}
+        <Link href={MY_TIMESHEET_UPLOAD_PATH} className="btn btn-secondary ml-auto min-h-9 px-3 no-underline">
+          Upload from Excel
+        </Link>
       </nav>
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-lg font-semibold tabular-nums">{timesheetWeekText(view.weekStart)}</h2>

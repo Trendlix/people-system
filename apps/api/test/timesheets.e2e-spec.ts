@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import type { ClientHoursReport, MyTimesheetView, TimesheetListItem, TimesheetWeekView } from '@trendlix/shared';
+import type { ClientHoursReport, MyTimesheetView, TimesheetListItem, TimesheetUploadResult, TimesheetWeekView } from '@trendlix/shared';
 import ExcelJS from 'exceljs';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -27,6 +27,8 @@ const LAST_WEEK = addDays(sunday(TODAY), -7);
 const OLD_WEEK = addDays(sunday(firstDay(OLD)), 7);
 
 const said = (res: { body: { message: string | string[] } }) => ([] as string[]).concat(res.body.message);
+/** A day as the messages say it: DD/MM/YYYY. */
+const shown = (ymd: string) => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.slice(0, 4)}`;
 
 /** Reads a response body as bytes, whatever its type. */
 const bytes = (res: request.Response, done: (err: Error | null, body: Buffer) => void) => {
@@ -249,5 +251,114 @@ describe('Timesheets (e2e)', () => {
     const lines = rowsOf(wb.getWorksheet('Lines')!);
     expect(lines.find((r) => r[5] === 'Research' && String(r[2]).startsWith('Mia Monthly'))?.slice(3)).toEqual(['No client (tasks only)', undefined, 'Research', 2, undefined, 'Waiting for approval']);
     await api().get(`/api/reports/client-hours.xlsx?month=${OLD}`).set('Cookie', developer).expect(403);
+  });
+
+  it('uploads hours from the Excel template: one’s own saved or sent, HR’s for others sent to whoever approves them', async () => {
+    // owner, 5 November 2026: "how to upload a bulk time log?"; "Our own Excel template", "each person and HR", HR's "Sent to the approver"
+    const UP = addDays(LAST_WEEK, -14);
+    const WEEK_TEXT = (w: string) => `${shown(w)} to ${shown(addDays(w, 6))}`;
+    const codeOf = async (key: string) => (await api().get(`/api/employees/${ids[key]}`).set('Cookie', hr).expect(200)).body.employeeCode as string;
+    const [timCode, miaCode, carlCode] = [await codeOf('tim'), await codeOf('mia'), await codeOf('carl')];
+    const file = async (rows: unknown[][]) => {
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Hours');
+      ws.addRow(['Date', 'Employee code', 'Employee name', 'Client', 'Task', 'Hours', 'Note']);
+      rows.forEach((r) => ws.addRow(r));
+      return Buffer.from(await wb.xlsx.writeBuffer());
+    };
+    const mineUpload = (key: string, data: Buffer, send = false) => api().post('/api/me/timesheet/upload').set('Cookie', sessions[key]).field('send', String(send)).attach('file', data, 'hours.xlsx');
+    const othersUpload = (session: string, data: Buffer) => api().post('/api/timesheets/upload').set('Cookie', session).attach('file', data, 'hours.xlsx');
+    const helpOf = async (session: string) => {
+      const res = await api().get('/api/timesheets/upload/template').set('Cookie', session).buffer(true).parse(bytes).expect(200);
+      expect(res.headers['content-disposition']).toContain('Timesheet upload template.xlsx');
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(res.body as ArrayBuffer);
+      return rowsOf(wb.getWorksheet('How to fill')!).map((r) => r.filter(Boolean).join(' | '));
+    };
+
+    // the template: one's own lists them; HR's everyone on timesheets; nobody else's
+    const own = await helpOf(sessions.tim);
+    expect(own).toEqual(expect.arrayContaining([`${timCode} | Tim Timesheet ${RUN}`, `Client ${RUN}`]));
+    expect(own).not.toContain(`${miaCode} | Mia Monthly ${RUN}`);
+    const hrs = await helpOf(hr);
+    expect(hrs).toEqual(expect.arrayContaining([`${timCode} | Tim Timesheet ${RUN}`, `${miaCode} | Mia Monthly ${RUN}`]));
+    expect(hrs).not.toContain(`${carlCode} | Carl Checkin ${RUN}`);
+    expect(hrs).not.toContain(`Old Client ${RUN}`);
+    await api().get('/api/timesheets/upload/template').set('Cookie', sessions.carl).expect(403);
+
+    // every problem by its row, and nothing saved
+    const tomorrow = addDays(TODAY, 1);
+    const bad = await mineUpload(
+      'tim',
+      await file([
+        ['31/02/2026', '', '', `Client ${RUN}`, '', 2, ''],
+        [day(1, UP), '', '', 'Nobody Inc', '', 2, ''],
+        [day(1, UP), miaCode, '', '', 'Edit', 2, ''],
+        [day(2, UP), '', '', '', '', 1.3, ''],
+        [tomorrow, '', '', '', 'Edit', 2, ''],
+      ]),
+    ).expect(400);
+    expect(said(bad)).toEqual([
+      'Row 2: “31/02/2026” isn’t a day. Write the date as DD/MM/YYYY, e.g. 02/11/2026.',
+      'Row 3: “Nobody Inc” isn’t an active client. Choose it from the list (on How to fill), or leave Client empty and write the Task.',
+      `Row 4: ${miaCode} isn’t your employee code. The file can have only your own hours: leave Employee code empty or write your own.`,
+      'Row 5: “1.3” isn’t hours. Enter them from 0.25 to 24 in quarter hours, e.g. 1.5, 7.75 or 7:45.',
+      'Row 5: choose the client, or write the task.',
+      `Row 6: ${shown(tomorrow)} hasn’t come yet: log hours once they are worked.`,
+    ]);
+    expect((await mine('tim', UP)).status).toBeNull();
+
+    // saved: the week's lines; the same file again replaces them, nothing added
+    const good = await file([
+      [day(1, UP), '', '', `Client ${RUN}`, 'Editing', '7:45', 'Cut 1'],
+      [day(2, UP), timCode, '', '', 'Research', 2, ''],
+    ]);
+    const saved = (await mineUpload('tim', good).expect(200)).body as TimesheetUploadResult;
+    expect(saved).toMatchObject({ sent: false, lines: 2, totalHours: 9.75, weeks: [{ weekStart: UP, status: 'draft', lines: 2, totalHours: 9.75, replaced: 0 }] });
+    expect((await mine('tim', UP)).entries.map((e) => [e.date, e.client?.id ?? null, e.task, e.hours, e.note])).toEqual([
+      [day(1, UP), clientId, 'Editing', 7.75, 'Cut 1'],
+      [day(2, UP), null, 'Research', 2, null],
+    ]);
+    expect(((await mineUpload('tim', good).expect(200)).body as TimesheetUploadResult).weeks[0]).toMatchObject({ lines: 2, replaced: 2 });
+    expect((await mine('tim', UP)).entries).toHaveLength(2);
+
+    // sent: to the direct manager, who is told; then it can't be uploaded over
+    const sent = (await mineUpload('tim', good, true).expect(200)).body as TimesheetUploadResult;
+    expect(sent.weeks[0]).toMatchObject({ status: 'submitted' });
+    expect(await mine('tim', UP)).toMatchObject({ status: 'submitted', approver: { id: ids.mona } });
+    expect((await inbox('mona')).items.filter((n) => n.kind === 'timesheet_waiting').map((n) => n.link)).toContain(`/timesheets/${sent.weeks[0].id}`);
+    expect(said(await mineUpload('tim', good).expect(400))).toEqual([`Week of ${WEEK_TEXT(UP)}: waiting for approval already, so it can’t be changed now. Leave its rows out.`]);
+
+    // someone not on timesheets uploads nothing
+    expect(said(await mineUpload('carl', good).expect(403))).toEqual(['You check in and out instead of logging hours on a timesheet.']);
+
+    // HR's for others: by their codes, each week sent to whoever approves it; an employee may not
+    await othersUpload(sessions.tim, good).expect(403);
+    const hrBad = await othersUpload(
+      hr,
+      await file([
+        [day(1, UP), '', '', '', 'Edit', 2, ''],
+        [day(1, UP), carlCode, '', '', 'Edit', 2, ''],
+        [day(1, UP), 'NOPE-404', '', '', 'Edit', 2, ''],
+        [day(1, UP), timCode, '', '', 'Edit', 2, ''],
+      ]),
+    ).expect(400);
+    expect(said(hrBad)).toEqual([
+      'Row 2: write the employee code (listed on How to fill).',
+      `Row 3: Carl Checkin ${RUN} (${carlCode}) isn’t switched to timesheets: tick Works on timesheets on their employment first.`,
+      'Row 4: there is no employee with the code NOPE-404.',
+      `Tim Timesheet ${RUN}, week of ${WEEK_TEXT(UP)}: waiting for approval already, so it can’t be changed now. Leave its rows out.`,
+    ]);
+    const forMia = (
+      await othersUpload(
+        hr,
+        await file([
+          [day(1, UP), miaCode, '', `Client ${RUN}`, '', 4, ''],
+          [day(3, UP), miaCode.toLowerCase(), '', '', 'Prep', 1.5, ''],
+        ]),
+      ).expect(200)
+    ).body as TimesheetUploadResult;
+    expect(forMia).toMatchObject({ sent: true, lines: 2, totalHours: 5.5, weeks: [{ employee: { id: ids.mia }, weekStart: UP, status: 'submitted', replaced: 0 }] });
+    expect(await mine('mia', UP)).toMatchObject({ status: 'submitted', approver: { id: ids.mona }, totalHours: 5.5 });
   });
 });

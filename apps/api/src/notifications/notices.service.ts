@@ -20,6 +20,7 @@ import {
   leaveEditedText,
   leaveRestoredText,
   manualChangeText,
+  timesheetsUploadedText,
   timesheetDecidedText,
   timesheetWaitingText,
   type ManualAction,
@@ -276,23 +277,51 @@ export class NoticesService {
     await this.safely('manual change', async () => {
       const r = await this.manualFacts(kind, id);
       if (!r) return;
-      const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { employeeId: true, employee: { select: { fullNameEn: true } } } });
-      if (!actor?.employeeId || !actor.employee) return;
-      const job = await this.prisma.employment.findFirst({
-        where: { employeeId: actor.employeeId, endDate: null, managerId: { not: null } },
-        orderBy: { joinDate: 'desc' },
-        select: { managerId: true },
-      });
-      const managerId = job?.managerId;
-      if (!managerId || managerId === r.employeeId) return;
-      const userId = (await this.usersOf([managerId])).get(managerId);
-      if (!userId || userId === actorId) return;
-      if (await this.confidential.isConfidential(r.employeeId)) {
-        const roles = await this.prisma.userRole.findMany({ where: { userId }, select: { role: { select: { key: true } } } });
-        if (!roles.some((x) => x.role.key === 'ceo' || x.role.key === 'super_admin')) return;
-      }
-      await this.notifications.notify([userId], manualChangeText(kind, action, actor.employee.fullNameEn, r.name, r.when, r.link));
+      const to = await this.manualTarget(actorId, r.employeeId);
+      if (to) await this.notifications.notify([to.userId], manualChangeText(kind, action, to.by, r.name, r.when, r.link));
     });
+  }
+
+  /**
+   * Hours uploaded for others by HR, the CEO or a Super Admin (owner, 5 November 2026: "how to upload a bulk time log?";
+   * HR's "Sent to the approver"): a change made by hand for each person, told to the uploader's direct manager as the
+   * other manual changes are, one line a person (their weeks in it), never for the uploader's own.
+   */
+  async timesheetsUploaded(actorId: string, people: readonly { employeeId: string; name: string; weeks: readonly { id: string; weekStart: string }[] }[]): Promise<void> {
+    await this.safely('timesheets uploaded', async () => {
+      const self = (await this.prisma.user.findUnique({ where: { id: actorId }, select: { employeeId: true } }))?.employeeId;
+      for (const p of people) {
+        // their own hours go to their approver as anyone's: nothing done for someone else
+        if (!p.weeks.length || p.employeeId === self) continue;
+        const to = await this.manualTarget(actorId, p.employeeId);
+        if (to) await this.notifications.notify([to.userId], timesheetsUploadedText(to.by, p.name, p.weeks.map((w) => w.weekStart), `/timesheets/${p.weeks[0].id}`));
+      }
+    });
+  }
+
+  /**
+   * Whom a manual change for `subjectId` by `actorId` is told to: the actor's direct manager (their user, and the actor's
+   * name); none when the actor has no profile or manager, the manager is the subject or the actor, or the subject is a
+   * C-level person the manager doesn't see (only the CEO and a Super Admin). A change to the actor's own record is told
+   * too: it skipped its approval.
+   */
+  private async manualTarget(actorId: string, subjectId: string): Promise<{ userId: string; by: string } | null> {
+    const actor = await this.prisma.user.findUnique({ where: { id: actorId }, select: { employeeId: true, employee: { select: { fullNameEn: true } } } });
+    if (!actor?.employeeId || !actor.employee) return null;
+    const job = await this.prisma.employment.findFirst({
+      where: { employeeId: actor.employeeId, endDate: null, managerId: { not: null } },
+      orderBy: { joinDate: 'desc' },
+      select: { managerId: true },
+    });
+    const managerId = job?.managerId;
+    if (!managerId || managerId === subjectId) return null;
+    const userId = (await this.usersOf([managerId])).get(managerId);
+    if (!userId || userId === actorId) return null;
+    if (await this.confidential.isConfidential(subjectId)) {
+      const roles = await this.prisma.userRole.findMany({ where: { userId }, select: { role: { select: { key: true } } } });
+      if (!roles.some((x) => x.role.key === 'ceo' || x.role.key === 'super_admin')) return null;
+    }
+    return { userId, by: actor.employee.fullNameEn };
   }
 
   /** The employee, their name, the days and the page of a leave-like request, for its manual change's line. */
