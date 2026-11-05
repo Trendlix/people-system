@@ -4,7 +4,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { attachment } from '../templates/template-file.js';
 import { BankBatchesService } from './bank-batches.service.js';
 import { XLSX_TYPE } from './bank-files.js';
-import { AttendanceWaiverDto, KpiWaiverDto, CreatePayrollRunDto, MakeBankBatchDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto, UpdatePayrollSettingsDto } from './payroll.dto.js';
+import { AttendanceWaiverDto, KpiWaiverDto, CorrectPayrollLineDto, CreatePayrollRunDto, MakeBankBatchDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto, UpdatePayrollSettingsDto } from './payroll.dto.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayrollService } from './payroll.service.js';
 
@@ -83,6 +83,17 @@ export class PayrollController {
   @Patch(':id/lines')
   updateLines(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePayrollLinesDto, @CurrentUser() user: SessionUser) {
     return this.payroll.updateLines(id, dto, user);
+  }
+
+  /**
+   * Corrects a line of an approved or paid run (owner, 5 November 2026: "if there was a problem in the employee
+   * calculation and has been edited"): { inputs, reason }. HR's, and the CEO's for the C-level people's lines.
+   */
+  @Roles('hr', 'ceo')
+  @Post(':id/lines/:lineId/correct')
+  @HttpCode(200)
+  correctLine(@Param('id', ParseUUIDPipe) id: string, @Param('lineId', ParseUUIDPipe) lineId: string, @Body() dto: CorrectPayrollLineDto, @CurrentUser() user: SessionUser) {
+    return this.payroll.correctLine(id, lineId, dto, user);
   }
 
   @Roles('hr')

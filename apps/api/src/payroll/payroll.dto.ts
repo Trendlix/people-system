@@ -264,6 +264,23 @@ export class PayrollLineChangeDto {
   comments?: string | null;
 }
 
+/**
+ * A correction of an approved (or paid) run's line (owner, 5 November 2026: "if there was a problem in the employee
+ * calculation and has been edited"): the inputs changed, as a draft's are sent, and why.
+ */
+export class CorrectPayrollLineDto {
+  @IsObject({ message: 'Send the corrected figures as an object.' })
+  @ValidateNested()
+  @Type(() => PayrollInputsDto)
+  inputs!: PayrollInputsDto;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString({ message: 'Write why the line is corrected.' })
+  @IsNotEmpty({ message: 'Write why the line is corrected.' })
+  @MaxLength(500, { message: 'Keep the reason to 500 characters or fewer.' })
+  reason!: string;
+}
+
 export class UpdatePayrollLinesDto {
   @IsArray({ message: 'Send the changed lines as a list.' })
   @ArrayMinSize(1, { message: 'Send at least one changed line.' })

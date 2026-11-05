@@ -11,6 +11,8 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { contractHref } from '../../employees/tab-list';
 import { payslipHref } from '../payslips';
 import { CONFIDENTIAL_LINE_TITLE } from './access';
+import { CorrectLine, type Correct } from './correct-line';
+import { correctionText } from './correction';
 import { breakdown, cutsMark, cutText, kpiWaiverOf, payCuts, waivedByCeo, waiverOf, type BreakdownRow } from './breakdown';
 import { shownCode } from '@/lib/hidden';
 
@@ -25,7 +27,10 @@ import { shownCode } from '@/lib/hidden';
 // level Employees details not visible to HR") are marked C-level for the CEO and the Super Admin; for those they are
 // hidden from, one row before the totals stands for them, with no figures, and the totals leave them out. A line's KPI
 // (owner, 21 October 2026: "Last month's KPI, this pay") links to its scorecard for those who may open it (HR, the CEO,
-// the Super Admin; not Finance, whom the scorecard isn't shown to).
+// the Super Admin; not Finance, whom the scorecard isn't shown to). Once approved, a line the caller may correct has
+// Correct (owner, 5 November 2026: "if there was a problem in the employee calculation and has been edited"; asked,
+// "Payslip and register too"), opening the correction in a popup, and a corrected line says each correction under the
+// name: when, by whom, why, and the transfer before and after.
 
 /** The CEO's waiver of a line's attendance deduction: saves it as it is ticked or unticked (POST …/attendance-waiver). */
 type Waive = (lineId: string, waived: boolean) => Promise<FormState>;
@@ -143,6 +148,7 @@ export function ResultsTable({
   hidden = null,
   month,
   scorecardLinks = false,
+  correct = null,
 }: {
   lines: PayrollLineView[];
   /** The departments and teams in Organization's order, for the groups to follow it (owner, 19 October 2026). */
@@ -163,6 +169,8 @@ export function ResultsTable({
   month?: string;
   /** Whether a line's KPI links to its scorecard: for those who may open it (HR, the CEO, the Super Admin). */
   scorecardLinks?: boolean;
+  /** Corrects an approved or paid run's line (5 November 2026): offered on the lines the caller may correct; null otherwise. */
+  correct?: Correct | null;
 }) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const toggle = (id: string) =>
@@ -262,6 +270,16 @@ export function ResultsTable({
                             </div>
                             {waive && <WaiverBox line={l} waive={waive} />}
                             {waiveKpi && <WaiverBox line={l} waive={waiveKpi} kind="kpi" />}
+                            {(l.corrections ?? []).map((c, i) => (
+                              <p key={i} className="mt-1 max-w-sm pl-5 text-xs text-muted">
+                                {correctionText(c)}
+                              </p>
+                            ))}
+                            {correct && l.correctable && (
+                              <div className="mt-1 pl-5">
+                                <CorrectLine line={l} correct={correct} />
+                              </div>
+                            )}
                           </td>
                           <Amounts values={l.result} />
                           {payslips && (

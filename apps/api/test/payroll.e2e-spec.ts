@@ -195,6 +195,7 @@ describe('Payroll (e2e)', () => {
   const lineOf = (run: Run, p: Person) => run.lines.find((l) => l.employeeId === p.id);
   const auditOf = (entityType: string, entityId: string) => prisma.auditLog.findMany({ where: { entityType, entityId }, orderBy: { id: 'asc' } });
   const message = (res: request.Response) => JSON.parse((res.body as Buffer).toString('utf8')).message as string;
+  const said = (res: request.Response) => ([] as string[]).concat(res.body.message as string | string[]);
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
@@ -772,17 +773,19 @@ describe('Payroll (e2e)', () => {
       expect((await discardBatch(run.id, first.id).expect(409)).body.message).toBe('Batch 2 was sent to the bank, so it is kept.');
       await batchSent(run.id, first.id, staff).expect(403);
 
-      // someone already sent may be ticked again; a batch not sent may be discarded, and the next takes the next number
-      const again = (await makeBatch(run.id, { file: 'ach', lineIds: ach.map((l) => l.id) }).expect(201)).body as Batch;
-      expect(again).toMatchObject({ number: 3, people: ach.length });
-      await discardBatch(run.id, again.id).expect(204);
-      await batchFile(run.id, again.id).expect(404);
-      const next = (await makeBatch(run.id, { file: 'ach', lineIds: ach.map((l) => l.id) }).expect(201)).body as Batch;
-      expect(next.number).toBe(3);
+      // paid in full: never ticked into another batch (owner, 5 November 2026: "not to be selected again")
+      expect(said(await makeBatch(run.id, { file: 'ach', lineIds: [joinerLine.id] }).expect(400))).toEqual([`Joiner ${RUN} is paid in full by the batches already: nothing is left to transfer.`]);
+      // a batch not confirmed holds its people too ("No, reserved"); discarded, it frees them, and the next takes the next number
+      const cib = payees(run, 'cib').map((l) => l.id);
+      const firstCib = ((await getRun(run.id).expect(200)).body as Run).bankBatches[0];
+      expect(said(await makeBatch(run.id, { file: 'cib', lineIds: cib }).expect(400))[0]).toMatch(/is paid in full by the batches already/);
+      await discardBatch(run.id, firstCib.id).expect(204);
+      await batchFile(run.id, firstCib.id).expect(404);
+      const next = (await makeBatch(run.id, { file: 'cib', lineIds: cib }).expect(201)).body as Batch;
+      expect(next).toMatchObject({ number: 3, people: cib.length });
       expect(((await getRun(run.id).expect(200)).body as Run).bankBatches.map((b) => [b.number, b.file, b.sentAt !== null])).toEqual([
-        [1, 'cib', false],
         [2, 'ach', true],
-        [3, 'ach', false],
+        [3, 'cib', false],
       ]);
       // no bank details: in no batch
       await makeBatch(run.id, { file: 'ach', lineIds: [lineOf(run, freelancer)!.id] }).expect(400);
@@ -794,13 +797,52 @@ describe('Payroll (e2e)', () => {
         ['payroll_bank_batch', 2],
         ['payroll_bank_file', 2],
         ['payroll_bank_batch_sent', 2],
-        ['payroll_bank_batch', 3],
-        ['payroll_bank_batch_discarded', 3],
+        ['payroll_bank_batch_discarded', 1],
         ['payroll_bank_batch', 3],
       ]);
       expect(audit.find((a) => a.action === 'payroll_bank_batch')!.diff).toMatchObject({ month: MONTH, file: 'cib', valueDate: todayInCairo() });
       expect((audit.find((a) => a.action === 'payroll_bank_file' && (a.diff as { batch: number }).batch === 2)!.diff as { employees: string[] }).employees).toEqual([
         joiner.employeeCode,
+      ]);
+    });
+
+    it('a line corrected once approved is worked out again; the batches pay what is left of it (5 November 2026)', async () => {
+      const correct = (lineId: string, body: object, session = hr) => api().post(`/api/payroll/runs/${run.id}/lines/${lineId}/correct`).set('Cookie', session).send(body);
+      const reg = lineOf(run, regular)!;
+      const full = reg.result.transfer;
+      const approvedNoShow = reg.inputs.noShowDays;
+      expect(approvedNoShow).toBe(0.5);
+      // HR corrects, with why; nobody else
+      await correct(reg.id, { inputs: { noShowDays: 1 }, reason: 'Missed a day' }, finance).expect(403);
+      expect((await correct(reg.id, { inputs: { noShowDays: 1 }, reason: ' ' }).expect(400)).body.message).toEqual(['Write why the line is corrected.']);
+      expect((await correct(reg.id, { inputs: {}, reason: 'Nothing' }).expect(400)).body.message).toBe('Change at least one figure to correct the line.');
+      await correct('00000000-0000-4000-8000-000000000000', { inputs: { noShowDays: 1 }, reason: 'Missed a day' }).expect(404);
+
+      // batch 3 holds the full transfer: freed, the line corrected down, paid that and sent
+      const held = ((await getRun(run.id).expect(200)).body as Run).bankBatches.find((b) => b.number === 3)!;
+      await discardBatch(run.id, held.id).expect(204);
+      run = (await correct(reg.id, { inputs: { noShowDays: 1 }, reason: 'Missed a day' }).expect(200)).body as Run;
+      const lower = lineOf(run, regular)!.result.transfer;
+      expect(lower).toBeLessThan(full);
+      const paidLower = (await makeBatch(run.id, { file: 'cib', lineIds: [reg.id] }).expect(201)).body as Batch;
+      expect(paidLower.lines).toEqual([{ lineId: reg.id, amount: lower }]);
+      await batchSent(run.id, paidLower.id).expect(200);
+
+      // the half day was right after all: corrected back up, the rest is owed and paid by a later batch
+      run = (await correct(reg.id, { inputs: { noShowDays: approvedNoShow }, reason: 'The day was worked after all' }).expect(200)).body as Run;
+      const line = lineOf(run, regular)!;
+      expect(line.result.transfer).toBe(full);
+      expect((line as Line & { corrections: { reason: string; transferFrom: number; transferTo: number }[] }).corrections.map((c) => [c.reason, c.transferFrom, c.transferTo])).toEqual([
+        ['Missed a day', full, lower],
+        ['The day was worked after all', lower, full],
+      ]);
+      const rest = (await makeBatch(run.id, { file: 'cib', lineIds: [reg.id] }).expect(201)).body as Batch;
+      expect(rest.lines).toEqual([{ lineId: reg.id, amount: Math.round((full - lower) * 100) / 100 }]);
+      expect(said(await makeBatch(run.id, { file: 'cib', lineIds: [reg.id] }).expect(400))[0]).toMatch(/is paid in full by the batches already/);
+      // the register follows the line; the audit log has each correction
+      expect((await auditOf('payroll_line', reg.id)).filter((a) => a.action === 'correct').map((a) => (a.diff as { reason: string }).reason)).toEqual([
+        'Missed a day',
+        'The day was worked after all',
       ]);
     });
 
@@ -813,9 +855,15 @@ describe('Payroll (e2e)', () => {
       run = (await act(run.id, 'paid', hr, { paidOn: todayInCairo() }).expect(200)).body as Run;
       expect(run).toMatchObject({ status: 'paid', paidOn: todayInCairo() });
       await act(run.id, 'paid', hr, { paidOn: todayInCairo() }).expect(409);
-      // still made and downloaded
-      const paid = (await makeBatch(run.id, { file: 'ach', lineIds: payees(run, 'ach').map((l) => l.id) }).expect(201)).body as Batch;
-      await batchFile(run.id, paid.id).expect(200);
+      // still downloaded
+      const last = run.bankBatches.at(-1)!;
+      await batchFile(run.id, last.id).expect(200);
+      // a correction once paid draws the payslip again (owner: "Payslip and register too")
+      const reg = lineOf(run, regular)!;
+      const before = await prisma.payslip.findUniqueOrThrow({ where: { lineId_language: { lineId: reg.id, language: 'en' } }, select: { generatedAt: true } });
+      await api().post(`/api/payroll/runs/${run.id}/lines/${reg.id}/correct`).set('Cookie', hr).send({ inputs: { noShowDays: 1.5 }, reason: 'One more day missed' }).expect(200);
+      const after = await prisma.payslip.findUniqueOrThrow({ where: { lineId_language: { lineId: reg.id, language: 'en' } }, select: { generatedAt: true } });
+      expect(after.generatedAt.getTime()).toBeGreaterThan(before.generatedAt.getTime());
       const ws = (await workbook((await file(run.id, 'register').expect(200)).body as Buffer)).worksheets[0];
       expect(ws.getCell('A1').value).toBe(`Payroll — ${monthName(MONTH)}`);
       expect(ws.getCell('A2').value as string).toMatch(/^Status: Paid, on \d\d\/\d\d\/\d{4}$/);

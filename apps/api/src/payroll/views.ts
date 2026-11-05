@@ -83,6 +83,13 @@ export interface PayrollLineView {
   /** Whether the caller changes its inputs, hold and comments now: a draft's, HR's, a C-level person's the CEO's. */
   editable: boolean;
   /**
+   * Whether the caller corrects it now (owner, 5 November 2026: "if there was a problem in the employee calculation and
+   * has been edited"): an approved or paid run's, HR's, a C-level person's the CEO's.
+   */
+  correctable: boolean;
+  /** Its corrections once approved, oldest first: when, by whom, why, and the transfer before and after. */
+  corrections: { at: Date; by: string | null; reason: string; transferFrom: number; transferTo: number }[];
+  /**
    * The inputs an attendance import filled (owner, 19 October 2026: Zoho People), still as it filled them, for the grid
    * to mark "from Zoho"; null when none.
    */
@@ -148,7 +155,14 @@ export interface PayrollRunSummary {
 /** What a run is shown with: its lines in order (by department, none last, then by name) and who approved it. */
 export const RUN_INCLUDE = {
   approvedBy: { select: { id: true, email: true } },
-  lines: { orderBy: [{ department: { sort: 'asc', nulls: 'last' } }, { nameEn: 'asc' }], include: { payslips: { select: { language: true } } } },
+  lines: {
+    orderBy: [{ department: { sort: 'asc', nulls: 'last' } }, { nameEn: 'asc' }],
+    include: {
+      payslips: { select: { language: true } },
+      // corrected once approved (5 November 2026), oldest first
+      corrections: { orderBy: { at: 'asc' }, select: { at: true, reason: true, transferFrom: true, transferTo: true, by: { select: { id: true, email: true } } } },
+    },
+  },
   bankBatches: { orderBy: { number: 'asc' }, include: BATCH_INCLUDE },
 } satisfies Prisma.PayrollRunInclude;
 
@@ -239,13 +253,21 @@ export function lawWarnings(line: { terms: PayrollTerms; result: PayrollResult }
 export interface LineAccess {
   confidential: boolean;
   editable: boolean;
+  /** An approved or paid run's line the caller corrects (5 November 2026). */
+  correctable?: boolean;
 }
 
 /**
  * A line as the API sends it; `limits`: what its warnings by the Labour Law are worked out with (18 October 2026);
  * `access`: a C-level person's, and whether the caller changes it (19 October 2026).
  */
-export function lineView(line: LineRow, bank: LineBank, limits: LineLimits | null = null, access: LineAccess = { confidential: false, editable: false }): PayrollLineView {
+export function lineView(
+  line: LineRow,
+  bank: LineBank,
+  limits: LineLimits | null = null,
+  access: LineAccess = { confidential: false, editable: false },
+  names: ReadonlyMap<string, { name: string }> = new Map(),
+): PayrollLineView {
   const terms = line.terms as unknown as PayrollTerms;
   const result = line.result as unknown as PayrollResult;
   const mark = (line.attendanceImport as unknown as AttendanceImportMark | null) ?? null;
@@ -272,6 +294,14 @@ export function lineView(line: LineRow, bank: LineBank, limits: LineLimits | nul
     payslips: { en: line.payslips.some((p) => p.language === 'en'), ar: line.payslips.some((p) => p.language === 'ar') },
     confidential: access.confidential,
     editable: access.editable,
+    correctable: access.correctable ?? false,
+    corrections: line.corrections.map((c) => ({
+      at: c.at,
+      by: c.by ? (names.get(c.by.id)?.name ?? c.by.email) : null,
+      reason: c.reason,
+      transferFrom: c.transferFrom.toNumber(),
+      transferTo: c.transferTo.toNumber(),
+    })),
     attendanceImport: mark,
   };
 }
@@ -313,7 +343,8 @@ export function runView(
   const limits: LineLimits = { installmentPercent: ctx.installmentLimitPercent ?? null, dayDivisor: (run.rules as unknown as PayrollRules | null)?.dayDivisor ?? null };
   const lines = shown.map((l) => {
     const confidential = c?.all.has(l.employeeId) ?? false;
-    return lineView(l, lineBank(bankDetailsOf(l, ctx.banks.get(l.employeeId), approved)), limits, { confidential, editable: draft && (c?.changes(confidential) ?? false) });
+    const changes = c?.changes(confidential) ?? false;
+    return lineView(l, lineBank(bankDetailsOf(l, ctx.banks.get(l.employeeId), approved)), limits, { confidential, editable: draft && changes, correctable: approved && changes }, ctx.userNames);
   });
   return {
     id: run.id,

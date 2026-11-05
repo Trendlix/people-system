@@ -8,7 +8,7 @@ import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { userNames } from './adjustments/people.js';
 import { achAccount, cleanBankDetails, inFile, lineBank, type BankFileKind } from './bank.js';
-import { BATCH_INCLUDE, batchFileName, batchUsers, batchView, FILE_NAMES, sumAmounts, type BatchRow, type PayrollBankBatchView } from './bank-batches.js';
+import { BATCH_INCLUDE, batchFileName, batchUsers, batchView, FILE_NAMES, remainingOf, sumAmounts, type BatchRow, type PayrollBankBatchView } from './bank-batches.js';
 import { achWorkbook, cibWorkbook } from './bank-files.js';
 import { monthName } from './months.js';
 import type { MakeBankBatchDto } from './payroll.dto.js';
@@ -20,8 +20,12 @@ import { isApproved, monthOf } from './views.js';
 // confirm each batch sent to be recorded"; asked, "Tick names", "Show it, still pickable"). Once the CEO approved a
 // run, whoever makes the bank files (HR, Finance, the CEO, a Super Admin) ticks the people one file pays and makes a
 // batch of them: numbered within the run, with each one's amount, its file made from the bank details copied at the
-// approval. Someone already in a batch may be ticked again (the page starts them unticked). A batch is confirmed once
-// it is sent to the bank, and kept from then on; until then it may be discarded. The C-level people's lines are never
+// approval. Each is paid what is left of their transfer (owner, 5 November 2026: "batches sent to the back employees are
+// not to be selected again instead there is an edit and they have remaining payment"; asked, "No, reserved"): their
+// transfer less what every batch of the run holds for them, a batch not confirmed yet too, so nobody is paid twice; one
+// paid in full can't be ticked, one whose line was corrected upwards since (PayrollService.correctLine) is owed the
+// rest. A batch is confirmed once it is sent to the bank, and kept from then on; until then it may be discarded, which
+// frees what it held. The C-level people's lines are never
 // in a batch made by someone they are hidden from (19 October 2026), and a batch with them in it is downloaded,
 // confirmed or discarded only by someone who sees them. Every step is in the audit log, as the run's.
 
@@ -53,6 +57,7 @@ export class BankBatchesService {
 
     const hidden = new Set(await this.confidential.hiddenFrom(user));
     const byId = new Map(run.lines.filter((l) => !hidden.has(l.employeeId)).map((l) => [l.id, l]));
+    const held = await this.held(runId);
     const picked = [...new Set(dto.lineIds)].map((id) => {
       const line = byId.get(id);
       if (!line) throw new BadRequestException(`Someone ticked isn't on the ${monthName(month)} payroll. Reload the page and tick again.`);
@@ -61,7 +66,9 @@ export class BankBatchesService {
       if (!inFile({ onHold: line.onHold, transfer, bank }, kind)) {
         throw new BadRequestException(`${line.nameEn} isn't paid through the ${FILE_NAMES[kind]} file this month.`);
       }
-      return { line, amount: transfer };
+      const left = remainingOf(transfer, held.get(line.id) ?? 0);
+      if (left <= 0) throw new BadRequestException(`${line.nameEn} is paid in full by the batches already: nothing is left to transfer.`);
+      return { line, amount: left };
     });
     const total = sumAmounts(picked.map((p) => p.amount));
     const valueDate = kind === 'cib' ? (dto.valueDate ?? todayInCairo()) : null;
@@ -175,6 +182,14 @@ export class BankBatchesService {
   }
 
   // ---------- helpers ----------
+
+  /** What the run's batches hold for each line, a batch not confirmed yet too (sums to the piaster). */
+  private async held(runId: string): Promise<Map<string, number>> {
+    const rows = await this.prisma.payrollBankBatchLine.findMany({ where: { batch: { runId } }, select: { lineId: true, amount: true } });
+    const out = new Map<string, number>();
+    for (const r of rows) out.set(r.lineId, sumAmounts([out.get(r.lineId) ?? 0, r.amount.toNumber()]));
+    return out;
+  }
 
   private async batch(runId: string, batchId: string, user: SessionUser) {
     const batch = await this.prisma.payrollBankBatch.findFirst({ where: { id: batchId, runId }, include: { ...BATCH_INCLUDE, run: { select: { id: true, month: true, status: true } } } });

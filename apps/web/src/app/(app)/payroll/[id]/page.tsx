@@ -16,6 +16,7 @@ import { adjustmentsHref } from '../adjustments/adjustments';
 import {
   approveRun,
   confirmBankBatchSent,
+  correctPayrollLine,
   deleteRun,
   discardBankBatch,
   markRunPaid,
@@ -30,15 +31,18 @@ import {
 import { loadRun } from '../data';
 import {
   bankFilesReady,
+  bankLabel,
   bankLeftOut,
   batchFileHref,
   batchHiddenText,
+  batchPeople,
   batchTitle,
   confirmSentText,
   discardText,
   etaCheckPath,
   fileHref,
   makesBankBatches,
+  peopleText,
   reviewHref,
   type EtaCheck,
 } from '../files';
@@ -55,6 +59,7 @@ import { BankBatchPicker } from './bank-batches';
 import { contractsNote, lineItems } from './grid';
 import { InputsGrid, type GridRow } from './inputs-grid';
 import { ResultsTable } from './results-table';
+import { Popup } from './popup';
 import { MarkPaid, ReturnRun } from './run-actions';
 import { shownCode } from '@/lib/hidden';
 
@@ -296,10 +301,12 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
 }
 
 /**
- * The bank transfer batches made from the run (owner, 5 November 2026: "and to confirm each batch sent to be recorded"):
- * each with its file, people and total, who made it and when, and whether it was confirmed sent to the bank. Until then
- * it can be confirmed, downloaded again or discarded (its people ticked again), unless it has people hidden from the
- * caller (`acts`: whoever sees them all does it). A developer only looks.
+ * The bank transfer batches made from the run (owner, 5 November 2026: "and to confirm each batch sent to be recorded";
+ * then "HR can see batch details", "Preview in a popup window"): each a compact row with its file, people and total, who
+ * made it and when, and whether it was confirmed sent to the bank; View details opens it in a popup with its people
+ * (each with the amount the batch holds for them), the total, and, until it is confirmed sent, Confirm sent to the bank,
+ * Download again and Discard (what it holds freed), unless it has people hidden from the caller (`acts`: whoever sees
+ * them all does it). A developer only looks.
  */
 function BankBatchList({ run, makes }: { run: PayrollRunView; makes: boolean }) {
   const batches = run.bankBatches ?? [];
@@ -309,42 +316,89 @@ function BankBatchList({ run, makes }: { run: PayrollRunView; makes: boolean }) 
       <h3 className="font-semibold">Batches</h3>
       <ul className="divide-y divide-line-soft rounded-lg border border-line">
         {batches.map((b) => {
-          const hidden = batchHiddenText(b);
+          const made = `Made ${formatDateTime(b.madeAt)}${b.madeBy ? ` by ${b.madeBy}` : ''}${b.valueDate ? ` · Value date ${formatDate(b.valueDate)}` : ''}`;
+          const sent = b.sentAt ? `Sent to the bank ${formatDateTime(b.sentAt)}${b.sentBy ? ` by ${b.sentBy}` : ''}` : 'Not confirmed sent yet';
           return (
-            <li key={b.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 py-3 text-sm">
+            <li key={b.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 text-sm">
               <div className="min-w-0 space-y-0.5">
                 <p className="font-medium tabular-nums">{batchTitle(b)}</p>
-                {hidden && <p className="text-xs text-muted">Also {hidden}</p>}
-                <p className="text-muted">
-                  Made {formatDateTime(b.madeAt)}
-                  {b.madeBy && ` by ${b.madeBy}`}
-                  {b.valueDate && ` · Value date ${formatDate(b.valueDate)}`}
-                </p>
-                <p className={b.sentAt ? 'text-ok' : 'text-warn'}>
-                  {b.sentAt ? `Sent to the bank ${formatDateTime(b.sentAt)}${b.sentBy ? ` by ${b.sentBy}` : ''}` : 'Not confirmed sent yet'}
-                </p>
+                <p className="text-muted">{made}</p>
+                <p className={b.sentAt ? 'text-ok' : 'text-warn'}>{sent}</p>
               </div>
-              {b.acts && makes && (
-                <div className="flex flex-wrap items-start gap-2">
-                  {!b.sentAt && (
-                    <ActionButton action={confirmBankBatchSent.bind(null, run.id, b.id)} pendingText="Recording…" variant="primary" confirmText={confirmSentText(b)}>
-                      Confirm sent to the bank
-                    </ActionButton>
-                  )}
-                  <a href={batchFileHref(run.id, b.id)} className="btn btn-secondary min-h-9 px-3">
-                    Download again
-                  </a>
-                  {!b.sentAt && (
-                    <ActionButton action={discardBankBatch.bind(null, run.id, b.id)} pendingText="Discarding…" variant="danger" confirmText={discardText(b)}>
-                      Discard
-                    </ActionButton>
-                  )}
-                </div>
-              )}
+              <Popup label={<>View details<span className="sr-only"> of batch {b.number}</span></>} title={batchTitle(b)} subtitle={<><span className="block">{made}</span><span className={`block ${b.sentAt ? 'text-ok' : 'text-warn'}`}>{sent}</span></>}>
+                <BatchDetails run={run} batch={b} makes={makes} />
+              </Popup>
             </li>
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/** A batch's people and amounts, and what can be done to it, in its popup. */
+function BatchDetails({ run, batch: b, makes }: { run: PayrollRunView; batch: NonNullable<PayrollRunView['bankBatches']>[number]; makes: boolean }) {
+  const people = batchPeople(b, run.lines);
+  const hidden = batchHiddenText(b);
+  return (
+    <div className="space-y-4">
+      <div className="overflow-x-auto rounded-lg border border-line">
+        <table className="table">
+          <thead>
+            <tr>
+              <th scope="col">Employee</th>
+              <th scope="col">Bank</th>
+              <th scope="col" className="text-right">
+                Amount
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {people.map((p) => (
+              <tr key={p.id}>
+                <td>
+                  <span className="font-medium">{p.name}</span>
+                  {shownCode(p.employeeCode) && <span className="text-muted"> · {p.employeeCode}</span>}
+                </td>
+                <td>{bankLabel(p) ?? '—'}</td>
+                <td className="text-right tabular-nums">{formatEgp(p.amount)}</td>
+              </tr>
+            ))}
+            {hidden && (
+              <tr>
+                <td colSpan={3} className="text-muted">
+                  And {hidden}
+                </td>
+              </tr>
+            )}
+          </tbody>
+          <tfoot>
+            <tr className="font-semibold">
+              <td colSpan={2} className="border-t border-line">
+                Total · {peopleText(b.people)}
+              </td>
+              <td className="border-t border-line text-right tabular-nums">{formatEgp(b.total)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {b.acts && makes && (
+        <div className="flex flex-wrap items-start gap-2">
+          {!b.sentAt && (
+            <ActionButton action={confirmBankBatchSent.bind(null, run.id, b.id)} pendingText="Recording…" variant="primary" confirmText={confirmSentText(b)}>
+              Confirm sent to the bank
+            </ActionButton>
+          )}
+          <a href={batchFileHref(run.id, b.id)} className="btn btn-secondary min-h-9 px-3">
+            Download again
+          </a>
+          {!b.sentAt && (
+            <ActionButton action={discardBankBatch.bind(null, run.id, b.id)} pendingText="Discarding…" variant="danger" confirmText={discardText(b)}>
+              Discard
+            </ActionButton>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -562,6 +616,8 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
             month={run.month}
             // a line's KPI links to its scorecard (21 October 2026), which HR, the CEO and the Super Admin may open
             scorecardLinks={hasRole(user, 'hr', 'ceo', 'super_admin')}
+            // an approved or paid run's lines corrected (5 November 2026); the API says which (correctable) and checks again
+            correct={bankFilesReady(run.status) && !user.developer ? correctPayrollLine.bind(null, run.id) : null}
           />
         </section>
       )}

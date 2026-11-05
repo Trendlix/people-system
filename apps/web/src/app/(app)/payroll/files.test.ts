@@ -9,13 +9,19 @@ import {
   batchHiddenText,
   batchMarks,
   batchNote,
+  batchPeople,
   batchTitle,
   confirmSentText,
   departmentsOf,
   discardText,
   fileHref,
+  heldByLine,
   isFileKind,
+  leftOf,
   makesBankBatches,
+  overpaidNote,
+  owedNote,
+  owedOf,
   passSheetOn,
   payees,
   startTicks,
@@ -127,14 +133,14 @@ describe('bank transfer batches (owner, 5 November 2026)', () => {
     line('w', 'ach', 400, { bank: { file: 'ach', bankShort: 'MIDG', problem: null } }),
     line('none', null, 700),
   ];
-  const batch = (number: number, file: 'cib' | 'ach', lineIds: string[], sentAt: string | null) => ({
+  const batch = (number: number, file: 'cib' | 'ach', lineIds: string[], sentAt: string | null, amount = 1) => ({
     number,
     file,
     sentAt,
     people: lineIds.length,
     total: 0,
     hidden: 0,
-    lines: lineIds.map((lineId) => ({ lineId, amount: 1 })),
+    lines: lineIds.map((lineId) => ({ lineId, amount })),
   });
 
   it('lists each file’s people: not on hold, something to transfer, details the file pays', () => {
@@ -144,20 +150,58 @@ describe('bank transfer batches (owner, 5 November 2026)', () => {
     expect(departmentsOf(payees(lines, 'cib'))).toEqual(['Finance', 'Studio']);
   });
 
-  it('starts with those in no batch yet ticked; those in one say which, still pickable', () => {
-    const batches = [batch(2, 'cib', ['b'], null), batch(1, 'cib', ['a'], '2026-11-05T10:00:00Z')];
-    expect([...startTicks(payees(lines, 'cib'), batches)]).toEqual([]);
-    expect([...startTicks(payees(lines, 'cib'), [batches[0]])]).toEqual(['a']);
-    const marks = batchMarks([...batches, batch(3, 'cib', ['a'], null)]);
-    expect(batchNote(marks.get('a'))).toBe('Batch 1 · sent 05/11/2026; Batch 3 · not confirmed sent yet');
-    expect(batchNote(marks.get('b'))).toBe('Batch 2 · not confirmed sent yet');
+  it('says which batches hold a line, sent or not yet', () => {
+    const marks = batchMarks([batch(2, 'cib', ['b'], null), batch(1, 'cib', ['a'], '2026-11-05T10:00:00Z'), batch(3, 'cib', ['a'], null)]);
+    expect(batchNote(marks.get('a'))).toBe('Sent in batch 1 on 05/11/2026; In batch 3, not confirmed sent yet');
+    expect(batchNote(marks.get('b'))).toBe('In batch 2, not confirmed sent yet');
     expect(batchNote(marks.get('c'))).toBeNull();
   });
 
-  it('adds up the ticked people’s transfer to the piaster', () => {
-    expect(tickedTotal(lines, new Set(['a', 'b']))).toBe(3000.3);
-    expect(tickedTotal(lines, new Set(['a', 'b', 'c']))).toBe(6000.6);
-    expect(tickedTotal(lines, new Set())).toBe(0);
+  // owner, 5 November 2026: "batches sent to the back employees are not to be selected again instead there is an edit and
+  // they have remaining payment"; asked, "if there was a problem in the employee calculation and has been edited", "No, reserved"
+  it('owes each person what is left of their transfer once every batch (sent or not) is taken off, to the piaster', () => {
+    const batches = [batch(1, 'cib', ['a'], '2026-11-05T10:00:00Z', 900.05), batch(2, 'cib', ['a', 'b'], null, 100.05)];
+    const held = heldByLine(batches);
+    expect(held.get('a')).toBe(1000.1);
+    expect(held.get('b')).toBe(100.05);
+    expect(leftOf(lines[0], held)).toBe(0);
+    expect(leftOf(lines[1], held)).toBe(1900.15);
+    expect(leftOf(lines[4], held)).toBe(3000.3);
+    // a correction downwards after the batches: paid more than the line is now
+    expect(leftOf({ id: 'a', result: { transfer: 900 } }, held)).toBe(-100.1);
+  });
+
+  it('ticks those still owed something; those paid in full are apart, never ticked', () => {
+    const batches = [batch(1, 'cib', ['a'], '2026-11-05T10:00:00Z', 1000.1), batch(2, 'cib', ['b'], null, 500)];
+    const { owed, paid } = owedOf(payees(lines, 'cib'), batches);
+    expect(owed.map((p) => [p.id, p.held, p.left])).toEqual([['b', 500, 1500.2]]);
+    expect(paid.map((p) => [p.id, p.held, p.left])).toEqual([['a', 1000.1, 0]]);
+    expect([...startTicks(owed)]).toEqual(['b']);
+    const marks = batchMarks(batches);
+    expect(owedNote(owed[0], marks)).toBe('EGP 1,500.20 left · EGP 500.00 in batch 2');
+    expect(owedNote({ id: 'c', held: 0, left: 3000.3 }, marks)).toBeNull();
+    expect(owedNote({ id: 'b', held: 700, left: 1 }, batchMarks([...batches, batch(4, 'cib', ['b'], null, 200)]))).toBe('EGP 1.00 left · EGP 700.00 in batches 2 and 4');
+    expect(overpaidNote({ left: -100.1 })).toBe('Paid EGP 100.10 more than the corrected transfer');
+    expect(overpaidNote({ left: 0 })).toBeNull();
+  });
+
+  it('adds up what is left to the ticked people, to the piaster', () => {
+    const owed = [
+      { id: 'a', left: 1000.1 },
+      { id: 'b', left: 2000.2 },
+      { id: 'c', left: 3000.3 },
+    ];
+    expect(tickedTotal(owed, new Set(['a', 'b']))).toBe(3000.3);
+    expect(tickedTotal(owed, new Set(['a', 'b', 'c']))).toBe(6000.6);
+    expect(tickedTotal(owed, new Set())).toBe(0);
+  });
+
+  it('lists a batch’s people with the amount it holds for each, in the run’s order', () => {
+    const b = { lines: [{ lineId: 'c', amount: 3000.3 }, { lineId: 'a', amount: 500 }] };
+    expect(batchPeople(b, lines).map((l) => [l.id, l.amount])).toEqual([
+      ['a', 500],
+      ['c', 3000.3],
+    ]);
   });
 
   it('names a batch, and asks before it is confirmed sent or discarded', () => {
@@ -165,7 +209,7 @@ describe('bank transfer batches (owner, 5 November 2026)', () => {
     expect(batchTitle(b)).toBe('Batch 2 · ACH file · 7 people · EGP 90,000.00');
     expect(batchTitle({ ...b, file: 'cib', people: 1 })).toBe('Batch 2 · CIB file · 1 person · EGP 90,000.00');
     expect(confirmSentText(b)).toBe('Confirm batch 2 (ACH, 7 people, EGP 90,000.00) was sent to the bank?');
-    expect(discardText(b)).toBe("Discard batch 2? Its people can be ticked again. Only when it wasn't sent to the bank.");
+    expect(discardText(b)).toBe("Discard batch 2? What it holds can be ticked again. Only when it wasn't sent to the bank.");
     expect(batchHiddenText(b)).toBeNull();
     expect(batchHiddenText({ hidden: 2 })).toBe('C-level (2 people) — hidden');
   });

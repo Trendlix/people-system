@@ -116,6 +116,7 @@ model User {
   bankBatchesMade           PayrollBankBatch[]         @relation("BankBatchMade") // bank transfer batches this user made
   bankBatchesSent           PayrollBankBatch[]         @relation("BankBatchSent") // bank transfer batches this user confirmed sent
   payslipsDrawn             Payslip[]                  @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
+  payrollCorrections        PayrollLineCorrection[]    @relation("PayrollCorrection") // approved payroll lines this user corrected
   lawRatesChanged           PayrollLawYear[]           @relation("LawRatesChange") // years of the rates set by law this user changed last
   adjustmentsMade           PayrollAdjustment[]        @relation("AdjustmentEntry") // additions and deductions this user entered
   adjustmentsCut            PayrollAdjustment[]        @relation("AdjustmentCancel") // additions and deductions this user cancelled
@@ -3254,6 +3255,7 @@ model PayrollLine {
   adjustments       PayrollAdjustment[] // the month's additions and deductions applied to it
   holdRelease       PayrollHoldRelease? // held: when and how its pay was paid out since
   bankBatches       PayrollBankBatchLine[] // the bank transfer batches it was in
+  corrections       PayrollLineCorrection[] // corrected once approved (5 November 2026)
 
   @@unique([runId, employeeId])
   @@index([employeeId])
@@ -3284,6 +3286,28 @@ model PayrollBankBatch {
 
   @@unique([runId, number])
   @@map("payroll_bank_batches")
+}
+
+// A correction of an approved (or paid) run's line (owner, 5 November 2026: "if there was a problem in the employee
+// calculation and has been edited"; asked, "Payslip and register too"): its inputs changed and the line worked out again
+// with the run's rules and rates, why, by whom, and the transfer before and after (what the bank batches still pay is
+// the new transfer less what they sent). The line keeps the new figures; its payslip is drawn again.
+model PayrollLineCorrection {
+  id           String      @id @default(uuid()) @db.Uuid
+  lineId       String      @map("line_id") @db.Uuid
+  line         PayrollLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  reason       String
+  changes      Json // what changed: the inputs as the audit log has them (money ones as "changed")
+  netFrom      Decimal     @map("net_from") @db.Decimal(12, 2)
+  netTo        Decimal     @map("net_to") @db.Decimal(12, 2)
+  transferFrom Decimal     @map("transfer_from") @db.Decimal(12, 2)
+  transferTo   Decimal     @map("transfer_to") @db.Decimal(12, 2)
+  byId         String?     @map("by_id") @db.Uuid
+  by           User?       @relation("PayrollCorrection", fields: [byId], references: [id], onDelete: SetNull)
+  at           DateTime    @default(now()) @db.Timestamptz
+
+  @@index([lineId])
+  @@map("payroll_line_corrections")
 }
 
 /** A line in a bank transfer batch, with the amount the batch transfers to it. */

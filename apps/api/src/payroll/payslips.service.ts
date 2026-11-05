@@ -139,6 +139,22 @@ export class PayslipsService {
   }
 
   /**
+   * A corrected line's payslips drawn again (owner, 5 November 2026: "Payslip and register too"): the kept ones go, and
+   * the English one is drawn at once when the run is paid and the line not on hold (the others when first asked for).
+   * Never fails the correction: a payslip that can't be drawn is logged, and drawn when it is first downloaded.
+   */
+  async drawAgain(lineId: string, user: SessionUser): Promise<void> {
+    await this.prisma.payslip.deleteMany({ where: { lineId } });
+    try {
+      const line = await this.prisma.payrollLine.findUnique({ where: { id: lineId }, select: SOURCE_SELECT });
+      if (!line || line.run.status !== 'paid' || line.onHold) return;
+      await this.draw(line, (await this.sources([line])).get(line.id)!, 'en', user);
+    } catch (err) {
+      this.logger.error(`The corrected payslip of line ${lineId} could not be drawn: ${(err as Error).message}`);
+    }
+  }
+
+  /**
    * A line's payslip in a language: the kept one, or drawn and kept the first time it is asked for. `of: 'own'`: only the
    * caller's own line; anyone else's, or any line for a sign-in without an employee profile, isn't there (checked before
    * the run's status, so a 409 never confirms someone else's line).

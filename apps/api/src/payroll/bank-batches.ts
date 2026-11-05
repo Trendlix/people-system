@@ -44,6 +44,9 @@ export interface PayrollBankBatchView {
 /** Sums to the piaster. */
 export const sumAmounts = (amounts: readonly number[]) => amounts.reduce((cents, a) => cents + Math.round(a * 100), 0) / 100;
 
+/** What is left to transfer to a line: its transfer less what the batches hold for it, to the piaster (below 0: paid more). */
+export const remainingOf = (transfer: number, held: number) => (Math.round(transfer * 100) - Math.round(held * 100)) / 100;
+
 /** A batch as the API sends it to someone `hidden` people's lines are hidden from; `names`: users' names by id. */
 export function batchView(b: BatchRow, hidden: ReadonlySet<string>, names: ReadonlyMap<string, { name: string }>): PayrollBankBatchView {
   const shown = b.lines.filter((l) => !hidden.has(l.line.employeeId));

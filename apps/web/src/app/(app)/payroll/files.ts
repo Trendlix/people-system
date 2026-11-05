@@ -164,21 +164,63 @@ export function batchMarks(batches: readonly BatchMarkSource[]): Map<string, Bat
   return marks;
 }
 
-/** Under a ticked line already in a batch: "Batch 1 · sent 05/11/2026", "Batch 2 · not confirmed sent yet"; null for none. */
+/** The batches a line is in, in words: "Sent in batch 1 on 05/11/2026", "In batch 2, not confirmed sent yet"; null for none. */
 export function batchNote(marks: readonly BatchMark[] | undefined): string | null {
   if (!marks?.length) return null;
-  return marks.map((m) => `Batch ${m.number} · ${m.sentAt ? `sent ${formatDate(m.sentAt)}` : 'not confirmed sent yet'}`).join('; ');
+  return marks.map((m) => (m.sentAt ? `Sent in batch ${m.number} on ${formatDate(m.sentAt)}` : `In batch ${m.number}, not confirmed sent yet`)).join('; ');
 }
 
-/** Ticked to start with: the file's people in no batch yet (those in one stay pickable, unticked). */
-export function startTicks(people: readonly Pick<PayeeLine, 'id'>[], batches: readonly BatchMarkSource[]): Set<string> {
-  const marks = batchMarks(batches);
-  return new Set(people.filter((p) => !marks.has(p.id)).map((p) => p.id));
+/**
+ * What the batches hold for each line, a batch not confirmed sent yet too (owner, 5 November 2026: asked, "No,
+ * reserved"), summed in piasters so it never drifts.
+ */
+export function heldByLine(batches: readonly Pick<PayrollBankBatchView, 'lines'>[]): Map<string, number> {
+  const cents = new Map<string, number>();
+  for (const b of batches) for (const l of b.lines) cents.set(l.lineId, (cents.get(l.lineId) ?? 0) + Math.round(l.amount * 100));
+  return new Map([...cents].map(([id, c]) => [id, c / 100]));
 }
 
-/** The transfer of the ticked lines, summed in piasters so it never drifts. */
-export function tickedTotal(lines: readonly Pick<PayeeLine, 'id' | 'result'>[], ticked: ReadonlySet<string>): number {
-  return lines.reduce((cents, l) => cents + (ticked.has(l.id) ? Math.round(l.result.transfer * 100) : 0), 0) / 100;
+/** What is left to transfer to a line: its transfer less what the batches hold for it (below 0: paid more than it is now). */
+export const leftOf = (line: Pick<PayeeLine, 'id' | 'result'>, held: ReadonlyMap<string, number>) =>
+  (Math.round(line.result.transfer * 100) - Math.round((held.get(line.id) ?? 0) * 100)) / 100;
+
+/** A file's person with what the batches hold for them and what is left to transfer. */
+export type Payee<L> = L & { held: number; left: number };
+
+/**
+ * A file's people split by what is left to transfer (owner, 5 November 2026: "batches sent to the back employees are not
+ * to be selected again instead there is an edit and they have remaining payment"; asked, "if there was a problem in the
+ * employee calculation and has been edited"): `owed`, something left (the whole transfer, or the rest after a
+ * correction upwards), to tick; `paid`, paid in full by the batches (or more, after a correction downwards), never ticked.
+ */
+export function owedOf<L extends PayeeLine>(people: readonly L[], batches: readonly Pick<PayrollBankBatchView, 'lines'>[]): { owed: Payee<L>[]; paid: Payee<L>[] } {
+  const held = heldByLine(batches);
+  const all = people.map((p) => ({ ...p, held: held.get(p.id) ?? 0, left: leftOf(p, held) }));
+  return { owed: all.filter((p) => p.left > 0), paid: all.filter((p) => p.left <= 0) };
+}
+
+/**
+ * Under a person owed something who is in a batch already: "EGP 1,000.00 left · EGP 9,000.00 in batch 1"; null for one
+ * in no batch (their whole transfer is left).
+ */
+export function owedNote(p: Pick<Payee<PayeeLine>, 'id' | 'held' | 'left'>, marks: ReadonlyMap<string, BatchMark[]>): string | null {
+  const numbers = (marks.get(p.id) ?? []).map((m) => m.number);
+  if (!(p.held > 0) || !numbers.length) return null;
+  const which = numbers.length === 1 ? `batch ${numbers[0]}` : `batches ${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`;
+  return `${formatEgp(p.left)} left · ${formatEgp(p.held)} in ${which}`;
+}
+
+/** Under one paid more than their transfer now (corrected downwards): "Paid EGP 500.00 more than the corrected transfer"; null otherwise. */
+export const overpaidNote = (p: Pick<Payee<PayeeLine>, 'left'>) => (p.left < 0 ? `Paid ${formatEgp(-p.left)} more than the corrected transfer` : null);
+
+/** Ticked to start with: everyone owed something. */
+export function startTicks(owed: readonly Pick<Payee<PayeeLine>, 'id' | 'left'>[]): Set<string> {
+  return new Set(owed.filter((p) => p.left > 0).map((p) => p.id));
+}
+
+/** What is left to transfer to the ticked people, summed in piasters so it never drifts. */
+export function tickedTotal(owed: readonly Pick<Payee<PayeeLine>, 'id' | 'left'>[], ticked: ReadonlySet<string>): number {
+  return owed.reduce((cents, p) => cents + (ticked.has(p.id) && p.left > 0 ? Math.round(p.left * 100) : 0), 0) / 100;
 }
 
 /** "1 person", "8 people". */
@@ -197,7 +239,13 @@ export const confirmSentText = (b: Pick<PayrollBankBatchView, 'number' | 'file' 
 
 /** Asked before a batch is discarded. */
 export const discardText = (b: Pick<PayrollBankBatchView, 'number'>) =>
-  `Discard batch ${b.number}? Its people can be ticked again. Only when it wasn't sent to the bank.`;
+  `Discard batch ${b.number}? What it holds can be ticked again. Only when it wasn't sent to the bank.`;
+
+/** A batch's people as its details list them: each line it holds with its amount, in the run's order (those hidden left out). */
+export function batchPeople<L extends Pick<PayrollLineView, 'id'>>(batch: Pick<PayrollBankBatchView, 'lines'>, lines: readonly L[]): (L & { amount: number })[] {
+  const amounts = new Map(batch.lines.map((l) => [l.lineId, l.amount]));
+  return lines.filter((l) => amounts.has(l.id)).map((l) => ({ ...l, amount: amounts.get(l.id)! }));
+}
 
 /**
  * Makes, confirms and discards batches: those who see payroll (HR, Finance, the CEO), as the bank files were; never a

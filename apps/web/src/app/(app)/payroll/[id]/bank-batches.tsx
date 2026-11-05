@@ -16,6 +16,10 @@ import {
   batchFileHref,
   batchMarks,
   batchNote,
+  owedNote,
+  owedOf,
+  overpaidNote,
+  type Payee,
   departmentsOf,
   isWallet,
   payees,
@@ -26,11 +30,14 @@ import {
 } from '../files';
 
 // Picking who a bank file pays (owner, 5 November 2026: "allow me to select a group of people for the transfer"; asked,
-// "Tick names", "Show it, still pickable"; "on ticking calculate the transferred amount of ticked people"): for each
-// file, everyone it can pay, ticked unless already in a batch (said under the name, still pickable), with quick picks
-// and the ticked people's total as it changes. Downloading makes a numbered batch of the ticked people (the API records
-// it, to be confirmed once sent to the bank) and saves its file; the page then lists the batch and starts its people
-// unticked. The CIB file asks for its value date, the day the bank is to pay (today, to start with).
+// "Tick names"; "on ticking calculate the transferred amount of ticked people"; then "batches sent to the back employees
+// are not to be selected again instead there is an edit and they have remaining payment", asked, "No, reserved"): for
+// each file, everyone it still owes something, ticked to start with, each with what is left to transfer (the rest after a
+// correction of their line, with what the batches hold already), with quick picks and the ticked people's total as it
+// changes. Those the batches pay in full (a batch not confirmed sent yet too) are listed apart, never ticked: a
+// correction of their line (the results' Correct) leaves them owed the rest. Downloading makes a numbered batch of the
+// ticked people (the API records it, to be confirmed once sent to the bank) and saves its file. The CIB file asks for its
+// value date, the day the bank is to pay (today, to start with).
 
 type Line = Pick<PayrollLineView, 'id' | 'employeeCode' | 'name' | 'department' | 'onHold' | 'bank' | 'result'>;
 
@@ -50,21 +57,12 @@ export function BankBatchPicker({
   makes: boolean;
 }) {
   const marks = useMemo(() => batchMarks(batches), [batches]);
-  const files = BANK_FILES.map((file) => ({ file, people: payees(lines, file) })).filter((f) => f.people.length > 0);
+  const files = BANK_FILES.map((file) => ({ file, ...owedOf(payees(lines, file), batches) })).filter((f) => f.owed.length + f.paid.length > 0);
   if (!files.length) return <p className="text-sm text-muted">Nobody on this run is paid through the bank files.</p>;
   return (
     <div className="space-y-6">
-      {files.map(({ file, people }) => (
-        <FilePicker
-          key={file}
-          runId={runId}
-          file={file}
-          people={people}
-          batches={batches.filter((b) => b.file === file)}
-          marks={marks}
-          today={today}
-          makes={makes}
-        />
+      {files.map(({ file, owed, paid }) => (
+        <FilePicker key={file} runId={runId} file={file} owed={owed} paid={paid} marks={marks} today={today} makes={makes} />
       ))}
     </div>
   );
@@ -73,29 +71,30 @@ export function BankBatchPicker({
 function FilePicker({
   runId,
   file,
-  people,
-  batches,
+  owed,
+  paid,
   marks,
   today,
   makes,
 }: {
   runId: string;
   file: PayrollBankFile;
-  people: Line[];
-  batches: PayrollBankBatchView[];
+  owed: Payee<Line>[];
+  paid: Payee<Line>[];
   marks: Map<string, BatchMark[]>;
   today: string;
   makes: boolean;
 }) {
   const fid = useFieldIds();
   const label = BANK_FILE_LABELS[file];
-  const [ticked, setTicked] = useState<Set<string>>(() => startTicks(people, batches));
-  // a batch made (or discarded) since: start again from those in no batch yet
-  const batchKey = batches.map((b) => b.id).join(',');
-  const [seen, setSeen] = useState(batchKey);
-  if (seen !== batchKey) {
-    setSeen(batchKey);
-    setTicked(startTicks(people, batches));
+  const people = owed;
+  const [ticked, setTicked] = useState<Set<string>>(() => startTicks(owed));
+  // a batch made or discarded, or a line corrected, since: start again from everyone owed something
+  const owedKey = owed.map((p) => `${p.id}:${p.left}`).join(',');
+  const [seen, setSeen] = useState(owedKey);
+  if (seen !== owedKey) {
+    setSeen(owedKey);
+    setTicked(startTicks(owed));
   }
   const [valueDate, setValueDate] = useState(() => formatDate(today));
   const [error, setError] = useState<string | null>(null);
@@ -153,8 +152,8 @@ function FilePicker({
           <button type="button" className={quick} onClick={() => setTicked(new Set())}>
             None
           </button>
-          {people.some((p) => marks.has(p.id)) && (
-            <button type="button" className={quick} onClick={() => setTicked(startTicks(people, batches))}>
+          {people.some((p) => p.held > 0) && people.some((p) => p.held === 0) && (
+            <button type="button" className={quick} onClick={() => setTicked(new Set(people.filter((p) => p.held === 0).map((p) => p.id)))}>
               Not in a batch yet
             </button>
           )}
@@ -186,9 +185,11 @@ function FilePicker({
         </div>
       )}
 
+      {people.length === 0 && <p className="text-sm text-muted">Everyone this file pays is in a batch already.</p>}
+      {people.length > 0 && (
       <ul className="divide-y divide-line-soft rounded-lg border border-line">
         {people.map((p) => {
-          const note = batchNote(marks.get(p.id));
+          const note = owedNote(p, marks);
           const code = shownCode(p.employeeCode);
           const bank = file === 'ach' ? bankLabel(p) : null;
           return (
@@ -207,12 +208,38 @@ function FilePicker({
                   {(p.department || bank) && <span className="block text-xs text-muted">{[p.department, bank].filter(Boolean).join(' · ')}</span>}
                   {note && <span className="block text-xs text-warn">{note}</span>}
                 </span>
-                <span className="tabular-nums">{formatEgp(p.result.transfer)}</span>
+                <span className="tabular-nums">{formatEgp(p.left)}</span>
               </label>
             </li>
           );
         })}
       </ul>
+      )}
+
+      {paid.length > 0 && (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-muted">
+            Paid in full by the batches: {peopleText(paid.length)}
+          </summary>
+          <ul className="mt-2 divide-y divide-line-soft rounded-lg border border-line text-muted">
+            {paid.map((p) => {
+              const code = shownCode(p.employeeCode);
+              const over = overpaidNote(p);
+              return (
+                <li key={p.id} className="flex items-start gap-3 px-4 py-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="font-medium">{p.name}</span>
+                    {code && <span> · {code}</span>}
+                    {batchNote(marks.get(p.id)) && <span className="block text-xs">{batchNote(marks.get(p.id))}</span>}
+                    {over && <span className="block text-xs text-warn">{over}</span>}
+                  </span>
+                  <span className="tabular-nums">{formatEgp(p.held)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
 
       {makes && (
         <div className="flex flex-wrap items-end gap-3">

@@ -9,6 +9,7 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
 import { deleteRefusal } from '@/lib/session';
+import type { PayrollInputs } from '@trendlix/shared';
 import type { FormState, PayrollBankBatchView, PayrollBankFile, PayrollRunView } from '@/lib/types';
 import type { LinePatch } from './[id]/grid';
 import { todayInCairo } from '../employees/ui';
@@ -100,6 +101,18 @@ export async function setAttendanceWaiver(id: string, lineId: string, waived: bo
   if (!UUID.test(id) || !UUID.test(lineId)) return NOT_FOUND;
   if (typeof waived !== 'boolean') return { errors: ['Tick the box to waive the attendance deduction, or untick it to take it again.'] };
   return act(() => apiSend('POST', `/payroll/runs/${id}/lines/${lineId}/attendance-waiver`, { waived }), waived ? 'Waived.' : 'Deducted again.');
+}
+
+/**
+ * Corrects a line of an approved or paid run (owner, 5 November 2026: "if there was a problem in the employee calculation
+ * and has been edited"; asked, "Payslip and register too"): the figures changed and why. The API works the line out
+ * again; the register, the payslip and what the bank batches still pay follow.
+ */
+export async function correctPayrollLine(id: string, lineId: string, inputs: Partial<PayrollInputs>, reason: string): Promise<FormState> {
+  if (!UUID.test(id) || !UUID.test(lineId)) return NOT_FOUND;
+  if (typeof reason !== 'string' || !reason.trim()) return { errors: ['Write why the line is corrected.'] };
+  if (!inputs || typeof inputs !== 'object' || !Object.keys(inputs).length) return { errors: ['Change at least one figure to correct the line.'] };
+  return act(() => apiSend('POST', `/payroll/runs/${id}/lines/${lineId}/correct`, { inputs, reason: reason.trim() }), 'Corrected.');
 }
 
 /**

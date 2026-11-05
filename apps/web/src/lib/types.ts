@@ -1895,6 +1895,22 @@ export interface PayrollLineView {
    * marks them "from Zoho". Null: none; left out by an API from before it.
    */
   attendanceImport?: AttendanceImportMark | null;
+  /**
+   * Whether the caller corrects the line now (owner, 5 November 2026: "if there was a problem in the employee calculation
+   * and has been edited"): an approved or paid run's, HR's, a C-level one the CEO's. Left out by an API from before it.
+   */
+  correctable?: boolean;
+  /** Its corrections once approved, oldest first: when, by whom, why, the transfer before and after. Left out by an API from before it. */
+  corrections?: PayrollLineCorrection[];
+}
+
+/** A correction of an approved line (5 November 2026). */
+export interface PayrollLineCorrection {
+  at: string;
+  by: string | null;
+  reason: string;
+  transferFrom: number;
+  transferTo: number;
 }
 
 /** Someone employed in the month but not on the run, and why ("No signed contract for this month"). */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Prisma } from '../generated/prisma/client.js';
-import { batchFileName, batchView, sumAmounts, type BatchRow } from './bank-batches.js';
+import { batchFileName, batchView, remainingOf, sumAmounts, type BatchRow } from './bank-batches.js';
 
 // Bank transfer batches (owner, 5 November 2026: "allow me to select a group of people for the transfer", "and to
 // confirm each batch sent to be recorded"). Every name is invented.
@@ -53,6 +53,12 @@ describe('batch files and sums', () => {
   it('names the file as the owner’s files are, with the batch’s number', () => {
     expect(batchFileName('cib', '2026-11', 1)).toBe('CIB NOV 2026 Salaries Batch 1.xlsx');
     expect(batchFileName('ach', '2026-03', 2)).toBe('ACH Salaries Batch 2 MAR 2026.xlsx');
+  });
+
+  it('leaves what a line’s transfer is owed past what the batches hold, to the piaster; below 0 when paid more', () => {
+    expect(remainingOf(9437, 9117.2)).toBe(319.8);
+    expect(remainingOf(9117.2, 9117.2)).toBe(0);
+    expect(remainingOf(8717.2, 9117.2)).toBe(-400);
   });
 
   it('sums to the piaster', () => {

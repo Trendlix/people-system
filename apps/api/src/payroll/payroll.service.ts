@@ -45,7 +45,16 @@ import { finalKpis, withKpi } from './kpi-terms.js';
 import { json, savedInputs, withAdjustments, worked } from './line-work.js';
 import { PayrollLockedChangesService } from './locked-changes/locked-changes.service.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
-import type { AttendanceWaiverDto, KpiWaiverDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
+import type {
+  AttendanceWaiverDto,
+  KpiWaiverDto,
+  CorrectPayrollLineDto,
+  CreatePayrollRunDto,
+  PaidPayrollDto,
+  PayrollInputsDto,
+  ReturnPayrollDto,
+  UpdatePayrollLinesDto,
+} from './payroll.dto.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayslipsService } from './payslips.service.js';
 import { registerWorkbook } from './register.js';
@@ -234,6 +243,36 @@ const countOn = (lines: readonly RosterLine[], pending: ReadonlyMap<string, read
 
 /** The fields that were sent (undefined means "leave as it is"). */
 const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto).filter(([, v]) => v !== undefined)) as Partial<T>;
+
+/**
+ * A line's inputs as changed, checked (a draft's change and an approved line's correction alike): the expected hours
+ * never typed; paid and unpaid leave within the days the month pays (17 and 18 October 2026); permission within the Leave
+ * Setup's hours a month (19 October 2026). 400 in words.
+ */
+function checkedInputs(line: LineRow, was: PayrollInputs, changed: PayrollInputsDto | undefined, permissionMonth: number, draft = true): PayrollInputs {
+  // the expected hours are worked out from the shift, never typed (owner, 20 October 2026: "expected hours to be locked
+  // based on shifts and attendance data"): the DTO refuses any sent; a draft's line never keeps any, an approved one's
+  // correction keeps them as approved (as the CEO's waivers do), so the rest is worked out as it was
+  const { expectedHours: _typed, ...rest } = changed ? sent(changed) : {};
+  const inputs: PayrollInputs = draft ? { ...was, ...rest, expectedHours: null } : { ...was, ...rest };
+  const lineTerms = line.terms as unknown as PayrollTerms;
+  const paidDays = lineTerms.paidDays;
+  if (inputs.leaveDays !== null && inputs.leaveDays > paidDays) {
+    throw new BadRequestException(`${line.nameEn}: the leave days (${inputs.leaveDays}) can't be more than the ${paidDays} days paid this month.`);
+  }
+  const leave = leaveDaysOf(lineTerms, inputs);
+  if ((leave.leaveDays ?? 0) + (leave.unpaidLeaveDays ?? 0) > paidDays) {
+    throw new BadRequestException(
+      `${line.nameEn}: the leave days (${leave.leaveDays ?? 0}) and the unpaid leave days (${leave.unpaidLeaveDays ?? 0}) can't be more than the ${paidDays} days paid this month together.`,
+    );
+  }
+  if (typeof inputs.permissionHours === 'number' && inputs.permissionHours > permissionMonth) {
+    throw new BadRequestException(
+      `${line.nameEn}: the permission hours (${formatHours(inputs.permissionHours)}) can't be more than the ${permissionHoursText(permissionMonth)} a month Leave Setup allows.`,
+    );
+  }
+  return inputs;
+}
 
 // Monthly payroll runs (owner's decisions, 16 October 2026). HR makes a month's run: everyone with a signed contract in
 // force in the month, with the contract's terms and the profile's social insurance, worked out with the settings' rules
@@ -597,27 +636,7 @@ export class PayrollService {
     for (const change of dto.lines) {
       const line = lines.get(change.id)!;
       const was = savedInputs(line.inputs);
-      // the expected hours are worked out from the shift, never typed (owner, 20 October 2026: "expected hours to be
-      // locked based on shifts and attendance data"): the DTO refuses any sent, and a draft's line never keeps any
-      const inputs: PayrollInputs = { ...was, ...(change.inputs ? sent(change.inputs) : {}), expectedHours: null };
-      // paid leave is taken on days the month pays (owner, 17 October 2026), and unpaid leave too (18 October 2026)
-      const lineTerms = line.terms as unknown as PayrollTerms;
-      const paidDays = lineTerms.paidDays;
-      if (inputs.leaveDays !== null && inputs.leaveDays > paidDays) {
-        throw new BadRequestException(`${line.nameEn}: the leave days (${inputs.leaveDays}) can't be more than the ${paidDays} days paid this month.`);
-      }
-      const leave = leaveDaysOf(lineTerms, inputs);
-      if ((leave.leaveDays ?? 0) + (leave.unpaidLeaveDays ?? 0) > paidDays) {
-        throw new BadRequestException(
-          `${line.nameEn}: the leave days (${leave.leaveDays ?? 0}) and the unpaid leave days (${leave.unpaidLeaveDays ?? 0}) can't be more than the ${paidDays} days paid this month together.`,
-        );
-      }
-      // permission counts as worked within the month's allowance only (19 October 2026)
-      if (typeof inputs.permissionHours === 'number' && inputs.permissionHours > permissionMonth) {
-        throw new BadRequestException(
-          `${line.nameEn}: the permission hours (${formatHours(inputs.permissionHours)}) can't be more than the ${permissionHoursText(permissionMonth)} a month Leave Setup allows.`,
-        );
-      }
+      const inputs = checkedInputs(line, was, change.inputs, permissionMonth);
       const diff: Record<string, unknown> = changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>);
       // what an attendance import filled isn't typed over (owner, 19 October 2026: "imported data shouldn't be
       // editable"): the month is imported again, or the import undone on its review, to change it; sent as it is, it is
@@ -644,6 +663,59 @@ export class PayrollService {
     for (const u of updates) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: LINE, entityId: u.line.id, diff: { runId: id, month, employeeCode: u.line.employeeCode, ...u.diff } });
     }
+    return this.get(id, user);
+  }
+
+  /**
+   * Corrects a line of an approved (or paid) run (owner, 5 November 2026: "if there was a problem in the employee
+   * calculation and has been edited"; asked, "Payslip and register too"): its inputs changed, with why, checked as a
+   * draft's are, and the line worked out again with the run's rules and rates set by law; an imported figure may be
+   * corrected too (then no longer marked imported). Whoever changes a draft's line does (HR; a C-level person's the CEO).
+   * The correction is kept with the transfer before and after: the bank batches pay what is left of the new transfer
+   * once what they sent is taken off. The register follows the line; its payslip is drawn again (at once once paid).
+   */
+  async correctLine(id: string, lineId: string, dto: CorrectPayrollLineDto, user: SessionUser): Promise<PayrollRunView> {
+    const run = await this.row(id);
+    const month = monthOf(run);
+    if (!isApproved(run.status)) {
+      throw new ConflictException(`The ${monthName(month)} payroll ${STATUS_TEXT[run.status as PayrollStatus]}: change its lines as they are; a line is corrected once the CEO approved it.`);
+    }
+    const confidential = await this.confidential.view(user);
+    const line = run.lines.find((l) => l.id === lineId && !confidential.hidden.has(l.employeeId));
+    if (!line) throw new NotFoundException('That line is not on this payroll.');
+    if (!changesPayrollLine(user, confidential.all.has(line.employeeId))) {
+      throw new ForbiddenException(confidential.all.has(line.employeeId) ? `${line.nameEn} is C-level: the CEO corrects their line.` : `HR corrects ${line.nameEn}'s line.`);
+    }
+    const setup = await this.prisma.leaveSettings.findUnique({ where: { id: 1 }, select: { permissionHoursPerMonth: true } });
+    const permissionMonth = setup ? setup.permissionHoursPerMonth.toNumber() : PERMISSION_RULE_DEFAULTS.hoursPerMonth;
+    // the inputs as saved, as the CEO's waivers read them, so the line is worked out as it was but for the correction
+    const was = { ...EMPTY_PAYROLL_INPUTS, ...(line.inputs as object) } as PayrollInputs;
+    const inputs = checkedInputs(line, was, dto.inputs, permissionMonth, false);
+    const diff: Record<string, unknown> = changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>);
+    if (!Object.keys(diff).length) throw new BadRequestException('Change at least one figure to correct the line.');
+    for (const key of MONEY_INPUTS) if (key in diff) diff[key] = 'changed';
+    // a corrected figure an import filled is the correction's now
+    const mark = line.attendanceImport as unknown as AttendanceImportMark | null;
+    const keptMark = mark ? { ...mark, fields: mark.fields.filter((f) => !(f in diff)) } : null;
+    const work = worked(line.terms as unknown as PayrollTerms, inputs, run.rules as unknown as PayrollRules, runLawRates(run));
+    const reason = dto.reason.trim();
+    await this.prisma.$transaction([
+      this.prisma.payrollLine.update({
+        where: { id: line.id },
+        data: { inputs: json(inputs), ...work, attendanceImport: keptMark ? json(keptMark) : Prisma.DbNull },
+      }),
+      this.prisma.payrollLineCorrection.create({
+        data: { lineId: line.id, reason, changes: json(diff), netFrom: line.net, netTo: work.net, transferFrom: line.transfer, transferTo: work.transfer, byId: user.id },
+      }),
+    ]);
+    await this.payslips.drawAgain(line.id, user);
+    await this.audit.record({
+      userId: user.id,
+      action: 'correct',
+      entityType: LINE,
+      entityId: line.id,
+      diff: { runId: id, month, employeeCode: line.employeeCode, reason, transfer: { from: line.transfer.toNumber(), to: work.transfer }, ...diff },
+    });
     return this.get(id, user);
   }
 
@@ -886,7 +958,7 @@ export class PayrollService {
       // the C-level people, and those hidden from the caller (19 October 2026)
       this.confidential.view(user),
       // who made the bank batches and confirmed them sent (5 November 2026)
-      userNames(this.prisma, batchUsers(run.bankBatches)),
+      userNames(this.prisma, [...batchUsers(run.bankBatches), ...run.lines.flatMap((l) => l.corrections.map((x) => x.by))]),
     ]);
     const people = notOnRun.length
       ? await this.prisma.employee.findMany({ where: { id: { in: notOnRun.map((g) => g.employeeId) } }, select: { id: true, employeeCode: true, fullNameEn: true } })
