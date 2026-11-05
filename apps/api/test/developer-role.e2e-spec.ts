@@ -936,7 +936,7 @@ describe('The Developer role (e2e)', () => {
     const unknown = '00000000-0000-4000-8000-000000000000';
     for (const path of [
       `/payroll/runs/${runId}/files/register`,
-      `/payroll/runs/${runId}/files/cib`,
+      `/payroll/runs/${runId}/bank-batches/${unknown}/file`,
       `/payroll/lines/${unknown}/payslip/en`,
       `/payroll/runs/${runId}/payslips`,
       `/documents/${unknown}/file`,

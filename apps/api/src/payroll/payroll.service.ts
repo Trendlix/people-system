@@ -33,10 +33,11 @@ import { Prisma } from '../generated/prisma/client.js';
 import { NoticesService } from '../notifications/notices.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { GridInputsService } from './adjustments/grid-inputs.service.js';
+import { userNames } from './adjustments/people.js';
 import { RecurringDeductionsService } from './adjustments/recurring.service.js';
 import { RunAdjustmentsService } from './adjustments/run-adjustments.service.js';
-import { achAccount, cleanBankDetails, inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
-import { achWorkbook, cibWorkbook } from './bank-files.js';
+import { cleanBankDetails, type BankDetails } from './bank.js';
+import { batchUsers } from './bank-batches.js';
 import { ExpectedHoursService } from './expected-hours.service.js';
 import { HolidaysService } from './holidays.service.js';
 import { LawRatesService } from './law-rates/law-rates.service.js';
@@ -44,7 +45,7 @@ import { finalKpis, withKpi } from './kpi-terms.js';
 import { json, savedInputs, withAdjustments, worked } from './line-work.js';
 import { PayrollLockedChangesService } from './locked-changes/locked-changes.service.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
-import type { AttendanceWaiverDto, KpiWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
+import type { AttendanceWaiverDto, KpiWaiverDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayslipsService } from './payslips.service.js';
 import { registerWorkbook } from './register.js';
@@ -835,66 +836,6 @@ export class PayrollService {
     return { fileName: `Payroll ${monthName(view.month)}${view.status === 'draft' ? ' (draft)' : ''}.xlsx`, data };
   }
 
-  /**
-   * A bank file, once the CEO has approved the run: the lines paid through that file (not on hold, something to
-   * transfer, bank details it can pay), with the bank details copied at the approval. Every download is in the audit
-   * log.
-   */
-  async bankFile(id: string, kind: BankFileKind, query: CibFileQueryDto, user: SessionUser): Promise<{ fileName: string; data: Buffer }> {
-    const run = await this.row(id);
-    const month = monthOf(run);
-    if (!isApproved(run.status)) {
-      throw new ConflictException(`The ${monthName(month)} payroll ${STATUS_TEXT[run.status as PayrollStatus]}: the bank files are made once the CEO approves it.`);
-    }
-    // without the C-level people's lines for anyone but the CEO and a Super Admin (owner, 19 October 2026), who download
-    // the files complete
-    const hidden = new Set(await this.confidential.hiddenFrom(user));
-    const lines = run.lines
-      .filter((l) => !hidden.has(l.employeeId))
-      .map((l) => ({ line: l, details: bankDetailsOf(l, undefined, true), transfer: l.transfer.toNumber() }))
-      .filter((x) => inFile({ onHold: x.line.onHold, transfer: x.transfer, bank: lineBank(x.details) }, kind));
-    if (!lines.length) {
-      throw new ConflictException(`Nobody on the ${monthName(month)} payroll is paid through the ${kind === 'cib' ? 'CIB' : 'ACH'} file.`);
-    }
-    const holder = (x: (typeof lines)[number]) => x.details.holderName ?? x.line.nameEn;
-
-    let data: Buffer;
-    let fileName: string;
-    const today = todayInCairo();
-    const valueDate = query.valueDate ?? today;
-    if (kind === 'cib') {
-      const s = await this.settings.row();
-      if (!s.cibDebitAccount || !s.cibDebitAccountName) {
-        throw new ConflictException("Enter the company's CIB account and its name in the payroll settings first: the CIB file pays the salaries from it.");
-      }
-      data = await cibWorkbook({
-        fileDate: today,
-        valueDate,
-        month,
-        debitAccount: s.cibDebitAccount,
-        debitAccountName: s.cibDebitAccountName,
-        lines: lines.map((x) => ({ account: x.details.accountNo!, name: holder(x), amount: x.transfer })),
-      });
-      fileName = `CIB ${monthShort(month)} ${month.slice(0, 4)} Salaries.xlsx`;
-    } else {
-      const s = await this.settings.row();
-      data = await achWorkbook({
-        month,
-        purpose: s.achPurpose,
-        lines: lines.map((x) => ({ name: holder(x), account: achAccount(x.details)!, bankShort: lineBank(x.details).bankShort!, amount: x.transfer })),
-      });
-      fileName = `ACH Salaries Batch ${monthShort(month)} ${month.slice(0, 4)}.xlsx`;
-    }
-    await this.audit.record({
-      userId: user.id,
-      action: 'payroll_bank_file',
-      entityType: RUN,
-      entityId: id,
-      diff: { month, file: kind, employees: lines.map((x) => x.line.employeeCode), ...(kind === 'cib' && { valueDate }) },
-    });
-    return { fileName, data };
-  }
-
   // ---------- helpers ----------
 
   private async row(id: string): Promise<RunRow> {
@@ -930,7 +871,7 @@ export class PayrollService {
   }
 
   private async view(run: RunRow, user: SessionUser): Promise<PayrollRunView> {
-    const [banks, approver, notOnRun, settings, confidential] = await Promise.all([
+    const [banks, approver, notOnRun, settings, confidential, names] = await Promise.all([
       isApproved(run.status) ? new Map<string, BankDetails>() : this.banks(run.lines.map((l) => l.employeeId)),
       // the CEO by the profile their account is linked to (22 October 2026: never by email)
       run.approvedBy ? this.prisma.employee.findFirst({ where: { account: { is: { email: run.approvedBy.email } } }, select: { fullNameEn: true } }) : null,
@@ -944,6 +885,8 @@ export class PayrollService {
       this.settings.row(),
       // the C-level people, and those hidden from the caller (19 October 2026)
       this.confidential.view(user),
+      // who made the bank batches and confirmed them sent (5 November 2026)
+      userNames(this.prisma, batchUsers(run.bankBatches)),
     ]);
     const people = notOnRun.length
       ? await this.prisma.employee.findMany({ where: { id: { in: notOnRun.map((g) => g.employeeId) } }, select: { id: true, employeeCode: true, fullNameEn: true } })
@@ -958,6 +901,7 @@ export class PayrollService {
       adjustmentsNotOnRun,
       installmentLimitPercent: settings.installmentLimitPercent.toNumber(),
       confidential: { all: confidential.all, hidden: confidential.hidden, changes: (line) => changesPayrollLine(user, line) },
+      userNames: names,
     });
   }
 

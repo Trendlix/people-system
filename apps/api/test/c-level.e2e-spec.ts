@@ -61,7 +61,9 @@ interface Line {
   editable: boolean;
   inputs: { noShowDays: number | null };
   comments: string | null;
-  result: { net: number };
+  result: { net: number; transfer: number };
+  onHold: boolean;
+  bank: { file: 'cib' | 'ach' | null; problem: string | null };
 }
 
 interface Run {
@@ -329,10 +331,25 @@ describe('C-level people kept from HR (e2e)', () => {
       expect(await register(hr)).not.toContain(clara.employeeCode);
       expect(await register(hr)).toContain(nadia.employeeCode);
       expect(await register(ceo)).toContain(clara.employeeCode);
-      await get(`/payroll/runs/${run.id}/files/ach`, hr).buffer(true).parse(bytes).expect(200);
+      // a bank batch (5 November 2026): HR ticks only those they see; Clara's line isn't theirs to tick
+      const approved = (await get(`/payroll/runs/${run.id}`, hr).expect(200)).body as Run;
+      const achLines = approved.lines.filter((l) => l.bank.file === 'ach' && l.bank.problem === null && !l.onHold && l.result.transfer > 0).map((l) => l.id);
+      const batch = (await post(`/payroll/runs/${run.id}/bank-batches`, hr, { file: 'ach', lineIds: achLines }).expect(201)).body as { id: string };
+      await get(`/payroll/runs/${run.id}/bank-batches/${batch.id}/file`, hr).buffer(true).parse(bytes).expect(200);
       const ach = await prisma.auditLog.findFirstOrThrow({ where: { userId: hrUserId, action: 'payroll_bank_file', entityId: run.id }, orderBy: { at: 'desc' } });
       expect((ach.diff as { employees: string[] }).employees).not.toContain(clara.employeeCode);
       expect((ach.diff as { employees: string[] }).employees).toContain(nadia.employeeCode);
+      // both are paid through the ACH file (NBE): HR can't tick Clara
+      const claraPaid = ((await get(`/payroll/runs/${run.id}`, ceo).expect(200)).body as Run).lines.find((l) => l.employeeId === clara.id)!;
+      expect(achLines).not.toContain(claraPaid.id);
+      await post(`/payroll/runs/${run.id}/bank-batches`, hr, { file: 'ach', lineIds: [claraPaid.id] }).expect(400);
+      // the CEO's batch with Clara in it: HR sees it without her, and doesn't download, confirm or discard it
+      const ceoBatch = (await post(`/payroll/runs/${run.id}/bank-batches`, ceo, { file: 'ach', lineIds: [claraPaid.id] }).expect(201)).body as { id: string };
+      const seen = ((await get(`/payroll/runs/${run.id}`, hr).expect(200)).body as { bankBatches: { id: string; people: number; total: number; hidden: number; acts: boolean }[] }).bankBatches;
+      expect(seen.find((b) => b.id === ceoBatch.id)).toMatchObject({ people: 0, total: 0, hidden: 1, acts: false });
+      await get(`/payroll/runs/${run.id}/bank-batches/${ceoBatch.id}/file`, hr).buffer(true).parse(bytes).expect(403);
+      await post(`/payroll/runs/${run.id}/bank-batches/${ceoBatch.id}/sent`, hr).expect(403);
+      await post(`/payroll/runs/${run.id}/bank-batches/${ceoBatch.id}/sent`, ceo).expect(200);
 
       await post(`/payroll/runs/${run.id}/paid`, hr, { paidOn: TODAY }).expect(200);
       const zipNames = async (session: string) =>

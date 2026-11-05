@@ -24,6 +24,7 @@ import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { lineInstallments } from './adjustments/plans.js';
 import { bankCheck, cleanBankDetails, lineBank, type BankDetails, type LineBank } from './bank.js';
+import { BATCH_INCLUDE, batchView, type PayrollBankBatchView } from './bank-batches.js';
 import type { Exclusion } from './roster.js';
 
 // A payroll run as the API sends it (owner's decisions, 16 October 2026): dates as YYYY-MM-DD, the month as YYYY-MM,
@@ -125,6 +126,11 @@ export interface PayrollRunView {
    * "until corrected", and HR may decide to pay them so). Without the C-level lines hidden from the caller.
    */
   openCheckIns: { lineId: string; employeeId: string; name: string; dates: string[] }[];
+  /**
+   * The bank transfers made from it, batch by batch (owner, 5 November 2026: "allow me to select a group of people for
+   * the transfer", "and to confirm each batch sent to be recorded"), by number; each with the lines the caller sees.
+   */
+  bankBatches: PayrollBankBatchView[];
 }
 
 export interface PayrollRunSummary {
@@ -143,6 +149,7 @@ export interface PayrollRunSummary {
 export const RUN_INCLUDE = {
   approvedBy: { select: { id: true, email: true } },
   lines: { orderBy: [{ department: { sort: 'asc', nulls: 'last' } }, { nameEn: 'asc' }], include: { payslips: { select: { language: true } } } },
+  bankBatches: { orderBy: { number: 'asc' }, include: BATCH_INCLUDE },
 } satisfies Prisma.PayrollRunInclude;
 
 export type RunRow = Prisma.PayrollRunGetPayload<{ include: typeof RUN_INCLUDE }>;
@@ -293,6 +300,8 @@ export function runView(
      * as one row), and whether the caller changes a line, a C-level person's or not (packages/shared changesPayrollLine).
      */
     confidential?: { all: ReadonlySet<string>; hidden: ReadonlySet<string>; changes: (confidentialLine: boolean) => boolean };
+    /** The names of the users who made the bank batches and confirmed them sent, by id. */
+    userNames?: ReadonlyMap<string, { name: string }>;
   },
 ): PayrollRunView {
   const approved = isApproved(run.status);
@@ -327,5 +336,6 @@ export function runView(
     adjustmentsNotOnRun: ctx.adjustmentsNotOnRun.filter((a) => !c?.hidden.has(a.employeeId)),
     hidden: hidden ? { count: hidden, label: hiddenLinesLabel(hidden) } : null,
     openCheckIns: openCheckInsOf(lines),
+    bankBatches: run.bankBatches.map((b) => batchView(b, c?.hidden ?? new Set(), ctx.userNames ?? new Map())),
   };
 }

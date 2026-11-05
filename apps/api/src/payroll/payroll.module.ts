@@ -4,7 +4,8 @@ import { EtaFileService } from './eta/eta.service.js';
 import { ExpectedHoursService } from './expected-hours.service.js';
 import { HolidaysController } from './holidays.controller.js';
 import { HolidaysService } from './holidays.service.js';
-import { PayrollController, PayrollSettingsController } from './payroll.controller.js';
+import { BankBatchesService } from './bank-batches.service.js';
+import { PayrollBankBatchesController, PayrollController, PayrollSettingsController } from './payroll.controller.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayrollService } from './payroll.service.js';
 import { MyPayslipsController, PayslipsController } from './payslips.controller.js';
@@ -23,9 +24,11 @@ import { PayrollVsInsuranceService } from './vs-insurance/vs-insurance.service.j
 // Social Insurance report (owner, 26 October 2026: "a comparison report between the actual payroll run and the social
 // insurance data"): each line's actual cycle beside the same month on the registered insured wage (vs-insurance/).
 // The ETA salary-tax file (owner, 27 October 2026): ETA's own upload template with an approved run's rows written in (eta/).
+// The bank files go batch by batch (owner, 5 November 2026: "allow me to select a group of people for the transfer"):
+// BankBatchesService.
 @Module({
-  controllers: [PayrollSettingsController, HolidaysController, PayrollController, PayslipsController, MyPayslipsController, PayrollVsInsuranceController, PayrollEtaController],
-  providers: [PayrollSettingsService, HolidaysService, PayrollService, PayslipsService, ExpectedHoursService, PayrollVsInsuranceService, EtaFileService],
+  controllers: [PayrollSettingsController, HolidaysController, PayrollController, PayrollBankBatchesController, PayslipsController, MyPayslipsController, PayrollVsInsuranceController, PayrollEtaController],
+  providers: [PayrollSettingsService, HolidaysService, PayrollService, BankBatchesService, PayslipsService, ExpectedHoursService, PayrollVsInsuranceService, EtaFileService],
   exports: [PayrollService],
 })
 export class PayrollModule {}

@@ -5,6 +5,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -303,8 +304,20 @@ export class PaidPayrollDto {
   paidOn: string;
 }
 
-export class CibFileQueryDto {
-  /** The day the bank pays the salaries; today when not sent. */
+/**
+ * A bank transfer batch (owner, 5 November 2026: "allow me to select a group of people for the transfer"): the file
+ * and the lines ticked for it; the CIB file's value date, the day the bank pays (today when not sent).
+ */
+export class MakeBankBatchDto {
+  @IsIn(['cib', 'ach'], { message: 'Choose the CIB or the ACH file.' })
+  file!: 'cib' | 'ach';
+
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Tick at least one person.' })
+  @ArrayMaxSize(2000)
+  @IsUUID('all', { each: true, message: 'Tick people on this payroll.' })
+  lineIds!: string[];
+
   @IsOptional() @IsDateOnly('Choose the value date, as YYYY-MM-DD.')
   valueDate?: string;
 }

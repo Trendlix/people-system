@@ -9,8 +9,10 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import { dateFrom } from '@/lib/form-data';
 import { deleteRefusal } from '@/lib/session';
-import type { FormState, PayrollRunView } from '@/lib/types';
+import type { FormState, PayrollBankBatchView, PayrollBankFile, PayrollRunView } from '@/lib/types';
 import type { LinePatch } from './[id]/grid';
+import { todayInCairo } from '../employees/ui';
+import { valueDateFrom } from './files';
 import { isMonth, runHref } from './list';
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -141,4 +143,42 @@ export async function deleteRun(id: string): Promise<FormState> {
     throw err;
   }
   redirect('/payroll');
+}
+
+/** What making a batch answers: the batch made, whose file the page then downloads, or why not. */
+export type BankBatchResult = { batchId?: string; errors?: string[] };
+
+/**
+ * Makes a bank transfer batch of the people ticked for one bank file of an approved run (owner, 5 November 2026: "allow
+ * me to select a group of people for the transfer"; asked, "Tick names"), the CIB file's with its value date (typed as
+ * DD/MM/YYYY, today when empty). The page then downloads its file; the batch is listed, to be confirmed once sent.
+ */
+export async function makeBankBatch(id: string, file: PayrollBankFile, lineIds: string[], valueDate: string | null): Promise<BankBatchResult> {
+  if (!UUID.test(id)) return { errors: NOT_FOUND.errors };
+  if (file !== 'cib' && file !== 'ach') return { errors: ['Choose the CIB file or the ACH file.'] };
+  if (!Array.isArray(lineIds) || !lineIds.every((l) => typeof l === 'string' && UUID.test(l))) return { errors: ['Tick the people again.'] };
+  if (!lineIds.length) return { errors: ['Tick at least one person.'] };
+  const date = file === 'cib' ? valueDateFrom(valueDate, todayInCairo()) : null;
+  if (file === 'cib' && !date) return { errors: ['Enter the value date as DD/MM/YYYY, e.g. 16/10/2026.'] };
+  let batch: PayrollBankBatchView | undefined;
+  try {
+    batch = await apiSend<PayrollBankBatchView>('POST', `/payroll/runs/${id}/bank-batches`, { file, lineIds: [...new Set(lineIds)], ...(date && { valueDate: date }) });
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: messagesOf(err) };
+    throw err;
+  }
+  refresh();
+  return batch?.id ? { batchId: batch.id } : { errors: ['The batch was made, but its file could not be found: download it from the batches below.'] };
+}
+
+/** Records a batch as sent to the bank (owner, 5 November 2026: "and to confirm each batch sent to be recorded"). */
+export async function confirmBankBatchSent(id: string, batchId: string): Promise<FormState> {
+  if (!UUID.test(id) || !UUID.test(batchId)) return NOT_FOUND;
+  return act(() => apiSend('POST', `/payroll/runs/${id}/bank-batches/${batchId}/sent`), 'Recorded as sent to the bank.');
+}
+
+/** Discards a batch that wasn't sent to the bank: its people can be ticked again. */
+export async function discardBankBatch(id: string, batchId: string): Promise<FormState> {
+  if (!UUID.test(id) || !UUID.test(batchId)) return NOT_FOUND;
+  return act(() => apiSend('DELETE', `/payroll/runs/${id}/bank-batches/${batchId}`), 'Discarded.');
 }

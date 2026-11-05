@@ -1948,6 +1948,39 @@ export interface PayrollRunView {
    * the payslips, the exclusions and the additions not on the run already leave them out. Left out by an older API.
    */
   hidden?: { count: number; label: string } | null;
+  /**
+   * The bank transfer batches made from the run (owner, 5 November 2026: "allow me to select a group of people for the
+   * transfer", "and to confirm each batch sent to be recorded"), by number. Left out by an API from before them.
+   */
+  bankBatches?: PayrollBankBatchView[];
+}
+
+/**
+ * A bank transfer batch: the people ticked for one bank file of an approved run, each with the amount it transfers,
+ * made when its file is downloaded and confirmed once it is sent to the bank (POST /payroll/runs/:id/bank-batches).
+ */
+export interface PayrollBankBatchView {
+  id: string;
+  /** 1, 2 … within the run. */
+  number: number;
+  file: PayrollBankFile;
+  /** The CIB file's value date (YYYY-MM-DD): the day the bank pays; null for the ACH file. */
+  valueDate: string | null;
+  /** The lines in it the caller sees, with the amount transferred to each. */
+  lines: { lineId: string; amount: number }[];
+  /** How many of those, and their total. */
+  people: number;
+  total: number;
+  /** Its lines hidden from the caller (the C-level people's); 0 usually. */
+  hidden: number;
+  /** When it was made (ISO), and by whom. */
+  madeAt: string;
+  madeBy: string | null;
+  /** When it was confirmed sent to the bank (ISO), and by whom; null until then. */
+  sentAt: string | null;
+  sentBy: string | null;
+  /** Whether the caller may download it again, confirm it sent or discard it: not when it has people hidden from them. */
+  acts: boolean;
 }
 
 /**

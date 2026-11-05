@@ -7,7 +7,7 @@ import pg from 'pg';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { todayInCairo } from '../src/common/date-only.js';
-import { firstDay, lastDay, monthName, monthsLater } from '../src/payroll/months.js';
+import { firstDay, lastDay, monthName, monthShort, monthsLater } from '../src/payroll/months.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
 import { assertTestDatabase } from './test-env.js';
@@ -83,6 +83,24 @@ interface Run {
   lines: Line[];
   exclusions: { employeeId: string; employeeCode: string; name: string; reason: string }[];
   bankCheck: { cib: number; ach: number; problems: number };
+  bankBatches: Batch[];
+}
+
+/** A bank transfer batch (5 November 2026). */
+interface Batch {
+  id: string;
+  number: number;
+  file: 'cib' | 'ach';
+  valueDate: string | null;
+  lines: { lineId: string; amount: number }[];
+  people: number;
+  total: number;
+  hidden: number;
+  madeAt: string;
+  madeBy: string | null;
+  sentAt: string | null;
+  sentBy: string | null;
+  acts: boolean;
 }
 
 /** Someone hired for these tests. */
@@ -164,6 +182,14 @@ describe('Payroll (e2e)', () => {
     api().post(`/api/payroll/runs/${id}/${step}`).set('Cookie', session).send(body);
   const patchLines = (id: string, lines: object[], session = hr) => api().patch(`/api/payroll/runs/${id}/lines`).set('Cookie', session).send({ lines });
   const file = (id: string, kind: string, session = hr) => api().get(`/api/payroll/runs/${id}/files/${kind}`).set('Cookie', session).buffer(true).parse(bytes);
+  // the bank files, batch by batch (5 November 2026)
+  const makeBatch = (id: string, body: object, session = hr) => api().post(`/api/payroll/runs/${id}/bank-batches`).set('Cookie', session).send(body);
+  const batchFile = (id: string, batchId: string, session = hr) =>
+    api().get(`/api/payroll/runs/${id}/bank-batches/${batchId}/file`).set('Cookie', session).buffer(true).parse(bytes);
+  const batchSent = (id: string, batchId: string, session = hr) => api().post(`/api/payroll/runs/${id}/bank-batches/${batchId}/sent`).set('Cookie', session);
+  const discardBatch = (id: string, batchId: string, session = hr) => api().delete(`/api/payroll/runs/${id}/bank-batches/${batchId}`).set('Cookie', session);
+  /** The lines a bank file pays: not on hold, something to transfer, bank details it can pay. */
+  const payees = (r: Run, kind: 'cib' | 'ach') => r.lines.filter((l) => !l.onHold && l.result.transfer > 0 && l.bank.file === kind && l.bank.problem === null);
   const settings = (body: object, session = hr) => api().patch('/api/payroll/settings').set('Cookie', session).send(body);
 
   const lineOf = (run: Run, p: Person) => run.lines.find((l) => l.employeeId === p.id);
@@ -609,8 +635,12 @@ describe('Payroll (e2e)', () => {
       expect(mine[headers.indexOf('Leave days')]).toBe(1.5);
 
       for (const kind of ['cib', 'ach']) {
-        expect(message(await file(run.id, kind).expect(409))).toBe(`The ${monthName(MONTH)} payroll is a draft: the bank files are made once the CEO approves it.`);
+        expect((await makeBatch(run.id, { file: kind, lineIds: run.lines.map((l) => l.id) }).expect(409)).body.message).toBe(
+          `The ${monthName(MONTH)} payroll is a draft: the bank files are made once the CEO approves it.`,
+        );
       }
+      // the whole files of before are no more: a batch at a time
+      await file(run.id, 'cib').expect(404);
       await file(run.id, 'register', staff).expect(403);
     });
 
@@ -663,17 +693,35 @@ describe('Payroll (e2e)', () => {
       expect(audit.find((a) => a.action === 'return')!.diff).toMatchObject({ reason: 'Check the joiner’s days.' });
     });
 
-    it('the CIB file pays the CIB accounts from the company’s account, as approved; on hold and problems left out', async () => {
-      // without the company's account it can't be made
+    it('the CIB file pays the people ticked, from the company’s account, as approved; on hold and problems can’t be ticked', async () => {
+      const cib = payees(run, 'cib').map((l) => l.id);
+      expect(cib).toContain(lineOf(run, regular)!.id);
+      // without the company's account no CIB batch is made
       await settings({ cibDebitAccount: null }).expect(200);
-      expect(message(await file(run.id, 'cib').expect(409))).toBe(
+      expect((await makeBatch(run.id, { file: 'cib', lineIds: cib }).expect(409)).body.message).toBe(
         "Enter the company's CIB account and its name in the payroll settings first: the CIB file pays the salaries from it.",
       );
       await settings({ cibDebitAccount: '123456789012' }).expect(200);
 
+      // nobody ticked, someone the file doesn't pay, a bad date, someone else's role: refused
+      expect((await makeBatch(run.id, { file: 'cib', lineIds: [] }).expect(400)).body.message).toEqual(['Tick at least one person.']);
+      const notCib = run.lines.find((l) => !cib.includes(l.id))!;
+      expect((await makeBatch(run.id, { file: 'cib', lineIds: [...cib, notCib.id] }).expect(400)).body.message).toBe(
+        `${notCib.name} isn't paid through the CIB file this month.`,
+      );
+      await makeBatch(run.id, { file: 'cib', lineIds: cib, valueDate: '2026-02-30' }).expect(400);
+      await makeBatch(run.id, { file: 'cib', lineIds: cib }, staff).expect(403);
+
       const valueDate = todayInCairo();
-      const res = await file(run.id, `cib?valueDate=${valueDate}`, finance).expect(200);
+      const made = (await makeBatch(run.id, { file: 'cib', lineIds: [...cib, cib[0]], valueDate }, finance).expect(201)).body as Batch;
+      const amounts = cib.map((id) => run.lines.find((l) => l.id === id)!.result.transfer);
+      expect(made).toMatchObject({ number: 1, file: 'cib', valueDate, people: cib.length, hidden: 0, sentAt: null, acts: true });
+      expect(made.total).toBeCloseTo(amounts.reduce((a, b) => a + b, 0), 2);
+      expect(made.madeBy).not.toBeNull();
+
+      const res = await batchFile(run.id, made.id, finance).expect(200);
       expect(res.headers['content-type']).toBe(XLSX);
+      expect(res.headers['content-disposition']).toContain(`CIB ${monthShort(MONTH)} ${MONTH.slice(0, 4)} Salaries Batch 1.xlsx`);
       const wb = await workbook(res.body as Buffer);
       expect(wb.worksheets.map((s) => s.name)).toEqual(['Payroll']);
       const ws = wb.worksheets[0];
@@ -693,27 +741,67 @@ describe('Payroll (e2e)', () => {
       const credits = rows.slice(2, -1).reduce((cents, row) => cents + Math.round((row[8] as number) * 100), 0) / 100;
       expect((ws.getCell(`I${rows.length}`).value as { result: number }).result).toBe(credits);
       expect(ws.getCell('H2').value).toEqual({ formula: `I${rows.length}`, result: credits });
+      await batchFile(run.id, made.id, staff).expect(403);
 
-      await file(run.id, 'cib?valueDate=2026-02-30').expect(400);
-      await file(run.id, 'cib', staff).expect(403);
+      // on the run, with who made it
+      expect(((await getRun(run.id).expect(200)).body as Run).bankBatches).toEqual([made]);
     });
 
-    it('the ACH file pays every other bank, with the details copied at the approval', async () => {
-      const res = await file(run.id, 'ach', ceo).expect(200);
+    it('the ACH file pays the people ticked, with the details copied at the approval; each batch confirmed sent is kept', async () => {
+      const ach = payees(run, 'ach');
+      const joinerLine = lineOf(run, joiner)!;
+      expect(ach.map((l) => l.id)).toContain(joinerLine.id);
+      // the joiner alone first: a batch of one
+      const first = (await makeBatch(run.id, { file: 'ach', lineIds: [joinerLine.id] }, ceo).expect(201)).body as Batch;
+      expect(first).toMatchObject({ number: 2, file: 'ach', valueDate: null, lines: [{ lineId: joinerLine.id, amount: joinerLine.result.transfer }], people: 1 });
+      const res = await batchFile(run.id, first.id, ceo).expect(200);
+      expect(res.headers['content-disposition']).toContain(`ACH Salaries Batch 2 ${monthShort(MONTH)} ${MONTH.slice(0, 4)}.xlsx`);
       const wb = await workbook(res.body as Buffer);
       expect(wb.worksheets).toHaveLength(1);
       const rows = rowsOf(wb.worksheets[0]);
       expect(rows[0]).toEqual(['TransactionID', 'CreditorName', 'CreditorAccountNumber', 'CreditorBank', 'CreditorBankBranch', 'TransactionAmount', 'TransactionPurpose', 'Comments', 'ReceiverEmail', 'SMSMobileNumber']);
-      const mine = rows.find((row) => row[1] === `Joiner ${RUN}`)!; // no holder name: the English name
-      expect(mine.slice(1, 8)).toEqual([`Joiner ${RUN}`, '1234567890123456789', 'NBE', undefined, lineOf(run, joiner)!.result.transfer, 'CASH', `${monthName(MONTH)} Salary`]);
-      expect(rows.slice(1).map((row) => row[0])).toEqual(rows.slice(1).map((_, i) => String(i + 1)));
-      // no bank details: in neither file
-      expect(rows.some((row) => row[1] === `Freelancer ${RUN}`)).toBe(false);
+      expect(rows).toHaveLength(2);
+      // no holder name: the English name
+      expect(rows[1].slice(0, 8)).toEqual(['1', `Joiner ${RUN}`, '1234567890123456789', 'NBE', undefined, joinerLine.result.transfer, 'CASH', `${monthName(MONTH)} Salary`]);
 
-      const downloads = (await auditOf('payroll_run', run.id)).filter((a) => a.action === 'payroll_bank_file');
-      expect(downloads.map((a) => (a.diff as { file: string }).file)).toEqual(['cib', 'ach']);
-      expect(downloads[0].diff).toMatchObject({ month: MONTH, file: 'cib', valueDate: todayInCairo() });
-      expect((downloads[1].diff as { employees: string[] }).employees).toContain(joiner.employeeCode);
+      // confirmed sent: kept, and confirmed once
+      const sent = (await batchSent(run.id, first.id).expect(200)).body as Batch;
+      expect(sent.sentAt).not.toBeNull();
+      expect(sent.sentBy).not.toBeNull();
+      expect((await batchSent(run.id, first.id).expect(409)).body.message).toBe('Batch 2 was already confirmed sent to the bank.');
+      expect((await discardBatch(run.id, first.id).expect(409)).body.message).toBe('Batch 2 was sent to the bank, so it is kept.');
+      await batchSent(run.id, first.id, staff).expect(403);
+
+      // someone already sent may be ticked again; a batch not sent may be discarded, and the next takes the next number
+      const again = (await makeBatch(run.id, { file: 'ach', lineIds: ach.map((l) => l.id) }).expect(201)).body as Batch;
+      expect(again).toMatchObject({ number: 3, people: ach.length });
+      await discardBatch(run.id, again.id).expect(204);
+      await batchFile(run.id, again.id).expect(404);
+      const next = (await makeBatch(run.id, { file: 'ach', lineIds: ach.map((l) => l.id) }).expect(201)).body as Batch;
+      expect(next.number).toBe(3);
+      expect(((await getRun(run.id).expect(200)).body as Run).bankBatches.map((b) => [b.number, b.file, b.sentAt !== null])).toEqual([
+        [1, 'cib', false],
+        [2, 'ach', true],
+        [3, 'ach', false],
+      ]);
+      // no bank details: in no batch
+      await makeBatch(run.id, { file: 'ach', lineIds: [lineOf(run, freelancer)!.id] }).expect(400);
+
+      const audit = await auditOf('payroll_run', run.id);
+      expect(audit.filter((a) => a.action.startsWith('payroll_bank')).map((a) => [a.action, (a.diff as { batch: number }).batch])).toEqual([
+        ['payroll_bank_batch', 1],
+        ['payroll_bank_file', 1],
+        ['payroll_bank_batch', 2],
+        ['payroll_bank_file', 2],
+        ['payroll_bank_batch_sent', 2],
+        ['payroll_bank_batch', 3],
+        ['payroll_bank_batch_discarded', 3],
+        ['payroll_bank_batch', 3],
+      ]);
+      expect(audit.find((a) => a.action === 'payroll_bank_batch')!.diff).toMatchObject({ month: MONTH, file: 'cib', valueDate: todayInCairo() });
+      expect((audit.find((a) => a.action === 'payroll_bank_file' && (a.diff as { batch: number }).batch === 2)!.diff as { employees: string[] }).employees).toEqual([
+        joiner.employeeCode,
+      ]);
     });
 
     it('HR marks it paid: not in the future, nor before the month began', async () => {
@@ -725,8 +813,9 @@ describe('Payroll (e2e)', () => {
       run = (await act(run.id, 'paid', hr, { paidOn: todayInCairo() }).expect(200)).body as Run;
       expect(run).toMatchObject({ status: 'paid', paidOn: todayInCairo() });
       await act(run.id, 'paid', hr, { paidOn: todayInCairo() }).expect(409);
-      // still downloadable
-      await file(run.id, 'ach').expect(200);
+      // still made and downloaded
+      const paid = (await makeBatch(run.id, { file: 'ach', lineIds: payees(run, 'ach').map((l) => l.id) }).expect(201)).body as Batch;
+      await batchFile(run.id, paid.id).expect(200);
       const ws = (await workbook((await file(run.id, 'register').expect(200)).body as Buffer)).worksheets[0];
       expect(ws.getCell('A1').value).toBe(`Payroll — ${monthName(MONTH)}`);
       expect(ws.getCell('A2').value as string).toMatch(/^Status: Paid, on \d\d\/\d\d\/\d{4}$/);

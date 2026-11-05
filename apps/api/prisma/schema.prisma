@@ -113,6 +113,8 @@ model User {
   cvUploads                 CvUpload[]
   payrollsCreated           PayrollRun[]               @relation("PayrollCreation") // payroll runs this user started
   payrollsApproved          PayrollRun[]               @relation("PayrollApproval") // payroll runs this user approved as CEO
+  bankBatchesMade           PayrollBankBatch[]         @relation("BankBatchMade") // bank transfer batches this user made
+  bankBatchesSent           PayrollBankBatch[]         @relation("BankBatchSent") // bank transfer batches this user confirmed sent
   payslipsDrawn             Payslip[]                  @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
   lawRatesChanged           PayrollLawYear[]           @relation("LawRatesChange") // years of the rates set by law this user changed last
   adjustmentsMade           PayrollAdjustment[]        @relation("AdjustmentEntry") // additions and deductions this user entered
@@ -3194,6 +3196,7 @@ model PayrollRun {
   updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
   lines             PayrollLine[]
   attendanceImports AttendanceImport[] // the attendance files read on it (Zoho People, 19 October 2026)
+  bankBatches       PayrollBankBatch[] // the bank transfers made from it, batch by batch (5 November 2026)
 
   @@map("payroll_runs")
 }
@@ -3250,12 +3253,50 @@ model PayrollLine {
   payslips          Payslip[] // the line's payslip, in English and, when asked for, in Arabic
   adjustments       PayrollAdjustment[] // the month's additions and deductions applied to it
   holdRelease       PayrollHoldRelease? // held: when and how its pay was paid out since
+  bankBatches       PayrollBankBatchLine[] // the bank transfer batches it was in
 
   @@unique([runId, employeeId])
   @@index([employeeId])
   @@index([employmentId])
   @@index([contractId])
   @@map("payroll_lines")
+}
+
+// A bank transfer batch (owner, 5 November 2026: "allow me to select a group of people for the transfer", "and to
+// confirm each batch sent to be recorded"; asked, "Tick names", "Show it, still pickable"): the people ticked for one
+// bank file of an approved run, each with the amount transferred, made when its file is downloaded and confirmed once
+// it is sent to the bank. Numbered within the run. RESTRICTED like the run's lines.
+model PayrollBankBatch {
+  id        String                 @id @default(uuid()) @db.Uuid
+  runId     String                 @map("run_id") @db.Uuid
+  run       PayrollRun             @relation(fields: [runId], references: [id], onDelete: Cascade)
+  number    Int // 1, 2 … within the run
+  file      String // BankFileKind: cib, ach
+  valueDate DateTime?              @map("value_date") @db.Date // the CIB file's: the day the bank pays
+  total     Decimal                @db.Decimal(14, 2)
+  madeById  String?                @map("made_by") @db.Uuid
+  madeBy    User?                  @relation("BankBatchMade", fields: [madeById], references: [id], onDelete: SetNull)
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  sentAt    DateTime?              @map("sent_at") @db.Timestamptz // confirmed sent to the bank
+  sentById  String?                @map("sent_by") @db.Uuid
+  sentBy    User?                  @relation("BankBatchSent", fields: [sentById], references: [id], onDelete: SetNull)
+  lines     PayrollBankBatchLine[]
+
+  @@unique([runId, number])
+  @@map("payroll_bank_batches")
+}
+
+/** A line in a bank transfer batch, with the amount the batch transfers to it. */
+model PayrollBankBatchLine {
+  batchId String           @map("batch_id") @db.Uuid
+  batch   PayrollBankBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  lineId  String           @map("line_id") @db.Uuid
+  line    PayrollLine      @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  amount  Decimal          @db.Decimal(12, 2)
+
+  @@id([batchId, lineId])
+  @@index([lineId])
+  @@map("payroll_bank_batch_lines")
 }
 
 // A payslip (owner's decisions, 16 October 2026): drawn by the system from an approved line, straight to a protected

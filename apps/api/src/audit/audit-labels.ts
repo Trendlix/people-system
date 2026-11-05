@@ -330,6 +330,9 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // no contract entered (23 October 2026: "Hold them after 7 days"): first seen, the day their access holds from set
   access_no_contract: 'Recorded no contract entered',
   payroll_bank_file: 'Downloaded a bank file',
+  payroll_bank_batch: 'Made a bank transfer batch',
+  payroll_bank_batch_sent: 'Confirmed a bank transfer batch sent',
+  payroll_bank_batch_discarded: 'Discarded a bank transfer batch',
   payroll_eta_file: 'Downloaded the ETA salary-tax file',
   payroll_statistics_file: 'Downloaded the payroll statistics',
   payslip_file: 'Downloaded payslips',

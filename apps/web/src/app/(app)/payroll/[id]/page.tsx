@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { EMPTY_PAYROLL_INPUTS, openCheckInsConfirm } from '@trendlix/shared';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
 import { loadPlaces } from '@/lib/places';
 import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
@@ -13,9 +13,35 @@ import { loadPayrollSettings } from '../../organization/payroll/data';
 import { paidOnDefault } from '../../organization/payroll/settings';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { adjustmentsHref } from '../adjustments/adjustments';
-import { approveRun, deleteRun, markRunPaid, refreshFromAttendance, refreshRun, returnRun, saveRunLines, setAttendanceWaiver, setKpiWaiver, submitRun } from '../actions';
+import {
+  approveRun,
+  confirmBankBatchSent,
+  deleteRun,
+  discardBankBatch,
+  markRunPaid,
+  refreshFromAttendance,
+  refreshRun,
+  returnRun,
+  saveRunLines,
+  setAttendanceWaiver,
+  setKpiWaiver,
+  submitRun,
+} from '../actions';
 import { loadRun } from '../data';
-import { bankFilesReady, bankLeftOut, etaCheckPath, fileHref, reviewHref, type EtaCheck } from '../files';
+import {
+  bankFilesReady,
+  bankLeftOut,
+  batchFileHref,
+  batchHiddenText,
+  batchTitle,
+  confirmSentText,
+  discardText,
+  etaCheckPath,
+  fileHref,
+  makesBankBatches,
+  reviewHref,
+  type EtaCheck,
+} from '../files';
 import { loadJson, notLoadedText } from '../load';
 import { canSeePayroll, employeesLabel, hiddenTotalsText, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
 import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslips';
@@ -25,7 +51,7 @@ import { RunAdjustments } from './adjustments-section';
 import { attendanceUploadHref, refreshesFromAttendance } from './attendance/attendance';
 import { loadImports } from './attendance/data';
 import { ImportsList } from './attendance/imports-list';
-import { CibFileForm } from './downloads';
+import { BankBatchPicker } from './bank-batches';
 import { contractsNote, lineItems } from './grid';
 import { InputsGrid, type GridRow } from './inputs-grid';
 import { ResultsTable } from './results-table';
@@ -36,7 +62,8 @@ import { shownCode } from '@/lib/hidden';
 // Paid), its totals, what each role can do next (HR: refresh, send to the CEO, mark as paid; the CEO: approve, or return
 // with a reason; a Super Admin: delete a draft), the month's figures HR types (the inputs grid), the pay each employee
 // gets with every step of it, who is left out and why, and the files: the payroll register any time, the CIB and ACH
-// bank files once approved, and once it is paid the payslips: each employee's English one, and all of them as a ZIP
+// bank files once approved, made batch by batch of the people ticked and each confirmed once sent to the bank (owner,
+// 5 November 2026), and once it is paid the payslips: each employee's English one, and all of them as a ZIP
 // (the Arabic one is made from the employee file). The month's additions and deductions on its lines, and any for
 // people not on it (owner, 17 October 2026: Additions / Deductions), each line's on the grid as its Earnings and
 // Deductions (owner, 17 October 2026: "instead of there, i think earnings and deductions will be enough"). While the
@@ -256,19 +283,69 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
         )}
 
         {ready ? (
-          <div className="space-y-4 border-t border-line-soft pt-4">
-            <CibFileForm runId={run.id} today={todayInCairo()} />
-            <div>
-              <a href={fileHref(run.id, 'ach')} className="btn btn-secondary">
-                Download ACH file
-              </a>
-            </div>
+          <div className="space-y-6 border-t border-line-soft pt-4">
+            <BankBatchPicker runId={run.id} lines={run.lines} batches={run.bankBatches ?? []} today={todayInCairo()} makes={makesBankBatches(user)} />
+            <BankBatchList run={run} makes={makesBankBatches(user)} />
           </div>
         ) : (
           <p className="border-t border-line-soft pt-4 text-sm text-muted">Made once the CEO approves the run.</p>
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * The bank transfer batches made from the run (owner, 5 November 2026: "and to confirm each batch sent to be recorded"):
+ * each with its file, people and total, who made it and when, and whether it was confirmed sent to the bank. Until then
+ * it can be confirmed, downloaded again or discarded (its people ticked again), unless it has people hidden from the
+ * caller (`acts`: whoever sees them all does it). A developer only looks.
+ */
+function BankBatchList({ run, makes }: { run: PayrollRunView; makes: boolean }) {
+  const batches = run.bankBatches ?? [];
+  if (!batches.length) return null;
+  return (
+    <div className="space-y-2">
+      <h3 className="font-semibold">Batches</h3>
+      <ul className="divide-y divide-line-soft rounded-lg border border-line">
+        {batches.map((b) => {
+          const hidden = batchHiddenText(b);
+          return (
+            <li key={b.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 py-3 text-sm">
+              <div className="min-w-0 space-y-0.5">
+                <p className="font-medium tabular-nums">{batchTitle(b)}</p>
+                {hidden && <p className="text-xs text-muted">Also {hidden}</p>}
+                <p className="text-muted">
+                  Made {formatDateTime(b.madeAt)}
+                  {b.madeBy && ` by ${b.madeBy}`}
+                  {b.valueDate && ` · Value date ${formatDate(b.valueDate)}`}
+                </p>
+                <p className={b.sentAt ? 'text-ok' : 'text-warn'}>
+                  {b.sentAt ? `Sent to the bank ${formatDateTime(b.sentAt)}${b.sentBy ? ` by ${b.sentBy}` : ''}` : 'Not confirmed sent yet'}
+                </p>
+              </div>
+              {b.acts && makes && (
+                <div className="flex flex-wrap items-start gap-2">
+                  {!b.sentAt && (
+                    <ActionButton action={confirmBankBatchSent.bind(null, run.id, b.id)} pendingText="Recording…" variant="primary" confirmText={confirmSentText(b)}>
+                      Confirm sent to the bank
+                    </ActionButton>
+                  )}
+                  <a href={batchFileHref(run.id, b.id)} className="btn btn-secondary min-h-9 px-3">
+                    Download again
+                  </a>
+                  {!b.sentAt && (
+                    <ActionButton action={discardBankBatch.bind(null, run.id, b.id)} pendingText="Discarding…" variant="danger" confirmText={discardText(b)}>
+                      Discard
+                    </ActionButton>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

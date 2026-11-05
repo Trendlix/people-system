@@ -1,10 +1,10 @@
-import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, StreamableFile } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, StreamableFile } from '@nestjs/common';
 import { CurrentUser, DeletesRecords, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { attachment } from '../templates/template-file.js';
-import type { BankFileKind } from './bank.js';
+import { BankBatchesService } from './bank-batches.service.js';
 import { XLSX_TYPE } from './bank-files.js';
-import { AttendanceWaiverDto, KpiWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto, UpdatePayrollSettingsDto } from './payroll.dto.js';
+import { AttendanceWaiverDto, KpiWaiverDto, CreatePayrollRunDto, MakeBankBatchDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto, UpdatePayrollSettingsDto } from './payroll.dto.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayrollService } from './payroll.service.js';
 
@@ -160,22 +160,45 @@ export class PayrollController {
   async register(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
     return xlsx(await this.payroll.register(id, user));
   }
+}
 
-  /** CIB's payroll system file, once approved; ?valueDate=YYYY-MM-DD, today unless sent. */
+// Bank transfer batches (owner, 5 November 2026: "allow me to select a group of people for the transfer", "and to
+// confirm each batch sent to be recorded"), once the CEO approved the run: whoever makes the bank files (HR, Finance,
+// the CEO) makes a batch of the people ticked for one file, downloads its file, confirms it sent to the bank, or
+// discards it until then. A batch is the run's lines it pays, without the C-level people for anyone they are hidden from.
+@Controller('payroll/runs')
+export class PayrollBankBatchesController {
+  constructor(private readonly batches: BankBatchesService) {}
+
+  /** A batch of the lines ticked for one file: { file: 'cib' | 'ach', lineIds, valueDate? } (the CIB file's, today unless sent). */
   @Roles('hr', 'finance', 'ceo')
-  @NotForDevelopers()
-  @Get(':id/files/cib')
-  @Header('Cache-Control', 'private, no-store')
-  async cib(@Param('id', ParseUUIDPipe) id: string, @Query() query: CibFileQueryDto, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
-    return xlsx(await this.payroll.bankFile(id, 'cib' satisfies BankFileKind, query, user));
+  @Post(':id/bank-batches')
+  make(@Param('id', ParseUUIDPipe) id: string, @Body() dto: MakeBankBatchDto, @CurrentUser() user: SessionUser) {
+    return this.batches.make(id, dto, user);
   }
 
-  /** The ACH file, once approved. */
+  /** The batch's bank file (.xlsx). */
   @Roles('hr', 'finance', 'ceo')
   @NotForDevelopers()
-  @Get(':id/files/ach')
+  @Get(':id/bank-batches/:batchId/file')
   @Header('Cache-Control', 'private, no-store')
-  async ach(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
-    return xlsx(await this.payroll.bankFile(id, 'ach', {}, user));
+  async file(@Param('id', ParseUUIDPipe) id: string, @Param('batchId', ParseUUIDPipe) batchId: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
+    return xlsx(await this.batches.file(id, batchId, user));
+  }
+
+  /** Confirms the batch was sent to the bank. */
+  @Roles('hr', 'finance', 'ceo')
+  @Post(':id/bank-batches/:batchId/sent')
+  @HttpCode(200)
+  sent(@Param('id', ParseUUIDPipe) id: string, @Param('batchId', ParseUUIDPipe) batchId: string, @CurrentUser() user: SessionUser) {
+    return this.batches.sent(id, batchId, user);
+  }
+
+  /** Discards a batch not sent to the bank. */
+  @Roles('hr', 'finance', 'ceo')
+  @Delete(':id/bank-batches/:batchId')
+  @HttpCode(204)
+  discard(@Param('id', ParseUUIDPipe) id: string, @Param('batchId', ParseUUIDPipe) batchId: string, @CurrentUser() user: SessionUser) {
+    return this.batches.discard(id, batchId, user);
   }
 }
