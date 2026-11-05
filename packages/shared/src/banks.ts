@@ -7,12 +7,17 @@
 export interface Bank {
   name: string;
   short: string;
-  bic: string;
+  /** The SWIFT code; a mobile wallet has none. */
+  bic?: string;
   /** The lengths its account numbers may have; empty when the list gives none (N/A). */
   lengths: readonly number[];
   /** Instead of exact lengths: at most this many digits. */
   upTo?: number;
   parts?: string;
+  /** A mobile wallet: its number is the mobile number it is on, and it has no IBAN. */
+  wallet?: true;
+  /** Other ways it is typed, e.g. Wallet: recognised as this one. */
+  also?: readonly string[];
 }
 
 export const BANKS: readonly Bank[] = [
@@ -57,17 +62,32 @@ export const BANKS: readonly Bank[] = [
   { name: 'Suez Canal Bank', short: 'SCB', bic: 'SUCAEGCXXXX', lengths: [16], parts: 'Customer ID (8), currency (2), account type (4), suffix (2)' },
   { name: 'The United Bank', short: 'UB', bic: 'UBOEEGCXXXX', lengths: [13], parts: 'Branch code (4), account number (6), suffix (3)' },
   { name: 'Union National Bank', short: 'UNB', bic: 'UNBEEGCXXXX', lengths: [16], parts: 'Type (1), account number (7), account type (4), currency (2), serial (2)' },
+  // Salaries can go to a mobile wallet through EG-ACH too (owner, 5 November 2026: "i can add mobile wallet, Bank Code
+  // MIDG then use Wallet Phone number"): the ACH file's bank is MIDG and its account is the wallet's mobile number.
+  { name: 'Mobile wallet', short: 'MIDG', lengths: [11], parts: 'The mobile number the wallet is on', wallet: true, also: ['Wallet', 'E-wallet', 'eWallet', 'محفظة'] },
 ];
 
-const byKey = new Map(BANKS.flatMap((b) => [[b.name.toLowerCase(), b], [b.short.toLowerCase(), b]] as const));
+/** A wallet's number: an Egyptian mobile number, 01 and 9 more digits. */
+const WALLET_NUMBER = /^01\d{9}$/;
+/** The wallet number's rule, in words. */
+export const WALLET_NUMBER_RULE = '11 digits starting with 01';
 
-/** The bank of that name or abbreviation (any capitals), or undefined for a bank not on the list. */
+/**
+ * A number as kept: a mobile number written with Egypt's code ("+20 127 954 9379") as it is dialled at home
+ * ("01279549379"). No account number has a +, so nothing else changes.
+ */
+export const withoutCountryCode = (account: string) => account.replace(/^\+20(?=1\d{9}$)/, '0');
+
+const byKey = new Map(BANKS.flatMap((b) => [b.name, b.short, ...(b.also ?? [])].map((key) => [key.toLowerCase(), b] as const)));
+
+/** The bank of that name or abbreviation (any capitals, or another way it is typed), or undefined for a bank not on the list. */
 export function bankNamed(name: string | null | undefined): Bank | undefined {
   return name ? byKey.get(name.trim().toLowerCase()) : undefined;
 }
 
 /** "19 digits", "12 or 16 digits", "10, 11 or 13 digits", "up to 10 digits"; null when the list gives no length. */
 export function accountLengthText(bank: Bank): string | null {
+  if (bank.wallet) return WALLET_NUMBER_RULE;
   if (bank.upTo) return `up to ${bank.upTo} digits`;
   const l = bank.lengths;
   if (!l.length) return null;
@@ -76,6 +96,7 @@ export function accountLengthText(bank: Bank): string | null {
 
 /** Whether an account number (as kept: no spaces) has a length the bank uses. A bank with no length takes any. */
 export function accountLengthOk(bank: Bank, account: string): boolean {
+  if (bank.wallet) return WALLET_NUMBER.test(account);
   if (bank.upTo) return /^\d+$/.test(account) && account.length <= bank.upTo;
   if (!bank.lengths.length) return true;
   return /^\d+$/.test(account) && bank.lengths.includes(account.length);

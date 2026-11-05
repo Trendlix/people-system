@@ -218,7 +218,7 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
             <dd className="text-lg font-semibold tabular-nums">{employeesLabel(run.bankCheck.cib)}</dd>
           </div>
           <div>
-            <dt className="text-sm text-muted">ACH file (other banks)</dt>
+            <dt className="text-sm text-muted">ACH file (other banks and wallets)</dt>
             <dd className="text-lg font-semibold tabular-nums">{employeesLabel(run.bankCheck.ach)}</dd>
           </div>
           <div>

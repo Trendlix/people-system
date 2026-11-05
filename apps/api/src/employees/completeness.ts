@@ -1,4 +1,5 @@
 import {
+  bankNamed,
   graduationOverdueText,
   graduationPassed,
   PAPERWORK_LABELS,
@@ -96,6 +97,7 @@ const check = (value: unknown, key: string, label: string, tab: Missing['tab']):
 export function completeness({ employee: e, identity, bank, employment, latestType, topRank, papers, today = todayInCairo() }: ProfileOnFile): Completeness {
   const student = e.stillStudying;
   const highSchool = e.degree === 'high_school' && !student;
+  const wallet = bankNamed(bank?.bankName)?.wallet === true;
   const expected = fromDateOnly(e.expectedGraduation);
   const topGrade = !!employment?.grade && topRank !== null && employment.grade.rank >= topRank;
   const checks: Check[] = [
@@ -122,8 +124,10 @@ export function completeness({ employee: e, identity, bank, employment, latestTy
     check(identity?.issueDate, 'idIssueDate', 'National ID issue date', 'basic'),
     check(identity?.expiryDate, 'idExpiry', 'National ID expiry date', 'basic'),
     check(bank?.bankName, 'bankName', 'Bank', 'basic'),
-    check(bank?.accountNo, 'accountNo', 'Account number', 'basic'),
-    check(bank?.iban, 'iban', 'IBAN', 'basic'),
+    // a mobile wallet's number is its mobile number, and it has no IBAN (owner, 5 November 2026)
+    ...(wallet
+      ? [check(bank?.accountNo, 'accountNo', 'Wallet number', 'basic')]
+      : [check(bank?.accountNo, 'accountNo', 'Account number', 'basic'), check(bank?.iban, 'iban', 'IBAN', 'basic')]),
     check(bank?.holderName, 'holderName', 'Account holder', 'basic'),
 
     ...(student ? [] : [check(e.degree, 'degree', 'Degree', 'education')]),

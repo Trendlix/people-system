@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { accountLengthText, BANKS, bankNamed } from '@trendlix/shared';
+import { accountLengthText, BANKS, bankNamed, type Bank } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { ListOrOther } from '@/components/list-or-other';
 import type { EmployeeBank, FormState } from '@/lib/types';
@@ -11,10 +11,15 @@ import { accountCount } from './bank-rules';
 // Salaries are sent through EG-ACH, so the bank is chosen from the EG-ACH banks list (packages/shared banks.ts) and
 // saved under the name the list gives it; Other keeps a bank not on the list as typed. A bank saved by its abbreviation
 // (NBE) or in other capitals is recognised. For a bank on the list, the account number shows the length the bank uses
-// and a count of the digits typed.
+// and a count of the digits typed. A mobile wallet (MIDG, owner 5 November 2026) takes the mobile number it is on and
+// has no IBAN, so the IBAN is not asked and is cleared when the details are saved; "Wallet" typed under Other is it.
+const choice = (b: Bank) => ({ value: b.name, label: `${b.name} (${b.short})` });
 const BANK_LIST = {
-  groups: [{ choices: [...BANKS].sort((a, b) => a.name.localeCompare(b.name)).map((b) => ({ value: b.name, label: `${b.name} (${b.short})` })) }],
-  aliases: new Map(BANKS.flatMap((b) => [[b.short.toLowerCase(), b.name], [b.name.toLowerCase(), b.name]] as const)),
+  groups: [
+    { choices: BANKS.filter((b) => !b.wallet).sort((a, b) => a.name.localeCompare(b.name)).map(choice) },
+    { label: 'Mobile wallets', choices: BANKS.filter((b) => b.wallet).map(choice) },
+  ],
+  aliases: new Map(BANKS.flatMap((b) => [b.short, b.name, ...(b.also ?? [])].map((key) => [key.toLowerCase(), b.name] as const))),
 };
 
 export function BankForm({
@@ -37,6 +42,7 @@ export function BankForm({
   const [accountNo, setAccountNo] = useState(() => valueOf(state, 'accountNo', bank.accountNo));
   const [typing, setTyping] = useState(false);
   const listed = bankNamed(bankName);
+  const wallet = listed?.wallet === true;
   const bic = listed?.bic;
   const count = listed && accountCount(listed, accountNo);
   // The count warns once no more typing can make the number right, or when it is left at a length the bank doesn't use.
@@ -62,7 +68,7 @@ export function BankForm({
             max={100}
             onValue={setBankName}
             otherPlaceholder="As written on the bank's letter"
-            aria-describedby={bic ? fid('bankName-hint') : undefined}
+            aria-describedby={bic || wallet ? fid('bankName-hint') : undefined}
           />
           {/* the SWIFT code (BIC) is the list's, so it is not typed or saved: it follows the bank */}
           {bic && (
@@ -70,10 +76,15 @@ export function BankForm({
               SWIFT/BIC: <span className="tabular-nums">{bic}</span>
             </p>
           )}
+          {wallet && (
+            <p id={fid('bankName-hint')} className="hint">
+              Paid through the ACH file under {listed?.short}.
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor={fid('accountNo')} className="label">
-            Account number
+            {wallet ? 'Wallet phone number' : 'Account number'}
           </label>
           <input
             id={fid('accountNo')}
@@ -85,7 +96,7 @@ export function BankForm({
             onChange={(e) => setAccountNo(e.target.value)}
             onFocus={() => setTyping(true)}
             onBlur={() => setTyping(false)}
-            placeholder={(listed && accountLengthText(listed)) || undefined}
+            placeholder={wallet ? '01X XXXX XXXX' : (listed && accountLengthText(listed)) || undefined}
             aria-describedby={count ? fid('accountNo-count') : undefined}
             aria-invalid={warn || undefined}
             className="input tabular-nums"
@@ -96,20 +107,23 @@ export function BankForm({
             </p>
           )}
         </div>
-        <div>
-          <label htmlFor={fid('iban')} className="label">
-            IBAN
-          </label>
-          <input
-            id={fid('iban')}
-            name="iban"
-            autoComplete="off"
-            maxLength={40}
-            placeholder="EG00 0000 0000 0000 0000 0000 0000 0"
-            defaultValue={valueOf(state, 'iban', bank.iban)}
-            className="input uppercase tabular-nums"
-          />
-        </div>
+        {/* a wallet has no IBAN: not asked, and sent empty so one on file is cleared */}
+        {!wallet && (
+          <div>
+            <label htmlFor={fid('iban')} className="label">
+              IBAN
+            </label>
+            <input
+              id={fid('iban')}
+              name="iban"
+              autoComplete="off"
+              maxLength={40}
+              placeholder="EG00 0000 0000 0000 0000 0000 0000 0"
+              defaultValue={valueOf(state, 'iban', bank.iban)}
+              className="input uppercase tabular-nums"
+            />
+          </div>
+        )}
         <div className="sm:col-span-2">
           <label htmlFor={fid('holderName')} className="label">
             Account holder

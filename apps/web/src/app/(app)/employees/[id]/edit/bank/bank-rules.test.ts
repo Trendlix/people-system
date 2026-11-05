@@ -38,6 +38,22 @@ describe('the digit count', () => {
   });
 });
 
+describe('a mobile wallet', () => {
+  it('is on the list as MIDG, also when typed as Wallet, with no SWIFT code', () => {
+    expect(bank('Wallet')).toMatchObject({ name: 'Mobile wallet', short: 'MIDG', wallet: true });
+    expect(bank('MIDG').bic).toBeUndefined();
+    expect(bankShown('Mobile wallet')).toBe('Mobile wallet (MIDG)');
+  });
+
+  it('counts towards a mobile number: 11 digits starting with 01, +20 written as 0', () => {
+    expect(accountKept('+20 127 954 9379')).toBe('01279549379');
+    expect(accountCount(bank('Mobile wallet'), '0127 954')).toEqual({ text: '7 of 11 digits', fits: false, over: false });
+    expect(accountCount(bank('Mobile wallet'), '0127-954-9379')).toEqual({ text: '11 of 11 digits', fits: true, over: false });
+    expect(accountCount(bank('Mobile wallet'), '1279549379')).toEqual({ text: '10 of 11 digits. A mobile number starts with 01.', fits: false, over: true });
+    expect(accountCount(bank('Mobile wallet'), '012795493790')).toEqual({ text: '12 of 11 digits', fits: false, over: true });
+  });
+});
+
 describe('the bank on the profile', () => {
   it('adds the abbreviation of a bank on the list, and leaves the rest as saved', () => {
     expect(bankShown('National Bank of Egypt')).toBe('National Bank of Egypt (NBE)');

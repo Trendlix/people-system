@@ -1557,6 +1557,29 @@ describe('Employees (e2e)', () => {
         await saveBank(moved.id, { bankName: 'National Bank of Egypt', accountNo: '1002001234567800001' }).expect(200);
         expect(await fullBank(moved.id)).toMatchObject({ bankName: 'National Bank of Egypt', accountNo: '1002001234567800001' });
       });
+
+      it('a mobile wallet (MIDG, owner 5 November 2026): the mobile number it is on, no IBAN; "Wallet" typed is it', async () => {
+        const WALLET_MESSAGE = 'The wallet number is the mobile number the wallet is on: 11 digits starting with 01.';
+        const e = await addEmployee('Wallet Holder');
+        // written with Egypt's code, with spaces: kept as dialled at home
+        const saved = await saveBank(e.id, { bankName: 'wallet', accountNo: '+20 127 954 9379', iban: null, holderName: 'Wallet Holder' }).expect(200);
+        expect(saved.body.bankName).toBe('Mobile wallet');
+        expect(await fullBank(e.id)).toMatchObject({ bankName: 'Mobile wallet', accountNo: '01279549379', iban: null, bankBic: null });
+
+        for (const accountNo of ['0127954937', '012795493790', '11279549379']) {
+          const refused = await saveBank(e.id, { accountNo }).expect(400);
+          expect(refused.body.message).toBe(WALLET_MESSAGE);
+          expect(JSON.stringify(refused.body)).not.toContain('9379');
+        }
+        const iban = await saveBank(e.id, { iban: VALID_IBAN }).expect(400);
+        expect(iban.body.message).toBe('A mobile wallet has no IBAN: leave the IBAN empty.');
+
+        // from a bank with an IBAN to a wallet: the form sends the IBAN empty, so it is cleared
+        const moved = await addEmployee('To Wallet');
+        await saveBank(moved.id, { bankName: 'CIB', accountNo: '100123456789', iban: VALID_IBAN }).expect(200);
+        await saveBank(moved.id, { bankName: 'Mobile wallet', accountNo: '01012345678', iban: '' }).expect(200);
+        expect(await fullBank(moved.id)).toMatchObject({ bankName: 'Mobile wallet', accountNo: '01012345678', iban: null });
+      });
     });
   });
 });

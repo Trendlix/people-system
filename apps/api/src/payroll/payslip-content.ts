@@ -4,6 +4,7 @@ import {
   accountsAllowanceLabelAr,
   adjustmentTypeLabel,
   adjustmentTypeLabelAr,
+  bankNamed,
   formatHours,
   isBeforeTax,
   KPI_LEVEL_LABELS,
@@ -441,8 +442,10 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   fact(L.employment, `${type}${basis}${since}`);
   if (terms.statutory && terms.insured) fact(L.insuranceNo, employee.insuranceNo && num(employee.insuranceNo));
   const ending = lastFour(line.accountNo, line.iban);
-  const bank = line.bankShort?.trim() || null;
-  const account = ending && (ar ? `حساب ينتهي بـ ${num(ending)}` : `account ending ${ending}`);
+  // a mobile wallet is said in words, not by its ACH code (MIDG)
+  const wallet = bankNamed(line.bankShort)?.wallet === true;
+  const bank = wallet ? (ar ? 'محفظة' : 'Wallet') : line.bankShort?.trim() || null;
+  const account = ending && (wallet ? (ar ? `رقم ينتهي بـ ${num(ending)}` : `number ending ${ending}`) : ar ? `حساب ينتهي بـ ${num(ending)}` : `account ending ${ending}`);
   fact(L.paidTo, bank && account ? `${bank} · ${account}` : bank || (account && sentence(account)));
   fact(L.daysPaid, num(`${plainNumber(terms.paidDays)} ${ar ? 'من' : 'of'} ${days}`));
 

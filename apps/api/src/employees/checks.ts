@@ -1,3 +1,4 @@
+import { withoutCountryCode } from '@trendlix/shared';
 import { isDateOnly } from '../common/date-only.js';
 
 // Checks on Egyptian identity and bank numbers that catch typing mistakes before they reach a contract or a bank file.
@@ -37,9 +38,12 @@ export function hasRealGovernorateCode(nationalId: string): boolean {
  */
 const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
 
-/** An account number as kept: spaces of any kind, dashes and invisible characters removed: "100-123 4567" → "1001234567". */
+/**
+ * An account number as kept: spaces of any kind, dashes and invisible characters removed: "100-123 4567" →
+ * "1001234567"; a wallet's mobile number written with Egypt's code as dialled at home: "+20 127 954 9379" → "01279549379".
+ */
 export function normalizeAccountNo(value: string): string {
-  return value.replace(INVISIBLE, '').replace(/[\s-]+/g, '');
+  return withoutCountryCode(value.replace(INVISIBLE, '').replace(/[\s-]+/g, ''));
 }
 
 /** Spaces of any kind and invisible characters removed, letters in capitals: "eg38 0019 …" → "EG380019…". */

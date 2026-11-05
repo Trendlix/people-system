@@ -1,13 +1,16 @@
-import { accountLengthOk, bankNamed, type Bank } from '@trendlix/shared';
+import { accountLengthOk, bankNamed, withoutCountryCode, type Bank } from '@trendlix/shared';
 
 // The account number's rule for a bank on the EG-ACH banks list (packages/shared banks.ts), as the bank details form
 // shows it: a hint with the length the bank uses and how its numbers are made up, and a count of the digits typed. The
 // API keeps the number without spaces or dashes and refuses a length the bank doesn't use, so the form only warns. Also
 // the bank as the profile shows it.
 
-/** The account number as the API keeps it: Arabic-Indic digits (٠-٩) as 0-9, without spaces or dashes. */
+/**
+ * The account number as the API keeps it: Arabic-Indic digits (٠-٩) as 0-9, without spaces or dashes, and a mobile
+ * number written with Egypt's code (+20 1…) as dialled at home (01…).
+ */
 export function accountKept(typed: string): string {
-  return typed.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[\s-]+/g, '');
+  return withoutCountryCode(typed.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[\s-]+/g, ''));
 }
 
 export interface AccountCount {
@@ -29,6 +32,16 @@ export function accountCount(bank: Bank, typed: string): AccountCount | null {
   if (!kept) return null;
   const n = kept.replace(/\D/g, '').length;
   const notDigits = /\D/.test(kept);
+
+  // a mobile wallet: the mobile number it is on, 01 and 9 more digits
+  if (bank.wallet) {
+    const wrongStart = !notDigits && !'01'.startsWith(kept.slice(0, 2));
+    return {
+      text: notDigits ? `${n} of 11 digits. Only digits, spaces and dashes.` : wrongStart ? `${n} of 11 digits. A mobile number starts with 01.` : `${n} of 11 digits`,
+      fits: accountLengthOk(bank, kept),
+      over: notDigits || wrongStart || n > 11,
+    };
+  }
 
   // no length on the list: any number is taken, so this is only a count
   if (!bank.upTo && !bank.lengths.length) return { text: notDigits ? `${kept.length} characters` : digits(n), fits: true, over: false };

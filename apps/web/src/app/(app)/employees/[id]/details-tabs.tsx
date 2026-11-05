@@ -50,7 +50,10 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
   const revealId = <Reveal href={identity ? base : `${base}?show=national-id`} shown={Boolean(identity)} what="national ID numbers" />;
   const accountNo = bank ? bank.accountNo : p.bank?.accountNoMasked;
   const iban = bank ? bank.iban : p.bank?.ibanMasked;
-  const revealBank = <Reveal href={bank ? base : `${base}?show=bank`} shown={Boolean(bank)} what="bank account number and IBAN" />;
+  const wallet = bankNamed(p.bank?.bankName)?.wallet === true;
+  const revealBank = (
+    <Reveal href={bank ? base : `${base}?show=bank`} shown={Boolean(bank)} what={wallet ? 'wallet phone number' : 'bank account number and IBAN'} />
+  );
   const age = ageOn(p.dateOfBirth, todayInCairo());
 
   return (
@@ -183,10 +186,11 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
           <FieldGrid
             fields={[
               { key: 'bankName', label: 'Bank', value: bankShown(p.bank?.bankName), required: true },
-              { key: 'bankBic', label: 'SWIFT/BIC', value: bankNamed(p.bank?.bankName)?.bic },
+              // a mobile wallet has no SWIFT code or IBAN: its number is the mobile number it is on
+              ...(wallet ? [] : [{ key: 'bankBic', label: 'SWIFT/BIC', value: bankNamed(p.bank?.bankName)?.bic }]),
               {
                 key: 'accountNo',
-                label: 'Account number',
+                label: wallet ? 'Wallet phone number' : 'Account number',
                 value: accountNo && (
                   <>
                     {number(accountNo)}
@@ -197,19 +201,23 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
                 protected: true,
                 note: accountNo && recorded,
               },
-              {
-                key: 'iban',
-                label: 'IBAN',
-                value: iban && (
-                  <>
-                    {number(iban)}
-                    {!accountNo && revealBank}
-                  </>
-                ),
-                required: true,
-                protected: true,
-                note: !accountNo && iban && recorded,
-              },
+              ...(wallet
+                ? []
+                : [
+                    {
+                      key: 'iban',
+                      label: 'IBAN',
+                      value: iban && (
+                        <>
+                          {number(iban)}
+                          {!accountNo && revealBank}
+                        </>
+                      ),
+                      required: true,
+                      protected: true,
+                      note: !accountNo && iban && recorded,
+                    },
+                  ]),
               { key: 'holderName', label: 'Account holder', value: p.bank?.holderName, required: true },
             ]}
           />

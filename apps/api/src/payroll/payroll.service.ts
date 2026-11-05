@@ -35,7 +35,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { GridInputsService } from './adjustments/grid-inputs.service.js';
 import { RecurringDeductionsService } from './adjustments/recurring.service.js';
 import { RunAdjustmentsService } from './adjustments/run-adjustments.service.js';
-import { cleanBankDetails, inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
+import { achAccount, cleanBankDetails, inFile, lineBank, type BankDetails, type BankFileKind } from './bank.js';
 import { achWorkbook, cibWorkbook } from './bank-files.js';
 import { ExpectedHoursService } from './expected-hours.service.js';
 import { HolidaysService } from './holidays.service.js';
@@ -881,7 +881,7 @@ export class PayrollService {
       data = await achWorkbook({
         month,
         purpose: s.achPurpose,
-        lines: lines.map((x) => ({ name: holder(x), account: x.details.iban ?? x.details.accountNo!, bankShort: lineBank(x.details).bankShort!, amount: x.transfer })),
+        lines: lines.map((x) => ({ name: holder(x), account: achAccount(x.details)!, bankShort: lineBank(x.details).bankShort!, amount: x.transfer })),
       });
       fileName = `ACH Salaries Batch ${monthShort(month)} ${month.slice(0, 4)}.xlsx`;
     }

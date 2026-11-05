@@ -10,6 +10,7 @@ import {
   trainingAgainFrom,
   underLabourLaw,
   workPatternOf,
+  WALLET_NUMBER_RULE,
   type PhotoCrop,
   type Standing,
 } from '@trendlix/shared';
@@ -230,16 +231,26 @@ function sameBank(a: string | null, b: string | null): boolean {
  * the number as they will be saved (sent, else on file) are checked together, and only when either of them changes,
  * so details already on file never stop something else being saved. A bank the list gives no length for (Central
  * Bank of Egypt …) or one not on the list takes any number (UpdateBankDto checks it is 4–34 letters and digits).
+ * A mobile wallet's number is the mobile number it is on (01 and 9 more digits), and a wallet has no IBAN.
  * The number is restricted, so the message never repeats it.
  */
 function assertAccountFitsBank(before: EmployeeBank | null, dto: UpdateBankDto) {
   const saved = bankView(before);
   const bankChanged = dto.bankName !== undefined && !sameBank(dto.bankName, saved.bankName);
   const accountChanged = dto.accountNo !== undefined && dto.accountNo !== saved.accountNo;
-  if (!bankChanged && !accountChanged) return;
+  const ibanChanged = dto.iban !== undefined && dto.iban !== saved.iban;
+  if (!bankChanged && !accountChanged && !ibanChanged) return;
 
   const bank = bankNamed(dto.bankName !== undefined ? dto.bankName : saved.bankName);
   const accountNo = dto.accountNo !== undefined ? dto.accountNo : saved.accountNo;
+  const iban = dto.iban !== undefined ? dto.iban : saved.iban;
+  if (bank?.wallet) {
+    if (iban) throw new BadRequestException('A mobile wallet has no IBAN: leave the IBAN empty.');
+    if (accountNo && !accountLengthOk(bank, accountNo)) {
+      throw new BadRequestException(`The wallet number is the mobile number the wallet is on: ${WALLET_NUMBER_RULE}.`);
+    }
+    return;
+  }
   const length = bank && accountLengthText(bank);
   if (bank && length && accountNo && !accountLengthOk(bank, accountNo)) {
     throw new BadRequestException(`${bank.name} account numbers have ${length}. Check the number against the bank's letter.`);

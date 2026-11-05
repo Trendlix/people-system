@@ -1,4 +1,4 @@
-import { accountLengthOk, accountLengthText, bankNamed } from '@trendlix/shared';
+import { accountLengthOk, accountLengthText, bankNamed, WALLET_NUMBER_RULE } from '@trendlix/shared';
 import { normalizeAccountNo, normalizeIban, normalizeName } from '../employees/checks.js';
 
 // Which bank file pays each line (owner's decisions, 16 October 2026): an employee whose bank is CIB is paid through
@@ -47,6 +47,11 @@ export function lineBank(d: BankDetails): LineBank {
   if (!d.bank && !d.accountNo && !d.iban) return { file: null, bankShort: null, problem: 'No bank details on file.' };
   if (!d.bank) return { file: null, bankShort: null, problem: 'The bank details have no bank chosen.' };
   if (!known) return { file: null, bankShort: null, problem: "The bank isn't on the EG-ACH list, so neither bank file can pay it." };
+  // a mobile wallet goes in the ACH file under MIDG, its mobile number as the account (owner, 5 November 2026)
+  if (known.wallet) {
+    const ok = !!d.accountNo && accountLengthOk(known, d.accountNo);
+    return { file: 'ach', bankShort: known.short, problem: ok ? null : `The ACH file needs the wallet's mobile number: ${WALLET_NUMBER_RULE}.` };
+  }
   if (known.short === 'CIB') {
     const ok = !!d.accountNo && CIB_ACCOUNT.test(d.accountNo);
     return { file: 'cib', bankShort: known.short, problem: ok ? null : 'The CIB file needs the 12-digit CIB account number.' };
@@ -58,6 +63,11 @@ export function lineBank(d: BankDetails): LineBank {
     bankShort: known.short,
     problem: ok ? null : `The ACH file needs the IBAN, or the account number${length ? ` (${known.short}: ${length})` : ''}.`,
   };
+}
+
+/** The account the ACH file pays: a wallet's mobile number, else the IBAN when there is one, else the account number. */
+export function achAccount(d: BankDetails): string | null {
+  return bankNamed(d.bank)?.wallet ? d.accountNo : (d.iban ?? d.accountNo);
 }
 
 /** A line as the bank files see it. */

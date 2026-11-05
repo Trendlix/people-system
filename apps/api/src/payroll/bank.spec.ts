@@ -1,4 +1,4 @@
-import { bankCheck, lineBank } from './bank.js';
+import { achAccount, bankCheck, lineBank } from './bank.js';
 import { firstDay, lastDay, monthArabic, monthName, monthShort, monthsLater } from './months.js';
 
 // Which bank file pays each line, and what stops it (owner's decisions, 16 October 2026). Account numbers are invented.
@@ -30,6 +30,24 @@ describe('lineBank', () => {
     // a bank the list gives no length for takes any number
     expect(lineBank(details('Central Bank of Egypt', '42'))).toEqual({ file: 'ach', bankShort: 'CBE', problem: null });
     expect(lineBank(details('Central Bank of Egypt')).problem).toBe('The ACH file needs the IBAN, or the account number.');
+  });
+
+  it('a mobile wallet goes in the ACH file under MIDG, paid to its mobile number (owner, 5 November 2026)', () => {
+    expect(lineBank(details('Mobile wallet', '01279549379'))).toEqual({ file: 'ach', bankShort: 'MIDG', problem: null });
+    // the copy taken at the approval keeps MIDG; "Wallet" typed under Other before the list had it is the same
+    expect(lineBank(details('MIDG', '01279549379')).problem).toBeNull();
+    expect(lineBank(details('Wallet', '01279549379'))).toEqual({ file: 'ach', bankShort: 'MIDG', problem: null });
+    // an IBAN won't pay a wallet
+    expect(lineBank(details('Mobile wallet', null, 'EG380019000500000000263180002')).problem).toBe(
+      "The ACH file needs the wallet's mobile number: 11 digits starting with 01.",
+    );
+    expect(lineBank(details('Mobile wallet', '1279549379')).problem).toBe("The ACH file needs the wallet's mobile number: 11 digits starting with 01.");
+  });
+
+  it('the ACH file pays the IBAN when there is one, else the account number; a wallet always its mobile number', () => {
+    expect(achAccount(details('NBE', '1002001234567800001', 'EG380019000500000000263180002'))).toBe('EG380019000500000000263180002');
+    expect(achAccount(details('NBE', '1002001234567800001'))).toBe('1002001234567800001');
+    expect(achAccount(details('Mobile wallet', '01279549379', 'EG380019000500000000263180002'))).toBe('01279549379');
   });
 
   it('no details, no bank, or a bank off the EG-ACH list: no file', () => {
