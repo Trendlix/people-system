@@ -11,7 +11,7 @@ import { candidateBadges } from './candidates';
 import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
 import { DeleteApplicantButton } from './delete-ui';
 import { daysText, dropOn } from './hiring';
-import { applicantHref, makeOfferHref, STAGE_STYLE } from './recruitment';
+import { APPLICANTS_PATH, applicantHref, applicantsHref, makeOfferHref, REJECTED_AT_REVIEW, STAGE_STYLE } from './recruitment';
 import { decisionOf, rejectReasonsAt } from './tree';
 import { FeedbackField, HoldBadge, ReasonPicker } from './tree-ui';
 import { CvUpdatedBadge, VerdictBadge } from './ui';
@@ -20,12 +20,14 @@ import { CvUpdatedBadge, VerdictBadge } from './ui';
 // name, match %, source and days in stage"; "drag between columns (keyboard-accessible too), with the same rules as the
 // stage actions: Reject asks for a reason; Offer goes through Make offer; Hired only by an accepted offer"). HR drags a
 // card, or picks its column in the card's "Move to"; the hiring manager and the CEO read it.
-// The recruitment tree (owner, 3 November 2026: "Recrutment tree"): a card from Applicants is dropped on Review 1, any
-// card on Rejected (with its step's reasons and the feedback); every other step follows its decision on their page, and
-// the board says so instead. Each card kept at its step shows its hold (Unreachable, Pending).
+// The recruitment tree (owner, 3 November 2026: "Recrutment tree"; 5 November 2026: Review 1 merged into Applicants,
+// Review 2 the Final Review): any card is dropped on Rejected (with its step's reasons, none at a review, and the
+// feedback); every other step follows its decision on their page, and the board says so instead. Each card kept at its
+// step shows its hold (Unreachable, Pending). The Rejected column holds those rejected at HR Screening, the interview or
+// the offer; those rejected at a review are counted under the board, a link to Applicants' "Rejected at review".
 
 type Rejection = { reasons: string[]; feedback: string | null };
-type Move = (id: string, to: 'review_1' | 'rejected', rejection: Rejection | null, email: boolean) => Promise<FormState>;
+type Move = (id: string, to: 'rejected', rejection: Rejection | null, email: boolean) => Promise<FormState>;
 
 /** Why a card is rejected, asked before it goes to Rejected: its step's reasons, the feedback, the "Email the candidate" tick. */
 function RejectPrompt({ card, onSend, onCancel, pending }: { card: BoardCard; onSend: (rejection: Rejection, email: boolean) => void; onCancel: () => void; pending: boolean }) {
@@ -80,8 +82,7 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
     const what = dropOn(card, to);
     if (what.kind === 'refused') return setState({ errors: [what.reason] });
     if (what.kind === 'offer') return router.push(makeOfferHref(card.id));
-    if (what.needsReason) return setRejecting(card);
-    start(async () => setState(await move(card.id, what.to, null, false)));
+    setRejecting(card);
   }
 
   return (
@@ -187,7 +188,7 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
                         className="input min-h-8 py-1 text-xs"
                       >
                         <option value="">Move to…</option>
-                        {/* only the moves allowed: Review 1 from Applicants, Rejected, an Offer (the tree, 3 November 2026) */}
+                        {/* only the moves allowed: Rejected, an Offer (the tree, 3 November 2026; 5 November 2026) */}
                         {board.columns
                           .filter((c) => dropOn(card, c.stage).kind !== 'refused')
                           .map((c) => (
@@ -206,6 +207,14 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
         ))}
       </div>
       {board.filteredOut > 0 && <p className="text-xs text-muted">{board.filteredOut} filtered out, not on the board.</p>}
+      {(board.rejectedAtReview ?? 0) > 0 && (
+        <p className="text-xs text-muted">
+          <Link href={applicantsHref(APPLICANTS_PATH, { vacancyId: board.vacancy.id, reviewRejected: true })}>
+            {board.rejectedAtReview} {REJECTED_AT_REVIEW.toLowerCase()}
+          </Link>
+          , not on the board.
+        </p>
+      )}
     </div>
   );
 }

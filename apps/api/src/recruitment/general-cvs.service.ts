@@ -35,6 +35,7 @@ import {
   type VacancyApplicantsGroup,
   type VacancyStatus,
   type AgencyMarks,
+  rejectedAtReview,
 } from '@trendlix/shared';
 import { verifySignedIp } from '../attendance/signed-ip.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -586,7 +587,7 @@ export class GeneralCvsService {
       this.prisma.jobApplication.count({ where: { AND: [visible, { filteredOut: false }] } }),
       this.prisma.generalCv.count({ where: { status: { not: 'archived' } } }),
       this.prisma.generalCv.count({ where: { status: 'new' } }),
-      this.prisma.jobApplication.groupBy({ by: ['vacancyId', 'stage', 'source', 'filteredOut'], where: visible, _count: { _all: true } }),
+      this.prisma.jobApplication.groupBy({ by: ['vacancyId', 'stage', 'source', 'filteredOut', 'rejectedFrom'], where: visible, _count: { _all: true } }),
       this.prisma.vacancy.findMany({ where: { AND: [vacancyWhere(user), { applications: { some: {} } }] }, select: { id: true, number: true, title: true, status: true, publishedAt: true } }),
     ]);
     const byId = new Map<string, VacancyApplicantsGroup>();
@@ -596,6 +597,7 @@ export class GeneralCvsService {
         total: 0,
         byStage: Object.fromEntries(APPLICATION_STAGES.map((s) => [s, 0])) as Record<ApplicationStage, number>,
         filteredOut: 0,
+        rejectedAtReview: 0,
         bySource: {},
       });
     }
@@ -605,7 +607,9 @@ export class GeneralCvsService {
       const n = g._count._all;
       group.total += n;
       if (g.filteredOut) group.filteredOut += n;
-      else group.byStage[g.stage as ApplicationStage] += n;
+      // those rejected at a review apart from the Rejected tab's (5 November 2026)
+      else if (g.stage === 'rejected' && rejectedAtReview(g.rejectedFrom)) group.rejectedAtReview += n;
+      else if (g.stage in group.byStage) group.byStage[g.stage as ApplicationStage] += n;
       group.bySource[g.source] = (group.bySource[g.source] ?? 0) + n;
     }
     const order = ['open', 'on_hold', 'closed', 'filled', 'pending', 'draft'];

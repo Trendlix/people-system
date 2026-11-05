@@ -76,7 +76,7 @@ class VacancyFieldsDto {
   @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose the hiring manager, or leave it empty.' })
   hiringManagerId?: string | null;
 
-  /** Its recruiter (owner, 3 November 2026: "A Recruiter field"): an HR person's employee profile; none: HR takes Review 1. */
+  /** Its recruiter (owner, 3 November 2026: "A Recruiter field"): an HR person's employee profile; none: HR takes Applicants. */
   @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose the recruiter, or leave it empty.' })
   recruiterId?: string | null;
 
@@ -202,6 +202,13 @@ export class ListApplicationsDto {
   @IsOptional() @IsIn(['hide', 'only', 'all'])
   filtered?: 'hide' | 'only' | 'all';
 
+  /**
+   * `only`: those rejected at a review, Applicants' "Rejected at review" (5 November 2026); `stage` is ignored with it.
+   * Without it, `stage=rejected` lists those rejected at HR Screening, the interview or the offer only.
+   */
+  @IsOptional() @IsIn(['only'])
+  reviewRejected?: 'only';
+
   @IsOptional() @Trim() @IsString() @MaxLength(100)
   q?: string;
 
@@ -223,7 +230,7 @@ export class ListApplicationsDto {
 }
 
 export class MoveApplicationDto {
-  @IsIn(HAND_STAGES, { message: 'Choose Review 1 or Rejected.' })
+  @IsIn(HAND_STAGES, { message: 'Choose Rejected.' })
   to!: HandStage;
 
   /** To reject (the recruitment tree, 3 November 2026): one reason or more of their step's (checked by the service). */
@@ -588,7 +595,7 @@ export class MoveGeneralCvDto {
   @IsUUID('all', { message: 'Choose the vacancy.' })
   vacancyId!: string;
 
-  @IsOptional() @IsIn(MOVE_STAGES, { message: 'Choose Applied or Shortlisted.' })
+  @IsOptional() @IsIn(MOVE_STAGES, { message: 'Choose Applicants.' })
   stage?: MoveStage;
 }
 

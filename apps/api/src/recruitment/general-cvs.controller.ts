@@ -132,7 +132,7 @@ export class GeneralCvsController {
     return this.cvs.readAgain(id, dto.asScan === true, user);
   }
 
-  /** Add to a vacancy: { vacancyId, stage: applied | review_1 }. */
+  /** Add to a vacancy: { vacancyId } (at Applicants: 5 November 2026). */
   @Roles(...MANAGES)
   @Post(':id/move')
   @HttpCode(200)

@@ -273,22 +273,21 @@ describe('General CVs and the bulk upload (e2e)', () => {
       expect(actions).toEqual(['create', 'review', 'archive', 'restore']);
     });
 
-    it('moves to an open vacancy at Review 1, keeping its reference; its source says where it came from', async () => {
-      const moved = (await post('hr', `/recruitment/general-cvs/${added.id}/move`, { vacancyId: vacancy.id, stage: 'review_1' }).expect(200)).body as GeneralCvView;
+    it('moves to an open vacancy at Applicants (5 November 2026), keeping its reference; its source says where it came from', async () => {
+      // Review 1 is no more: refused in words
+      expect(said(await post('hr', `/recruitment/general-cvs/${added.id}/move`, { vacancyId: vacancy.id, stage: 'review_1' }).expect(400))).toEqual(['Choose Applicants.']);
+      const moved = (await post('hr', `/recruitment/general-cvs/${added.id}/move`, { vacancyId: vacancy.id, stage: 'applied' }).expect(200)).body as GeneralCvView;
       expect(moved).toMatchObject({ status: 'moved', movedTo: { reference: added.number, vacancyId: vacancy.id }, can: { move: false } });
       const a = (await get('hr', `/recruitment/applications/${moved.movedTo!.applicationId}`).expect(200)).body as ApplicationView;
-      expect(a).toMatchObject({ number: added.number, stage: 'review_1', source: 'general', generalSource: 'email', matchPercent: null, filteredOut: false, cv: { mimeType: 'application/pdf' } });
-      expect(a.history.map((h) => [h.event, h.note])).toEqual([
-        ['applied', 'Moved from a general CV (Email)'],
-        ['to_review', null],
-      ]);
+      expect(a).toMatchObject({ number: added.number, stage: 'applied', source: 'general', generalSource: 'email', matchPercent: null, filteredOut: false, cv: { mimeType: 'application/pdf' } });
+      expect(a.history.map((h) => [h.event, h.note])).toEqual([['applied', 'Moved from a general CV (Email)']]);
       const row = await prisma.jobApplication.findUniqueOrThrow({ where: { id: a.id }, select: { consentNote: true } });
       expect(row.consentNote).toBe(`From general CV ${added.number}`);
       expect(said(await post('hr', `/recruitment/general-cvs/${added.id}/move`, { vacancyId: vacancy.id }).expect(409))).toEqual(['It was moved to a vacancy already.']);
       // the list shows it with its general source
       const listed = ((await get('hr', `/recruitment/applications?vacancyId=${vacancy.id}`).expect(200)).body as ApplicationListItem[]).find((x) => x.id === a.id);
       expect(listed).toMatchObject({ source: 'general', generalSource: 'email', vacancy: { id: vacancy.id, status: 'open' } });
-      expect((await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'general_cv', entityId: added.id, action: 'move_to_vacancy' } })).diff).toMatchObject({ vacancy: vacancy.number, stage: 'review_1' });
+      expect((await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'general_cv', entityId: added.id, action: 'move_to_vacancy' } })).diff).toMatchObject({ vacancy: vacancy.number, stage: 'applied' });
     });
 
     it('can’t move one whose email applied for the vacancy already', async () => {
@@ -309,9 +308,8 @@ describe('General CVs and the bulk upload (e2e)', () => {
     it('counts each vacancy’s applicants by stage and by source, and the general CVs', async () => {
       const s = (await get('ceo', '/recruitment/applicants/summary').expect(200)).body as ApplicantsSummary;
       const g = s.vacancies.find((x) => x.vacancy.id === vacancy.id)!;
-      expect(g).toMatchObject({ vacancy: { status: 'open' }, total: 2, bySource: { general: 2 } });
-      expect(g.byStage.review_1).toBe(1);
-      expect(g.byStage.applied).toBe(1);
+      expect(g).toMatchObject({ vacancy: { status: 'open' }, total: 2, bySource: { general: 2 }, rejectedAtReview: 0 });
+      expect(g.byStage.applied).toBe(2);
       expect(s.general).toBeGreaterThanOrEqual(13);
       expect(s.generalNew).toBeGreaterThanOrEqual(12);
       expect(((await get('hr', `/recruitment/vacancies/${vacancy.id}`).expect(200)).body as VacancyView).sourceCounts).toEqual({ general: 2 });

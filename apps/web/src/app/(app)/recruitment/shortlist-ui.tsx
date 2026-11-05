@@ -3,16 +3,16 @@
 import { APPLICATION_STAGE_LABELS, isDecisionStep, rejectReasonsOf, STEP_OUTCOME_LABELS, STEP_OUTCOME_NOTES, STEP_OUTCOMES_OF, type ApplicationStage, type DecisionStep, type StepOutcome } from '@trendlix/shared';
 import { createContext, useCallback, useContext, useState, useTransition } from 'react';
 import { FormErrors, useFieldIds } from '@/components/form';
-import { decideBatch, sendToReview, type BatchState } from './shortlist-actions';
-import { allTicks, outcomeLabel, sendLabel, sharedStage, ticked, tickedAll, tickedIds } from './shortlist';
+import { decideBatch, type BatchState } from './shortlist-actions';
+import { allTicks, outcomeLabel, sharedStage, ticked, tickedAll, tickedIds } from './shortlist';
 import { FeedbackField, ReasonPicker } from './tree-ui';
 
 // Ticking applicants to act on together (owner, 29 October 2026: "Tick several at once"; the recruitment tree, 3 November
-// 2026), as All Assets ticks assets: the tables put a tick box on each row that may be ticked and a "Select all" on their
-// titles (BatchTick, BatchTickAll), inside VacancySelection (a vacancy's list: "Send to Review 1 (N)" for those at
-// Applicants, or the step's outcomes for those ticked at one step the caller decides, in a bar kept at the bottom of the
-// screen while some are ticked) or ReviewSelection (My Hiring: a review's Pass or Reject, with the reasons and the
-// feedback). The ticks live here, so the rows' own forms (Delete applicant) are never nested in another; what a batch did
+// 2026; 5 November 2026: Applicants and the Final Review are Pass or Reject with optional feedback), as All Assets ticks
+// assets: the tables put a tick box on each row that may be ticked and a "Select all" on their titles (BatchTick,
+// BatchTickAll), inside VacancySelection (a vacancy's list: the step's outcomes for those ticked at one step the caller
+// decides, Applicants' Pass or Reject for the recruiter, in a bar kept at the bottom of the screen while some are ticked)
+// or ReviewSelection (My Hiring: the Final Review's Pass or Reject, with the feedback). The ticks live here, so the rows' own forms (Delete applicant) are never nested in another; what a batch did
 // is said above the list once the page is read again.
 
 interface Ticks {
@@ -79,8 +79,8 @@ function Said({ state }: { state: BatchState }) {
 }
 
 /**
- * A step's decision for those ticked: the outcome (the step's own), the reasons once Reject is chosen, the feedback, and
- * the button for them all ("Pass (3)"). What it did goes to `done`, said by the list's selection.
+ * A step's decision for those ticked: the outcome (the step's own), the reasons once Reject is chosen (none at a review),
+ * the feedback, and the button for them all ("Pass (3)"). What it did goes to `done`, said by the list's selection.
  */
 function BatchDecide({ vacancyId, stage, chosen, done, className = '' }: { vacancyId: string; stage: DecisionStep; chosen: readonly string[]; done: (state: BatchState) => void; className?: string }) {
   const [outcome, setOutcome] = useState<StepOutcome | ''>('');
@@ -132,26 +132,16 @@ function BatchDecide({ vacancyId, stage, chosen, done, className = '' }: { vacan
 }
 
 /**
- * A vacancy's list with the caller's ticks (`rows`: those that may be ticked, with their stage): "Send to Review 1 (N)"
- * for those ticked at Applicants (the recruiter told once), or their step's decision for those ticked at one step the
- * caller decides; what was done and skipped said above the list.
+ * A vacancy's list with the caller's ticks (`rows`: those that may be ticked, with their stage): their step's decision for
+ * those ticked at one step the caller decides (Applicants' Pass or Reject too); what was done and skipped said above the
+ * list.
  */
 export function VacancySelection({ vacancyId, rows, children }: { vacancyId: string; rows: readonly { id: string; stage: ApplicationStage }[]; children: React.ReactNode }) {
   const ids = rows.map((r) => r.id);
   const { ticks, chosen, clear } = useTicks(ids);
   const [state, setState] = useState<BatchState>({});
-  const [pending, startTransition] = useTransition();
   const n = chosen.length;
   const stage = sharedStage(chosen, Object.fromEntries(rows.map((r) => [r.id, r.stage])));
-
-  function send() {
-    setState({});
-    startTransition(async () => {
-      const r = await sendToReview(vacancyId, chosen);
-      setState(r);
-      if (r.result) clear();
-    });
-  }
 
   return (
     <TicksContext.Provider value={ticks}>
@@ -165,12 +155,7 @@ export function VacancySelection({ vacancyId, rows, children }: { vacancyId: str
               <p className="mr-auto px-1 text-sm font-semibold tabular-nums" aria-live="polite">
                 {n} selected{stage ? ` at ${APPLICATION_STAGE_LABELS[stage]}` : ''}
               </p>
-              {stage === 'applied' && (
-                <button type="button" onClick={send} disabled={pending} className="btn btn-primary">
-                  {pending ? 'Sending…' : sendLabel(n)}
-                </button>
-              )}
-              <button type="button" onClick={clear} disabled={pending} className="btn btn-secondary">
+              <button type="button" onClick={clear} className="btn btn-secondary">
                 Clear
               </button>
             </div>
@@ -196,7 +181,7 @@ export function VacancySelection({ vacancyId, rows, children }: { vacancyId: str
 
 /**
  * A review's applicants on My Hiring with the reviewer's ticks (`ids`: every one shown, all at `stage`): Pass or Reject
- * for those ticked together, with the reasons and the feedback; HR told once.
+ * for those ticked together, with optional feedback.
  */
 export function ReviewSelection({ vacancyId, stage, ids, children }: { vacancyId: string; stage: DecisionStep; ids: readonly string[]; children: React.ReactNode }) {
   const { ticks, chosen, clear } = useTicks(ids);

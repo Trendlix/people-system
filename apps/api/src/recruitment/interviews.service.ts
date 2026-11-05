@@ -211,7 +211,7 @@ export class InterviewsService {
     };
     const interviews = this.views(rows, c, now.getTime());
     const feedbackDue = interviews.filter((i) => i.can.feedback && !i.myFeedbackGiven).length;
-    // the applicants waiting for their Review 2 or Final Review (the recruitment tree, 3 November 2026)
+    // the applicants waiting for their Final Review (the recruitment tree, 3 November 2026; 5 November 2026)
     const toReview = await reviewsWaiting(this.prisma, c.selfId);
     return { vacancies: vacancies.map((v) => ({ ...v, counts: counts(v.id) })), interviews, feedbackDue, toReview };
   }

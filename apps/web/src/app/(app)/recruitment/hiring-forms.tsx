@@ -537,7 +537,7 @@ export function FeedbackForm({ action, mine }: { action: Action; mine: FeedbackV
 
 /**
  * The hiring manager's suggestion to HR at the Technical Interview or the Offer: the next step or a rejection, with a
- * note (their own review is the Final Review's decision since the tree, 3 November 2026).
+ * note (they review no CVs since 5 November 2026: the reviews are Applicants and the Final Review).
  */
 export function SuggestForm({ action, stage }: { action: Action; stage: ApplicationStage }) {
   const [state, formAction, pending] = useActionState(action, {});

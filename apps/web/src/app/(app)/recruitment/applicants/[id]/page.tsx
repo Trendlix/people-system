@@ -58,8 +58,8 @@ import { MeetingJoin } from '../../meeting-ui';
 import { NO_MEETING_CHOICES } from '../../meetings';
 
 // An applicant (owner, 22 October 2026: "where will we include the ATS?"): who they are, their match and how each answer
-// did (a must-have failed filters them out: kept, restorable), their CV, HR's notes, what can be done now (Send to Review 1,
-// move to interview, reject with a reason, restore, Make offer: the job offer form filled in from them and the vacancy),
+// did (a must-have failed filters them out: kept, restorable), their CV, HR's notes, what can be done now (decide their
+// step, reject, restore, Make offer: the job offer form filled in from them and the vacancy),
 // the job offers made to them and their history. A warning when they worked here before (offboarding's rehire check).
 // Phase 2 (22 October 2026): their interviews (HR schedules, moves, cancels and marks them; the candidate is emailed the
 // calendar invitation), the interviewers' scorecards (an interviewer sees the others' once they gave theirs), the hiring
@@ -81,9 +81,10 @@ import { NO_MEETING_CHOICES } from '../../meetings';
 // for HR and hiring manager"; asked, "Score Card for each of them"): they give theirs on an interview as its interviewers
 // do, even when not among them ("Give your scorecard as HR"); each scorecard shows whose it is, and a line above them sums
 // them up for choosing the candidate (then Make offer).
-// The recruitment tree (owner, 3 November 2026: "Recrutment tree"): Applicants, Review 1 (the recruiter), Review 2 (the
-// recruiter's manager), Final Review (the hiring manager), HR Screening, Technical Interview, Offer. HR sends them to
-// Review 1; whoever takes their step decides it here (its outcomes; a rejection's reasons, ticked, and the feedback); HR
+// The recruitment tree (owner, 3 November 2026: "Recrutment tree"; 5 November 2026: Review 1 merged into Applicants,
+// Review 2 the Final Review, the hiring manager's review gone): Applicants (the recruiter), Final Review (the recruiter's
+// manager), HR Screening, Technical Interview, Offer. Whoever takes their step decides it here (its outcomes; a
+// rejection's reasons, ticked, at HR Screening and the interview; a review is Pass or Reject with optional feedback); HR
 // rejects from any step. Beside the stage, their hold (Unreachable, Pending); the Decisions card lists each step decided
 // and says who takes the step now. Interviews are scheduled at the Technical Interview and the Offer.
 
@@ -113,7 +114,6 @@ function Actions({ a }: { a: ApplicationView }) {
           Make offer
         </Link>
       )}
-      {c.sendToReview && <ActionButton action={moveApplicant.bind(null, a.id, 'review_1')} label="Send to Review 1" pendingLabel="Sending…" kind="primary" />}
       {c.restore && <ActionButton action={restoreApplicant.bind(null, a.id)} label="Restore" pendingLabel="Restoring…" kind="primary" />}
       {c.reject && <RejectButton action={moveApplicant.bind(null, a.id, 'rejected')} reasons={rejectReasonsAt(a.stage)} emailOption={c.emailOnReject} />}
       {/* a Super Admin's, never a developer's (owner, 25 October 2026: "applicant alone - superadmin only"): then its vacancy */}
@@ -133,7 +133,7 @@ function Actions({ a }: { a: ApplicationView }) {
 }
 
 /**
- * Each step decided (the tree, 3 November 2026): "Review 1: Rejected (Culture Fit)", who and when, the feedback; the
+ * Each step decided (the tree, 3 November 2026): "HR Screening: Rejected (Culture Fit)", who and when, the feedback; the
  * screening call of before the tree when they had one; and who takes their step now.
  */
 function Decisions({ a }: { a: ApplicationView }) {

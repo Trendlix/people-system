@@ -13,12 +13,12 @@ const form = (entries: [string, string][]) => {
 describe('the board', () => {
   it('links a vacancy’s board, and says what a drop does', () => {
     expect(boardHref('abc')).toBe('/recruitment/vacancies/abc?view=board');
-    // the recruitment tree (3 November 2026): Applicants to Review 1 by hand, any step to Rejected, the rest by decisions
+    // the recruitment tree (3 November 2026; 5 November 2026: Applicants decided too): any step to Rejected, the rest by decisions
     const card = { stage: 'applied' as const, filteredOut: false, openOffer: false, interviewsDone: 0 };
-    expect(dropOn(card, 'review_1')).toEqual({ kind: 'move', to: 'review_1', needsReason: false });
     expect(dropOn(card, 'rejected')).toEqual({ kind: 'move', to: 'rejected', needsReason: true });
-    expect(dropOn({ ...card, stage: 'review_1' }, 'review_2')).toEqual({ kind: 'refused', reason: 'Review 2 follows a decision at Review 1: open their page to decide it.' });
-    expect(dropOn({ ...card, stage: 'screening' }, 'review_1')).toEqual({ kind: 'refused', reason: 'They are at HR Screening: only Applicants are sent to Review 1.' });
+    expect(dropOn(card, 'review_2')).toEqual({ kind: 'refused', reason: 'Final Review follows a decision at Applicants: open their page to decide it.' });
+    expect(dropOn({ ...card, stage: 'review_2' }, 'screening')).toEqual({ kind: 'refused', reason: 'HR Screening follows a decision at Final Review: open their page to decide it.' });
+    expect(dropOn({ ...card, stage: 'screening' }, 'applied')).toEqual({ kind: 'refused', reason: 'Nobody goes back to Applicants: reject them instead.' });
     expect(dropOn({ ...card, stage: 'interview' }, 'rejected')).toEqual({ kind: 'move', to: 'rejected', needsReason: true });
     // a job offer once the Technical Interview accepts them, at Offer
     expect(dropOn({ ...card, stage: 'interview', interviewsDone: 1 }, 'offer')).toEqual({ kind: 'refused', reason: 'They are at Technical Interview: a job offer comes once the Technical Interview accepts them.' });

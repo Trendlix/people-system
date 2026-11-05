@@ -34,10 +34,13 @@ import type { HoldOutcome } from './recruitment-tree.js';
 export const RECRUITMENT_VIEWERS = ['manages', 'reads', 'hiring_manager', 'interviewer', 'reviewer'] as const;
 export type RecruitmentViewer = (typeof RECRUITMENT_VIEWERS)[number];
 
-/** The stages a hiring manager sees their vacancy's applicants at: from their Final Review on (the tree, 3 November 2026). */
-export const HIRING_MANAGER_STAGES = ['final_review', 'screening', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
+/**
+ * The stages a hiring manager sees their vacancy's applicants at: from HR Screening on (5 November 2026: their own CV
+ * review is gone, the reviews are Applicants and the Final Review).
+ */
+export const HIRING_MANAGER_STAGES = ['screening', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
 
-/** Whether a hiring manager sees an applicant: from the Final Review on, or rejected from there; never one filtered out. */
+/** Whether a hiring manager sees an applicant: from HR Screening on, or rejected from there; never one filtered out. */
 export function hiringManagerSees(a: { stage: ApplicationStage; rejectedFrom: string | null; filteredOut: boolean }): boolean {
   if (a.filteredOut) return false;
   if ((HIRING_MANAGER_STAGES as readonly string[]).includes(a.stage)) return true;
@@ -46,8 +49,11 @@ export function hiringManagerSees(a: { stage: ApplicationStage; rejectedFrom: st
 
 // ---------- the pipeline board ----------
 
-/** The board's columns, in order: every stage. A hiring manager's board starts at the Final Review. */
-export const BOARD_STAGES = ['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer', 'hired', 'rejected'] as const satisfies readonly ApplicationStage[];
+/**
+ * The board's columns, in order: every stage. A hiring manager's board starts at HR Screening. Rejected holds those
+ * rejected at HR Screening, the interview or the offer; those rejected at a review are under Applicants (5 November 2026).
+ */
+export const BOARD_STAGES = ['applied', 'review_2', 'screening', 'interview', 'offer', 'hired', 'rejected'] as const satisfies readonly ApplicationStage[];
 
 /** What dropping a card on a column does: a move (Reject asks why first), Make offer, or nothing, with why. */
 export type BoardMove = { kind: 'move'; to: HandStage; needsReason: boolean } | { kind: 'offer' } | { kind: 'refused'; reason: string };
@@ -55,7 +61,8 @@ export type BoardMove = { kind: 'move'; to: HandStage; needsReason: boolean } | 
 /**
  * What moving an applicant from `from` to the column `to` does on the board (the brief: "the same rules as the stage
  * actions: Reject asks for a reason; Offer goes through Make offer; Hired only by an accepted offer"; the tree, 3
- * November 2026: Applicants to Review 1 by hand, every later step by its decision on their page).
+ * November 2026: every step by its decision on their page; 5 November 2026: Applicants decided too, no hand move to a
+ * review).
  */
 export function boardMove(from: ApplicationStage, to: ApplicationStage, state: { filteredOut: boolean; openOffer: boolean; interviewsDone?: number | null }): BoardMove {
   if (from === to) return { kind: 'refused', reason: `They are at ${APPLICATION_STAGE_LABELS[to]} already.` };
@@ -68,7 +75,7 @@ export function boardMove(from: ApplicationStage, to: ApplicationStage, state: {
     if (problem) return { kind: 'refused', reason: problem };
     return { kind: 'offer' };
   }
-  if (to !== 'review_1' && to !== 'rejected') return { kind: 'refused', reason: `${APPLICATION_STAGE_LABELS[to]} follows a decision at ${APPLICATION_STAGE_LABELS[from]}: open their page to decide it.` };
+  if (to !== 'rejected') return { kind: 'refused', reason: `${APPLICATION_STAGE_LABELS[to]} follows a decision at ${APPLICATION_STAGE_LABELS[from]}: open their page to decide it.` };
   const problem = stageMoveProblem(from, to, state);
   if (problem) return { kind: 'refused', reason: problem };
   return { kind: 'move', to, needsReason: to === 'rejected' };
@@ -506,14 +513,15 @@ export function rejectionMail(words: RejectionWords, vars: { name: string; job: 
 // ---------- analytics ----------
 
 /**
- * The stages in the order an applicant goes through them (Rejected apart): the tree's (3 November 2026), Review 1 the
- * first CV review; Review 2 and the Final Review counted with HR Screening's way there.
+ * The stages in the order an applicant goes through them (Rejected apart): the tree's (5 November 2026), the Final Review
+ * standing for "passed Applicants" (one passed straight to HR Screening counts as having passed it too).
  */
-export const FUNNEL_STAGES = ['applied', 'review_1', 'screening', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
+export const FUNNEL_STAGES = ['applied', 'review_2', 'screening', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
 export type FunnelStage = (typeof FUNNEL_STAGES)[number];
 
-// a history of before the tree: Shortlisted counts as reviewed
-const RANK: Record<string, number> = { applied: 0, review_1: 1, review_2: 1, final_review: 1, shortlisted: 1, screening: 2, interview: 3, offer: 4, hired: 5 };
+// histories of before: Review 1 was the first look (still Applicants now); Shortlisted and the hiring manager's review
+// were past it
+const RANK: Record<string, number> = { applied: 0, review_1: 0, review_2: 1, final_review: 1, shortlisted: 1, screening: 2, interview: 3, offer: 4, hired: 5 };
 
 /** The furthest stage an application reached, from its history's stages (Rejected never counts as one). */
 export function furthestStage(stages: readonly string[]): FunnelStage {
@@ -701,6 +709,8 @@ export interface VacancyBoard {
   columns: { stage: ApplicationStage; cards: BoardCard[] }[];
   /** Applicants filtered out by a must-have, kept off the board. */
   filteredOut: number;
+  /** Those rejected at a review (Applicants, the Final Review), kept off the board: Applicants' "Rejected at review" (5 November 2026). */
+  rejectedAtReview: number;
 }
 
 /** GET /recruitment/my-hiring: what the caller hires for or interviews. */

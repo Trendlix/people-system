@@ -1,4 +1,4 @@
-import { BATCH_NOT_FOUND, batchIds, decideSkip, OTHER_VACANCY, reviewOrder, sendSkip, skippedOf, type BatchApplicant } from '../recruitment/hiring-batches.js';
+import { BATCH_NOT_FOUND, batchIds, decideSkip, OTHER_VACANCY, reviewOrder, skippedOf, type BatchApplicant } from '../recruitment/hiring-batches.js';
 
 // The batches (owner, 29 October 2026: "Tick several at once"; the recruitment tree, 3 November 2026;
 // recruitment/hiring-batches.ts). Every person here is invented.
@@ -6,31 +6,18 @@ import { BATCH_NOT_FOUND, batchIds, decideSkip, OTHER_VACANCY, reviewOrder, send
 const V = 'vacancy-1';
 const a = (over: Partial<BatchApplicant> = {}): BatchApplicant => ({ id: 'a1', number: 'APP-2026-0001', fullName: 'Sara Applicant', vacancyId: V, stage: 'applied', filteredOut: false, ...over });
 
-describe('HR’s Send to Review 1 of several', () => {
-  it('sends those at Applicants of the vacancy', () => {
-    expect(sendSkip(a(), V)).toBeNull();
-  });
-
-  it('skips the others with why, in words', () => {
-    expect(sendSkip(a({ vacancyId: 'vacancy-2' }), V)).toBe(OTHER_VACANCY);
-    expect(sendSkip(a({ filteredOut: true }), V)).toBe('They failed a must-have question and were filtered out: restore them first.');
-    expect(sendSkip(a({ stage: 'review_1' }), V)).toBe('They are at Review 1 already.');
-    expect(sendSkip(a({ stage: 'rejected' }), V)).toBe('They were rejected: restore them first.');
-    expect(sendSkip(a({ stage: 'hired' }), V)).toBe('They were hired: their application stays as it is.');
-    expect(sendSkip(a({ stage: 'screening' }), V)).toBe('They are at HR Screening: only Applicants are sent to Review 1.');
-  });
-});
-
-describe('a step decided for several', () => {
+describe('a step decided for several (Applicants passed or rejected together too, 5 November 2026)', () => {
   it('decides those at that step of the vacancy', () => {
-    expect(decideSkip(a({ stage: 'final_review' }), V, 'final_review')).toBeNull();
+    expect(decideSkip(a(), V, 'applied')).toBeNull();
+    expect(decideSkip(a({ stage: 'review_2' }), V, 'review_2')).toBeNull();
   });
 
   it('skips the others with why, in words', () => {
-    expect(decideSkip(a({ stage: 'final_review', vacancyId: 'vacancy-2' }), V, 'final_review')).toBe(OTHER_VACANCY);
-    expect(decideSkip(a({ stage: 'final_review', filteredOut: true }), V, 'final_review')).toBe('They failed a must-have question and were filtered out.');
+    expect(decideSkip(a({ stage: 'review_2', vacancyId: 'vacancy-2' }), V, 'review_2')).toBe(OTHER_VACANCY);
+    expect(decideSkip(a({ filteredOut: true }), V, 'applied')).toBe('They failed a must-have question and were filtered out.');
     expect(decideSkip(a({ stage: 'rejected' }), V, 'review_2')).toBe('They were rejected already.');
-    expect(decideSkip(a({ stage: 'screening' }), V, 'final_review')).toBe('They are at HR Screening: only those at Final Review are decided here.');
+    expect(decideSkip(a({ stage: 'screening' }), V, 'review_2')).toBe('They are at HR Screening: only those at Final Review are decided here.');
+    expect(decideSkip(a({ stage: 'review_2' }), V, 'applied')).toBe('They are at Final Review: only those at Applicants are decided here.');
   });
 });
 

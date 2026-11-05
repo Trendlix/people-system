@@ -115,8 +115,8 @@ describe('Recruitment (e2e)', () => {
   }
 
   /**
-   * The recruitment tree before the interview (owner, 3 November 2026): the vacancies here name no recruiter nor hiring
-   * manager, so HR takes Review 1, the others are skipped, and HR Screening accepts them.
+   * The recruitment tree before the interview (owner, 3 November 2026; 5 November 2026): the vacancies here name no
+   * recruiter, so HR takes Applicants, the Final Review is skipped, and HR Screening accepts them.
    */
   async function readyToInterview(id: string) {
     expect(((await get('hr', `/recruitment/applications/${id}`).expect(200)).body as ApplicationView).hasHiringManager).toBe(false);
@@ -425,21 +425,22 @@ describe('Recruitment (e2e)', () => {
         ['q3', 'Other', 0, null],
       ]);
       expect(a.cv).toMatchObject({ fileName: 'My CV.pdf', mimeType: 'application/pdf' });
-      expect(a.can).toMatchObject({ sendToReview: false, restore: true, makeOffer: false });
+      expect(a.can).toMatchObject({ decide: null, restore: true, makeOffer: false });
       const cv = await get('hr', `/recruitment/applications/${fady}/cv`).buffer(true).expect(200);
       expect(cv.headers['content-type']).toBe('application/pdf');
       // Phase 2 (22 October 2026): an applicant opens to their hiring manager and interviewers too: 404 for anyone else
       await get('outsider', `/recruitment/applications/${fady}/cv`).expect(404);
     });
 
-    it('are sent to Review 1, rejected with their reasons and restored; one filtered out restored first', async () => {
-      expect(said(await post('hr', `/recruitment/applications/${fady}/stage`, { to: 'review_1' }).expect(409))).toEqual([
+    it('are passed at Applicants, rejected with their reasons and restored; one filtered out restored first', async () => {
+      // Applicants is a review now (5 November 2026): Pass or Reject, no Send to Review 1
+      expect(said(await post('hr', `/recruitment/applications/${fady}/stage`, { to: 'review_1' }).expect(400))).toEqual(['Choose Rejected.']);
+      expect(said(await post('hr', `/recruitment/applications/${fady}/decide`, { outcome: 'passed' }).expect(409))).toEqual([
         'They failed a must-have question and were filtered out: restore them first.',
       ]);
       await post('hr', `/recruitment/applications/${fady}/restore`).expect(200);
-      await post('hr', `/recruitment/applications/${fady}/stage`, { to: 'review_1' }).expect(200);
-      await post('ceo', `/recruitment/applications/${sara}/stage`, { to: 'review_1' }).expect(403);
-      await post('hr', `/recruitment/applications/${sara}/stage`, { to: 'review_1' }).expect(200);
+      await post('hr', `/recruitment/applications/${fady}/decide`, { outcome: 'passed' }).expect(200);
+      await post('ceo', `/recruitment/applications/${sara}/decide`, { outcome: 'passed' }).expect(403);
       await readyToInterview(sara);
       expect(said(await post('hr', `/recruitment/applications/${sara}/stage`, { to: 'rejected' }).expect(400))).toEqual(['Choose why they are rejected: one reason or more.']);
       await post('hr', `/recruitment/applications/${sara}/stage`, { to: 'rejected', reasons: ['skills_mismatch'], feedback: 'Portfolio too thin' }).expect(200);
@@ -447,7 +448,7 @@ describe('Recruitment (e2e)', () => {
       expect(a).toMatchObject({ stage: 'rejected', rejectReason: 'Skills Mismatch' });
       a = (await post('hr', `/recruitment/applications/${sara}/restore`).expect(200)).body as ApplicationView;
       expect(a).toMatchObject({ stage: 'interview', rejectReason: null });
-      expect(a.history.map((h) => h.event)).toEqual(['applied', 'to_review', 'decided', 'decided', 'decided', 'restored']);
+      expect(a.history.map((h) => h.event)).toEqual(['applied', 'decided', 'decided', 'decided', 'restored']);
       // HR's notes are screening comments now (24 October 2026): the old address answers 410
       await patch('hr', `/recruitment/applications/${sara}/notes`, { notes: 'Strong reel' }).expect(410);
       expect((await get('ceo', `/recruitment/applications/${sara}`).expect(200)).body).toMatchObject({ notes: null, can: { editNotes: false } });
@@ -505,9 +506,9 @@ describe('Recruitment (e2e)', () => {
       const rows = await prisma.auditLog.findMany({ where: { entityType: 'job_application', entityId: sara }, orderBy: { at: 'asc' }, select: { action: true } });
       // no notes since they became screening comments (24 October 2026: the old address answers 410); HR's screening call
       // before the interview (29 October 2026: "Screening call + result")
-      // the recruitment tree (3 November 2026): sent to Review 1, Review 1 and HR Screening decided, rejected (a decision),
-      // restored, the interview accepted; then the offers' steps
-      expect(rows.map((r) => r.action)).toEqual(['apply', 'stage', 'decide', 'decide', 'decide', 'restore', 'decide', 'stage', 'stage', 'stage', 'stage']);
+      // the recruitment tree (5 November 2026): Applicants and HR Screening decided, rejected (a decision), restored, the
+      // interview accepted; then the offers' steps
+      expect(rows.map((r) => r.action)).toEqual(['apply', 'decide', 'decide', 'decide', 'restore', 'decide', 'stage', 'stage', 'stage', 'stage']);
       const vacancyRows = await prisma.auditLog.findMany({ where: { entityType: 'vacancy', entityId: v.id }, orderBy: { at: 'asc' }, select: { action: true } });
       expect(vacancyRows.map((r) => r.action)).toEqual(['create', 'submit', 'approve', 'fill']);
     });

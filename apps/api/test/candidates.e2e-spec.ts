@@ -574,8 +574,8 @@ describe('Candidate profiles (e2e)', () => {
   describe('who sees it', () => {
     it('HR, the CEO and a Super Admin; a hiring manager is refused the profile and sees no other applications', async () => {
       const mona = await appOf(A, 'mona');
-      // at the hiring manager's Final Review (the recruitment tree, 3 November 2026)
-      await walkTo(app, sessions.superAdmin, mona.id, 'final_review');
+      // at HR Screening, where the hiring manager first sees them (5 November 2026)
+      await walkTo(app, sessions.superAdmin, mona.id, 'screening');
       for (const who of ['hm', 'outsider']) {
         await get(who, '/recruitment/candidates').expect(403);
         await get(who, `/recruitment/candidates/${mona.candidateId}`).expect(403);

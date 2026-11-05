@@ -63,13 +63,12 @@ export function namesLine(names: readonly string[], max = 5): string {
   return names.length > max ? `${shown} and ${names.length - max} more` : shown;
 }
 
-/** The review a batch waits for, in words. */
-const REVIEW_WORDS: Record<ReviewStage, string> = { review_1: 'Review 1', review_2: 'Review 2', final_review: 'your final review' };
+/** The review a batch waits for, in words (5 November 2026: Applicants, the recruiter's; the Final Review, their manager's). */
+const REVIEW_WORDS: Record<ReviewStage, string> = { applied: 'your review', review_2: 'your final review' };
 
 /** The reviewer's message once a batch reaches their review (the app's notification, the email's subject). */
 export function reviewWaitingNotice(job: string, names: readonly string[], stage: ReviewStage): { title: string; body: string } {
-  const which = stage === 'final_review' ? REVIEW_WORDS.final_review : `your ${REVIEW_WORDS[stage]}`;
-  return { title: `${people(names.length)} for ${job} wait for ${which}: pass or reject them`, body: namesLine(names) };
+  return { title: `${people(names.length)} for ${job} wait for ${REVIEW_WORDS[stage]}: pass or reject them`, body: namesLine(names) };
 }
 
 /** The values of the reviewer's email's fields (owner, 1 November 2026; email-templates.ts shortlist_review). */
@@ -82,7 +81,7 @@ export function reviewWaitingEmail(job: string, names: readonly string[], link: 
   const n = reviewWaitingNotice(job, names, stage);
   return {
     subject: n.title,
-    text: [`${people(names.length)} for ${job} wait for ${stage === 'final_review' ? 'your final review' : `your ${REVIEW_WORDS[stage]}`}:`, '', ...names.map((x) => `- ${x}`), '', `Please pass or reject them on My Hiring: ${link}`].join('\n'),
+    text: [`${people(names.length)} for ${job} wait for ${REVIEW_WORDS[stage]}:`, '', ...names.map((x) => `- ${x}`), '', `Please pass or reject them on My Hiring: ${link}`].join('\n'),
   };
 }
 

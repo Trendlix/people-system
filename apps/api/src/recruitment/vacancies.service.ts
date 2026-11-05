@@ -24,6 +24,7 @@ import {
   EXPERIENCE_BASIS_DEFAULT,
   EXPERIENCE_BASES,
   type ExperienceBasis,
+  rejectedAtReview,
 } from '@trendlix/shared';
 import { isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -145,12 +146,14 @@ export class VacanciesService {
   async counts(ids: readonly string[]): Promise<Map<string, VacancyCounts>> {
     const out = new Map<string, VacancyCounts>();
     if (!ids.length) return out;
-    const groups = await this.prisma.jobApplication.groupBy({ by: ['vacancyId', 'stage', 'filteredOut'], where: { vacancyId: { in: [...ids] } }, _count: { _all: true } });
+    const groups = await this.prisma.jobApplication.groupBy({ by: ['vacancyId', 'stage', 'filteredOut', 'rejectedFrom'], where: { vacancyId: { in: [...ids] } }, _count: { _all: true } });
     for (const g of groups) {
       const c = out.get(g.vacancyId) ?? emptyCounts();
       const n = g._count._all;
       c.total += n;
-      if (g.stage in c.byStage) c.byStage[g.stage as keyof VacancyCounts['byStage']] += n;
+      // those rejected at a review apart from the Rejected tab's (5 November 2026)
+      if (g.stage === 'rejected' && rejectedAtReview(g.rejectedFrom)) c.rejectedAtReview += n;
+      else if (g.stage in c.byStage) c.byStage[g.stage as keyof VacancyCounts['byStage']] += n;
       if (g.filteredOut) c.filteredOut += n;
       out.set(g.vacancyId, c);
     }
@@ -182,7 +185,7 @@ export class VacanciesService {
       ...vacancyListView(v, counts),
       grade: v.grade && { id: v.grade.id, code: v.grade.code, levelEn: v.grade.levelEn },
       hiringManager: v.hiringManager && { id: v.hiringManager.id, name: v.hiringManager.fullNameEn },
-      // the recruitment tree (3 November 2026): who takes Review 1, and Review 2
+      // the recruitment tree (3 November 2026; 5 November 2026): who takes Applicants, and the Final Review
       recruiter: v.recruiter && { id: v.recruiter.id, name: v.recruiter.fullNameEn },
       recruiterManager: v.recruiter?.employments[0]?.manager ? { id: v.recruiter.employments[0].manager.id, name: v.recruiter.employments[0].manager.fullNameEn } : null,
       workArrangement: v.workArrangement,
@@ -204,6 +207,7 @@ export class VacanciesService {
       experienceBasis: isExperienceBasis(v.experienceBasis) ? v.experienceBasis : EXPERIENCE_BASIS_DEFAULT,
       stageCounts: counts.byStage,
       filteredOut: counts.filteredOut,
+      rejectedAtReview: counts.rejectedAtReview,
       sourceCounts: Object.fromEntries(bySource.map((g) => [g.source, g._count._all])),
       submittedAt: v.submittedAt?.toISOString() ?? null,
       submittedBy: userRef(v.submittedBy, names),

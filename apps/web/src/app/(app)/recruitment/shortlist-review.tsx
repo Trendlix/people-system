@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { APPLICATION_STAGE_LABELS, type ReviewApplicant, type ReviewGroup, type ReviewStage } from '@trendlix/shared';
+import { APPLICATION_STAGE_LABELS, REVIEW_STAGES, type ReviewApplicant, type ReviewGroup, type ReviewStage } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import { shownCode } from '@/lib/hidden';
 import { FitPercent, MatchValue } from './cv-fit-ui';
@@ -8,15 +8,16 @@ import { BatchTick, BatchTickAll, ReviewSelection } from './shortlist-ui';
 import { ExperienceCell, LatestRoleCell } from './ui';
 
 // My Hiring's reviews waiting (the recruitment tree, owner, 3 November 2026: "HR1 (Recruter) - HR2 (Her MAnager if there
-// is) - then Manager"; "Tick several at once"): the Review 2 of the vacancies whose recruiter the person manages, and the
-// Final Review of those they hire for; a card per vacancy and review, the longest waiting first (the API's order), with
-// their CV match, match, experience (the Ex-agency and Skipper flags under it), latest role and since when they wait;
-// ticked, then passed or rejected together with the reasons and the feedback (shortlist-ui.tsx ReviewSelection).
+// is) - then Manager"; "Tick several at once"; 5 November 2026: Review 2 the Final Review, the hiring manager's review
+// gone): the Final Review of the vacancies whose recruiter the person manages; a card per vacancy and review, the longest
+// waiting first (the API's order), with their CV match, match, experience (the Ex-agency and Skipper flags under it),
+// latest role and since when they wait; ticked, then passed or rejected together with optional feedback (shortlist-ui.tsx
+// ReviewSelection). The recruiter reviews Applicants on the vacancy's page.
 
-/** A vacancy's applicants split by the review they wait for (Review 2 first). */
+/** A vacancy's applicants split by the review they wait for, in the tree's order. */
 export function reviewCards(groups: readonly ReviewGroup[]): { vacancy: ReviewGroup['vacancy']; stage: ReviewStage; applicants: ReviewApplicant[] }[] {
   return groups.flatMap((g) =>
-    (['review_1', 'review_2', 'final_review'] as const)
+    REVIEW_STAGES
       .map((stage) => ({ vacancy: g.vacancy, stage, applicants: g.applicants.filter((a) => a.stage === stage) }))
       .filter((c) => c.applicants.length > 0),
   );

@@ -29,7 +29,7 @@ export interface VacancyDefaults {
   title: string;
   gradeId: string;
   hiringManagerId: string;
-  /** Who takes Review 1 (3 November 2026): '' for none (HR takes it). */
+  /** Who reviews Applicants (3 November 2026, Review 1 then): '' for none (HR takes it). */
   recruiterId: string;
   headcount: number;
   employmentType: string;
@@ -204,23 +204,23 @@ export function VacancyForm({
                 </option>
               ))}
             </Select>
-            <p className="hint">Takes the Final Review of each applicant.</p>
+            <p className="hint">Sees the applicants from HR Screening on, and suggests at the interview and the offer.</p>
           </div>
-          {/* the recruitment tree (owner, 3 November 2026: "A Recruiter field"): Review 1 is theirs, Review 2 their manager's */}
+          {/* the recruitment tree (owner, 3 November 2026: "A Recruiter field"; 5 November 2026): Applicants is theirs, the Final Review their manager's */}
           {options.recruiters.length > 0 && (
             <div>
               <label htmlFor={fid('recruiterId')} className="label">
                 Recruiter
               </label>
               <Select id={fid('recruiterId')} name="recruiterId" defaultValue={valueOf(state, 'recruiterId', defaults.recruiterId)} className="input">
-                <option value="">None (HR takes Review 1)</option>
+                <option value="">None (HR reviews Applicants)</option>
                 {options.recruiters.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.label}
                   </option>
                 ))}
               </Select>
-              <p className="hint">Takes Review 1; their manager takes Review 2.</p>
+              <p className="hint">Reviews the Applicants; their manager takes the Final Review.</p>
             </div>
           )}
           <div>

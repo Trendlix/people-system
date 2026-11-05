@@ -23,19 +23,25 @@ describe('the hold', () => {
 
 describe('a decision', () => {
   it('says it in a line', () => {
-    expect(decisionLine({ stage: 'review_1', outcome: 'rejected', reasons: ['culture_fit', 'location'] })).toBe('Review 1: Rejected (Culture Fit, Location)');
+    expect(decisionLine({ stage: 'screening', outcome: 'rejected', reasons: ['culture_fit', 'location'] })).toBe('HR Screening: Rejected (Culture Fit, Location)');
+    expect(decisionLine({ stage: 'applied', outcome: 'passed', reasons: [] })).toBe('Applicants: Passed');
+    // the steps of before keep their names in the histories (5 November 2026)
+    expect(decisionLine({ stage: 'review_1', outcome: 'rejected', reasons: ['culture_fit'] })).toBe('Review 1: Rejected (Culture Fit)');
+    expect(decisionLine({ stage: 'final_review', outcome: 'passed', reasons: [] })).toBe('Hiring Manager Review: Passed');
     expect(decisionLine({ stage: 'interview', outcome: 'pending', reasons: [] })).toBe('Technical Interview: Pending');
   });
 
   it('offers each step its own reasons', () => {
     expect(rejectReasonsAt('interview')).toContain('no_show');
     expect(rejectReasonsAt('screening')).toContain('salary_expectations');
-    expect(rejectReasonsAt('applied')).toEqual(rejectReasonsAt('screening'));
     expect(rejectReasonsAt('offer')).toEqual(rejectReasonsAt('screening'));
+    // a review is Pass or Reject, no reasons (owner, 5 November 2026)
+    expect(rejectReasonsAt('applied')).toEqual([]);
+    expect(rejectReasonsAt('review_2')).toEqual([]);
   });
 
   it('reads the form: the outcome, a rejection’s reasons and email tick, the feedback', () => {
-    expect(decisionOf(form([['outcome', 'rejected'], ['reasons', 'attitude'], ['reasons', 'attitude'], ['feedback', ' Late twice '], ['email', 'on']]))).toEqual({
+    expect(decisionOf(form([['outcome', 'rejected'], ['reasonsAsked', '1'], ['reasons', 'attitude'], ['reasons', 'attitude'], ['feedback', ' Late twice '], ['email', 'on']]))).toEqual({
       body: { outcome: 'rejected', reasons: ['attitude'], feedback: 'Late twice', email: true },
       errors: [],
     });
@@ -45,7 +51,9 @@ describe('a decision', () => {
 
   it('says what is missing in words', () => {
     expect(decisionOf(form([])).errors).toEqual(['Choose the outcome.']);
-    expect(decisionOf(form([['outcome', 'rejected']])).errors).toEqual(['Choose why they are rejected: one reason or more.']);
+    expect(decisionOf(form([['outcome', 'rejected'], ['reasonsAsked', '1']])).errors).toEqual(['Choose why they are rejected: one reason or more.']);
+    // a review's rejection asks no reasons (its form has none): the feedback optional
+    expect(decisionOf(form([['outcome', 'rejected']])).body).toEqual({ outcome: 'rejected', reasons: [], feedback: null });
     expect(decisionOf(form([['outcome', 'passed'], ['feedback', 'x'.repeat(2001)]])).errors).toEqual(['Keep the feedback to 2000 characters or fewer.']);
   });
 });

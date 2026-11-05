@@ -9,13 +9,15 @@ import { createApp, createUser, signIn } from './helpers.js';
 
 // The recruitment tree (owner, 3 November 2026: "Recrutment tree"; asked, "HR1 (Recruter) - HR2 (Her MAnager if there is)
 // - then Manager", "Declined closes, rest stay", "Reason list + feedback", "Wait in Applicants", "A Recruiter field",
-// "Yes, at once"). A Video Editor vacancy recruited by Rita (in HR), whose manager Mazen isn't in HR, hired for by Hana;
-// and one recruited by Hadi (in HR, nobody manages him) without a hiring manager. HR sends applicants to Review 1 (Rita
-// told), Rita's Review 1 (another HR person refused), Mazen's Review 2 on My Hiring (Hana told), Hana's Final Review (her
-// rejection final, HR told), HR Screening (Unreachable kept, the interview refused until accepted), the Technical
-// Interview (Pending kept, Accepted to the Offer), a decline closing, the reviews skipped without their people, a Super
-// Admin taking any step, the restore and the board. Email is kept in MailService's outbox (MAIL_TRANSPORT=memory). Every
-// name is invented; this file deletes what it made.
+// "Yes, at once"; 5 November 2026: Review 1 merged into Applicants, Review 2 the Final Review, the hiring manager's review
+// gone, a review's Reject with "optional Feedback", review rejections apart from the Rejected tab). A Video Editor
+// vacancy recruited by Rita (in HR), whose manager Mazen isn't in HR, hired for by Hana; and one recruited by Hadi (in
+// HR, nobody manages him) without a hiring manager. Rita's Applicants (another HR person refused, no Send to Review 1),
+// Mazen's Final Review on My Hiring (told once), Hana from HR Screening on, HR Screening (Unreachable kept, the interview
+// refused until accepted), the Technical Interview (Pending kept, Accepted to the Offer), a decline closing, the Final
+// Review skipped without the recruiter's manager, a Super Admin taking any step, the Rejected tab without the reviews'
+// rejections ("Rejected at review" apart), the restore and the board. Email is kept in MailService's outbox
+// (MAIL_TRANSPORT=memory). Every name is invented; this file deletes what it made.
 
 process.env.MAIL_TRANSPORT = 'memory';
 
@@ -155,57 +157,63 @@ describe('The recruitment tree (e2e)', () => {
     });
   });
 
-  describe('Applicants to Review 1', () => {
-    it('HR sends several at once (the others skipped with why); the recruiter told once', async () => {
-      const before = mail.outbox.length;
-      const stray = randomUUID();
-      const r = (await post('hr', `/recruitment/vacancies/${v.id}/send-to-review`, { applicationIds: [apps.Sara, apps.Adam, apps.Nour, apps.Lina, apps.Fady, apps.Basma, stray] }).expect(200))
-        .body as HiringBatchResult;
-      expect(r.done.map((d) => d.id)).toEqual([apps.Sara, apps.Adam, apps.Nour, apps.Lina]);
-      expect(r.skipped.map((s) => s.reason)).toEqual(['They failed a must-have question and were filtered out: restore them first.', 'They applied to another vacancy.', 'Applicant not found.']);
-      expect((await stageOf('Sara')).stage).toBe('review_1');
-      expect(await notices('rita')).toEqual([
-        { title: `4 applicants for ${job} wait for your Review 1: pass or reject them`, body: [name('Sara'), name('Adam'), name('Nour'), name('Lina')].join(', '), link: '/recruitment/applicants?stage=review_1' },
-      ]);
-      expect(mail.outbox.slice(before).map((m) => m.to)).toEqual([emails.rita]);
-      // their page: Rita decides it, as "The recruiter"
+  describe('Applicants: the recruiter’s review', () => {
+    it('every CV lands there, Rita’s to pass or reject without reasons; no Send to Review 1 any more', async () => {
       const sara = (await get('rita', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView;
-      expect(sara.can.decide).toEqual({ stage: 'review_1', outcomes: ['passed', 'rejected'], reasons: expect.arrayContaining(['culture_fit', 'objectives_mismatch']) });
+      expect(sara).toMatchObject({ stage: 'applied' });
+      expect(sara.can.decide).toEqual({ stage: 'applied', outcomes: ['passed', 'rejected'], reasons: [] });
       expect(sara.nextBy).toBe(`The recruiter: Rita Recruiter ${RUN}`);
-      expect(sara.history.at(-1)).toMatchObject({ event: 'to_review', stage: 'review_1' });
+      await post('hr', `/recruitment/vacancies/${v.id}/send-to-review`, { applicationIds: [apps.Sara] }).expect(404);
+      expect(said(await post('hr', `/recruitment/applications/${apps.Sara}/stage`, { to: 'review_1' }).expect(400))).toEqual(['Choose Rejected.']);
     });
-  });
 
-  describe('Review 1: the recruiter', () => {
     it('is Rita’s: another HR person is refused, a Super Admin may', async () => {
       expect(said(await post('hadi', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'passed' }).expect(403))).toEqual(['The recruiter takes this step.']);
       expect(((await get('hadi', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView).can.decide).toBeNull();
     });
 
-    it('a rejection takes its reasons and feedback, kept as a decision', async () => {
-      expect(said(await post('rita', `/recruitment/applications/${apps.Lina}/decide`, { outcome: 'rejected' }).expect(400))).toEqual(['Choose why they are rejected: one reason or more.']);
-      const lina = (await post('rita', `/recruitment/applications/${apps.Lina}/decide`, { outcome: 'rejected', reasons: ['culture_fit', 'location'], feedback: 'Lives far, wants remote only' }).expect(200)).body as ApplicationView;
-      expect(lina.stage).toBe('rejected');
-      expect(await stageOf('Lina')).toMatchObject({ rejectedFrom: 'review_1', rejectReason: 'Culture Fit, Location' });
-      expect(lina.decisions).toEqual([
-        { id: expect.any(String), stage: 'review_1', outcome: 'rejected', reasons: ['culture_fit', 'location'], feedback: 'Lives far, wants remote only', by: expect.objectContaining({ email: emails.rita }), at: expect.any(String) },
+    it('a rejection takes no reasons, its feedback optional, kept as a decision', async () => {
+      expect(said(await post('rita', `/recruitment/applications/${apps.Lina}/decide`, { outcome: 'rejected', reasons: ['culture_fit'] }).expect(400))).toEqual([
+        'A review is passed or rejected: no reasons are chosen, write feedback if you like.',
       ]);
-      expect(lina.history.at(-1)).toMatchObject({ event: 'decided', stage: 'rejected', note: 'Review 1: Rejected (Culture Fit, Location)' });
-      expect(await prisma.auditLog.findFirst({ where: { entityId: apps.Lina, action: 'decide' } })).toMatchObject({ diff: { step: 'review_1', outcome: 'rejected', reasons: 'Culture Fit, Location' } });
+      const lina = (await post('rita', `/recruitment/applications/${apps.Lina}/decide`, { outcome: 'rejected', feedback: 'Lives far, wants remote only' }).expect(200)).body as ApplicationView;
+      expect(lina.stage).toBe('rejected');
+      expect(await stageOf('Lina')).toMatchObject({ rejectedFrom: 'applied', rejectReason: null });
+      expect(lina.decisions).toEqual([
+        { id: expect.any(String), stage: 'applied', outcome: 'rejected', reasons: [], feedback: 'Lives far, wants remote only', by: expect.objectContaining({ email: emails.rita }), at: expect.any(String) },
+      ]);
+      expect(lina.history.at(-1)).toMatchObject({ event: 'decided', stage: 'rejected', note: 'Applicants: Rejected' });
+      expect(await prisma.auditLog.findFirst({ where: { entityId: apps.Lina, action: 'decide' } })).toMatchObject({ diff: { step: 'applied', outcome: 'rejected' } });
     });
 
-    it('passes several at once to Review 2; Mazen told once', async () => {
-      const r = (await post('rita', `/recruitment/vacancies/${v.id}/decide`, { applicationIds: [apps.Sara, apps.Adam, apps.Nour, apps.Lina], stage: 'review_1', outcome: 'passed', feedback: 'Strong reels' }).expect(200))
-        .body as HiringBatchResult;
+    it('passes several at once to the Final Review (the others skipped with why); Mazen told once', async () => {
+      const before = mail.outbox.length;
+      const stray = randomUUID();
+      const r = (
+        await post('rita', `/recruitment/vacancies/${v.id}/decide`, {
+          applicationIds: [apps.Sara, apps.Adam, apps.Nour, apps.Lina, apps.Fady, apps.Basma, stray],
+          stage: 'applied',
+          outcome: 'passed',
+          feedback: 'Strong reels',
+        }).expect(200)
+      ).body as HiringBatchResult;
       expect(r.done.map((d) => d.id)).toEqual([apps.Sara, apps.Adam, apps.Nour]);
-      expect(r.skipped).toEqual([{ id: apps.Lina, number: expect.any(String), fullName: name('Lina'), reason: 'They were rejected already.' }]);
+      expect(r.skipped.map((x) => x.reason)).toEqual([
+        'They were rejected already.',
+        'They failed a must-have question and were filtered out.',
+        'They applied to another vacancy.',
+        'Applicant not found.',
+      ]);
       expect((await stageOf('Sara')).stage).toBe('review_2');
-      expect(await notices('mazen')).toEqual([{ title: `3 applicants for ${job} wait for your Review 2: pass or reject them`, body: [name('Sara'), name('Adam'), name('Nour')].join(', '), link: '/recruitment/my-hiring' }]);
+      expect(await notices('mazen')).toEqual([{ title: `3 applicants for ${job} wait for your final review: pass or reject them`, body: [name('Sara'), name('Adam'), name('Nour')].join(', '), link: '/recruitment/my-hiring' }]);
+      expect(mail.outbox.slice(before).map((m) => m.to)).toEqual([emails.mazen]);
+      // Rita works on the HR pages: nothing sent her
+      expect(await notices('rita')).toEqual([]);
     });
   });
 
-  describe('Review 2: the recruiter’s manager', () => {
-    it('Mazen, outside HR, sees those at his Review 2 on My Hiring and their page, never their expected salary', async () => {
+  describe('the Final Review: the recruiter’s manager', () => {
+    it('Mazen, outside HR, sees those at his Final Review on My Hiring and their page, never their expected salary', async () => {
       const mine = (await get('mazen', '/recruitment/my-hiring').expect(200)).body as MyHiring;
       expect(mine.toReview).toEqual([{ vacancy: { id: v.id, number: v.number, title: v.title }, applicants: expect.any(Array) }]);
       expect(mine.toReview![0].applicants.map((a) => [a.fullName, a.stage])).toEqual([
@@ -214,31 +222,22 @@ describe('The recruitment tree (e2e)', () => {
         [name('Nour'), 'review_2'],
       ]);
       const sara = (await get('mazen', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView;
-      expect(sara).toMatchObject({ viewer: 'reviewer', expectedSalary: null, can: { decide: { stage: 'review_2' } } });
+      expect(sara).toMatchObject({ viewer: 'reviewer', expectedSalary: null, can: { decide: { stage: 'review_2', outcomes: ['passed', 'rejected'], reasons: [] } } });
       await get('mazen', `/recruitment/applications/${apps.Lina}`).expect(404);
+      // the hiring manager sees nobody before HR Screening
+      await get('hana', `/recruitment/applications/${apps.Sara}`).expect(404);
     });
 
-    it('passes two to the Final Review (Hana told once), rejects one', async () => {
-      await post('mazen', `/recruitment/vacancies/${v.id}/decide`, { applicationIds: [apps.Sara, apps.Adam], stage: 'review_2', outcome: 'passed' }).expect(200);
-      await post('mazen', `/recruitment/applications/${apps.Nour}/decide`, { outcome: 'rejected', reasons: ['underqualified'] }).expect(200);
-      expect((await stageOf('Sara')).stage).toBe('final_review');
-      expect(await stageOf('Nour')).toMatchObject({ stage: 'rejected', rejectedFrom: 'review_2' });
-      expect(await notices('hana')).toEqual([{ title: `2 applicants for ${job} wait for your final review: pass or reject them`, body: [name('Sara'), name('Adam')].join(', '), link: '/recruitment/my-hiring' }]);
-      // past his review, no longer his to see
-      await get('mazen', `/recruitment/applications/${apps.Sara}`).expect(404);
-    });
-  });
-
-  describe('the Final Review: the hiring manager', () => {
-    it('Hana’s rejection is final; her pass goes to HR Screening; HR told', async () => {
+    it('passes two to HR Screening, rejects one; his pass is the last review', async () => {
       await post('hr', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'passed' }).expect(403);
-      const adam = (await post('hana', `/recruitment/applications/${apps.Adam}/decide`, { outcome: 'rejected', reasons: ['overqualified'], feedback: 'Too senior for the role' }).expect(200))
-        .body as ApplicationView;
-      expect(adam.stage).toBe('rejected');
-      await post('hana', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'passed' }).expect(200);
+      await post('mazen', `/recruitment/vacancies/${v.id}/decide`, { applicationIds: [apps.Sara, apps.Adam], stage: 'review_2', outcome: 'passed' }).expect(200);
+      await post('mazen', `/recruitment/applications/${apps.Nour}/decide`, { outcome: 'rejected' }).expect(200);
       expect((await stageOf('Sara')).stage).toBe('screening');
-      const hrNotices = await prisma.notification.findMany({ where: { userId: users.hr, kind: 'hiring_suggestion' }, select: { title: true } });
-      expect(hrNotices.map((x) => x.title)).toEqual(expect.arrayContaining([`Final Review of ${job}: 1 rejected`, `Final Review of ${job}: 1 passed`]));
+      expect(await stageOf('Nour')).toMatchObject({ stage: 'rejected', rejectedFrom: 'review_2' });
+      // past his review, no longer his to see; the hiring manager sees them now
+      await get('mazen', `/recruitment/applications/${apps.Sara}`).expect(404);
+      expect(((await get('hana', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView).viewer).toBe('hiring_manager');
+      await get('hana', `/recruitment/applications/${apps.Nour}`).expect(404);
     });
   });
 
@@ -256,6 +255,12 @@ describe('The recruitment tree (e2e)', () => {
       await post('hr', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'accepted' }).expect(200);
       expect(await stageOf('Sara')).toMatchObject({ stage: 'interview', hold: null });
     });
+
+    it('rejects only with its own reasons', async () => {
+      expect(said(await post('hr', `/recruitment/applications/${apps.Adam}/decide`, { outcome: 'rejected' }).expect(400))).toEqual(['Choose why they are rejected: one reason or more.']);
+      await post('hr', `/recruitment/applications/${apps.Adam}/decide`, { outcome: 'rejected', reasons: ['overqualified'], feedback: 'Too senior for the role' }).expect(200);
+      expect(await stageOf('Adam')).toMatchObject({ stage: 'rejected', rejectedFrom: 'screening', rejectReason: 'Overqualified' });
+    });
   });
 
   describe('the Technical Interview', () => {
@@ -266,9 +271,8 @@ describe('The recruitment tree (e2e)', () => {
       const offer = (await post('hr', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'accepted', feedback: 'Great test edit' }).expect(200)).body as ApplicationView;
       expect(offer).toMatchObject({ stage: 'offer', hold: null, nextBy: null, can: { makeOffer: true, decide: null } });
       expect(offer.decisions!.map((d) => [d.stage, d.outcome])).toEqual([
-        ['review_1', 'passed'],
+        ['applied', 'passed'],
         ['review_2', 'passed'],
-        ['final_review', 'passed'],
         ['screening', 'unreachable'],
         ['screening', 'accepted'],
         ['interview', 'pending'],
@@ -277,15 +281,11 @@ describe('The recruitment tree (e2e)', () => {
     });
   });
 
-  describe('without a recruiter’s manager or a hiring manager', () => {
-    it('Review 2 and the Final Review are skipped; a decline closes them', async () => {
-      await post('hr', `/recruitment/applications/${apps.Basma}/stage`, { to: 'review_1' }).expect(200);
-      // Hadi, the recruiter, told; not of those he sends himself
-      expect((await notices('hadi')).map((x) => x.title)).toEqual([`1 applicant for ${job} wait for your Review 1: pass or reject them`]);
-      await post('hadi', `/recruitment/applications/${apps.Badr}/stage`, { to: 'review_1' }).expect(200);
-      expect(await notices('hadi')).toHaveLength(1);
+  describe('without a recruiter’s manager', () => {
+    it('the Final Review is skipped; a decline closes them', async () => {
       const basma = (await post('hadi', `/recruitment/applications/${apps.Basma}/decide`, { outcome: 'passed' }).expect(200)).body as ApplicationView;
       expect(basma.stage).toBe('screening');
+      expect(await notices('hadi')).toEqual([]);
       await post('hr', `/recruitment/applications/${apps.Basma}/decide`, { outcome: 'accepted' }).expect(200);
       const declined = (await post('hr', `/recruitment/applications/${apps.Basma}/decide`, { outcome: 'declined', feedback: 'Took another offer' }).expect(200)).body as ApplicationView;
       expect(declined.stage).toBe('rejected');
@@ -298,21 +298,42 @@ describe('The recruitment tree (e2e)', () => {
     });
   });
 
+  describe('the Rejected tab and Applicants’ “Rejected at review”', () => {
+    it('lists those rejected at HR Screening or the interview on the tab, those rejected at a review apart', async () => {
+      const ids = async (query: string) => ((await get('hr', `/recruitment/applications?vacancyId=${v.id}&${query}`).expect(200)).body as ApplicationListItem[]).map((a) => a.id).sort();
+      expect(await ids('stage=rejected')).toEqual([apps.Adam].sort());
+      expect(await ids('reviewRejected=only')).toEqual([apps.Lina, apps.Nour].sort());
+      // the stage asked for doesn't matter with it
+      expect(await ids('reviewRejected=only&stage=applied')).toEqual([apps.Lina, apps.Nour].sort());
+      expect(((await get('hr', `/recruitment/vacancies/${v.id}`).expect(200)).body as VacancyView)).toMatchObject({ rejectedAtReview: 2, stageCounts: { rejected: 1 } });
+      const board = (await get('hr', `/recruitment/vacancies/${v.id}/board`).expect(200)).body as VacancyBoard;
+      expect(board.rejectedAtReview).toBe(2);
+      expect(board.columns.find((c) => c.stage === 'rejected')!.cards.map((c) => c.id)).toEqual([apps.Adam]);
+      // the decline closes at the interview: on the tab
+      expect(((await get('hr', `/recruitment/applications?vacancyId=${solo.id}&stage=rejected`).expect(200)).body as ApplicationListItem[]).map((a) => a.id)).toEqual([apps.Basma]);
+    });
+  });
+
   describe('HR’s hand', () => {
-    it('rejects from any step with its reasons; restores to the step they were rejected at', async () => {
+    it('rejects from any step with its reasons (none at a review); restores to the step they were rejected at', async () => {
       expect(said(await post('hr', `/recruitment/applications/${apps.Badr}/stage`, { to: 'rejected' }).expect(400))).toEqual(['Choose why they are rejected: one reason or more.']);
       await post('hr', `/recruitment/applications/${apps.Badr}/stage`, { to: 'rejected', reasons: ['salary_expectations'], feedback: 'Asked for twice the range' }).expect(200);
       expect(await stageOf('Badr')).toMatchObject({ stage: 'rejected', rejectedFrom: 'screening', rejectReason: 'Salary Expectations' });
       await post('hr', `/recruitment/applications/${apps.Lina}/restore`).expect(200);
-      expect((await stageOf('Lina')).stage).toBe('review_1');
+      expect((await stageOf('Lina')).stage).toBe('applied');
+      expect(said(await post('hr', `/recruitment/applications/${apps.Lina}/stage`, { to: 'rejected', reasons: ['culture_fit'] }).expect(400))).toEqual([
+        'A review is passed or rejected: no reasons are chosen, write feedback if you like.',
+      ]);
+      await post('hr', `/recruitment/applications/${apps.Lina}/stage`, { to: 'rejected' }).expect(200);
+      expect(await stageOf('Lina')).toMatchObject({ stage: 'rejected', rejectedFrom: 'applied' });
     });
 
-    it('the board has a column a step; HR moves only Applicants to Review 1 by hand', async () => {
+    it('the board has a column a step; the hiring manager’s starts at HR Screening', async () => {
       const board = (await get('hr', `/recruitment/vacancies/${v.id}/board`).expect(200)).body as VacancyBoard;
-      expect(board.columns.map((c) => c.stage)).toEqual(['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer', 'hired', 'rejected']);
+      expect(board.columns.map((c) => c.stage)).toEqual(['applied', 'review_2', 'screening', 'interview', 'offer', 'hired', 'rejected']);
       expect(board.columns.find((c) => c.stage === 'offer')!.cards.map((c) => c.id)).toEqual([apps.Sara]);
       const hanas = (await get('hana', `/recruitment/vacancies/${v.id}/board`).expect(200)).body as VacancyBoard;
-      expect(hanas.columns.map((c) => c.stage)).toEqual(['final_review', 'screening', 'interview', 'offer', 'hired', 'rejected']);
+      expect(hanas.columns.map((c) => c.stage)).toEqual(['screening', 'interview', 'offer', 'hired', 'rejected']);
     });
   });
 });

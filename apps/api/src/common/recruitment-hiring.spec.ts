@@ -33,22 +33,20 @@ const free = { filteredOut: false, openOffer: false };
 
 describe('the pipeline board', () => {
   it('moves by the stage actions’ rules: Reject asks why, Offer goes through Make offer, the rest by a decision', () => {
-    expect(boardMove('applied', 'review_1', free)).toEqual({ kind: 'move', to: 'review_1', needsReason: false });
     expect(boardMove('interview', 'rejected', free)).toEqual({ kind: 'move', to: 'rejected', needsReason: true });
     expect(boardMove('offer', 'offer', free).kind).toBe('refused');
-    // the recruitment tree (3 November 2026): every later step follows its decision
-    expect(boardMove('review_1', 'review_2', free)).toEqual({ kind: 'refused', reason: 'Review 2 follows a decision at Review 1: open their page to decide it.' });
+    // the recruitment tree (3 November 2026; 5 November 2026: Applicants decided too): every step follows its decision
+    expect(boardMove('applied', 'review_2', free)).toEqual({ kind: 'refused', reason: 'Final Review follows a decision at Applicants: open their page to decide it.' });
     expect(boardMove('interview', 'offer', free)).toEqual({ kind: 'refused', reason: 'They are at Technical Interview: a job offer comes once the Technical Interview accepts them.' });
   });
 
   it('refuses in words what the stage actions refuse', () => {
     expect(boardMove('applied', 'hired', free)).toEqual({ kind: 'refused', reason: 'Hired follows an accepted job offer: make them an offer first.' });
-    expect(boardMove('review_1', 'applied', free).kind).toBe('refused');
+    expect(boardMove('review_2', 'applied', free).kind).toBe('refused');
     expect(boardMove('applied', 'interview', free)).toEqual({ kind: 'refused', reason: 'Technical Interview follows a decision at Applicants: open their page to decide it.' });
     expect(boardMove('applied', 'offer', free)).toEqual({ kind: 'refused', reason: 'They are at Applicants: a job offer comes once the Technical Interview accepts them.' });
     expect(boardMove('interview', 'offer', { filteredOut: false, openOffer: true }).kind).toBe('refused');
     expect(boardMove('offer', 'rejected', { filteredOut: false, openOffer: true })).toEqual({ kind: 'refused', reason: 'A job offer to them is open: withdraw it first.' });
-    expect(boardMove('applied', 'review_1', { filteredOut: true, openOffer: false }).kind).toBe('refused');
     expect(boardMove('hired', 'rejected', free).kind).toBe('refused');
     expect(boardMove('interview', 'interview', free)).toEqual({ kind: 'refused', reason: 'They are at Technical Interview already.' });
   });
@@ -56,8 +54,8 @@ describe('the pipeline board', () => {
   it('counts the days at a stage from the last change of stage', () => {
     const steps = [
       { stage: 'applied', at: '2026-10-01T08:00:00Z' },
-      { stage: 'review_1', at: '2026-10-03T08:00:00Z' },
-      { stage: 'review_1', at: '2026-10-04T08:00:00Z' }, // a restore at the same stage
+      { stage: 'review_2', at: '2026-10-03T08:00:00Z' },
+      { stage: 'review_2', at: '2026-10-04T08:00:00Z' }, // a restore at the same stage
       { stage: 'interview', at: '2026-10-05T08:00:00Z' },
     ];
     expect(stageSince(steps, '2026-10-01T08:00:00Z')).toBe('2026-10-05T08:00:00.000Z');
@@ -69,14 +67,14 @@ describe('the pipeline board', () => {
 });
 
 describe('who sees which applicants', () => {
-  it('shows a hiring manager their vacancy’s applicants from their Final Review on, never one filtered out', () => {
+  it('shows a hiring manager their vacancy’s applicants from HR Screening on (5 November 2026), never one filtered out', () => {
     expect(hiringManagerSees({ stage: 'applied', rejectedFrom: null, filteredOut: false })).toBe(false);
     expect(hiringManagerSees({ stage: 'review_2', rejectedFrom: null, filteredOut: false })).toBe(false);
-    expect(hiringManagerSees({ stage: 'final_review', rejectedFrom: null, filteredOut: false })).toBe(true);
+    expect(hiringManagerSees({ stage: 'screening', rejectedFrom: null, filteredOut: false })).toBe(true);
     expect(hiringManagerSees({ stage: 'hired', rejectedFrom: null, filteredOut: false })).toBe(true);
     expect(hiringManagerSees({ stage: 'rejected', rejectedFrom: 'interview', filteredOut: false })).toBe(true);
-    expect(hiringManagerSees({ stage: 'rejected', rejectedFrom: 'applied', filteredOut: false })).toBe(false);
-    expect(hiringManagerSees({ stage: 'final_review', rejectedFrom: null, filteredOut: true })).toBe(false);
+    expect(hiringManagerSees({ stage: 'rejected', rejectedFrom: 'review_2', filteredOut: false })).toBe(false);
+    expect(hiringManagerSees({ stage: 'screening', rejectedFrom: null, filteredOut: true })).toBe(false);
   });
 
   const user = (roles: string[]) => ({ id: 'u', email: 'u@x.test', roles }) as unknown as SessionUser;
@@ -274,16 +272,16 @@ describe('the analytics’ arithmetic', () => {
   });
 
   it('builds the funnel with each stage’s share of the one before', () => {
-    // the recruitment tree (3 November 2026): reviewed (Review 1 or further), HR Screening, the interview, the offer
-    expect(funnelOf(['applied', 'applied', 'review_1', 'interview', 'hired'])).toEqual([
+    // the recruitment tree (5 November 2026): past Applicants (the Final Review or further), HR Screening, the interview, the offer
+    expect(funnelOf(['applied', 'applied', 'review_2', 'interview', 'hired'])).toEqual([
       { stage: 'applied', reached: 5, conversion: null },
-      { stage: 'review_1', reached: 3, conversion: 60 },
+      { stage: 'review_2', reached: 3, conversion: 60 },
       { stage: 'screening', reached: 2, conversion: 66.7 },
       { stage: 'interview', reached: 2, conversion: 100 },
       { stage: 'offer', reached: 1, conversion: 50 },
       { stage: 'hired', reached: 1, conversion: 100 },
     ]);
-    expect(funnelOf([])[1]).toEqual({ stage: 'review_1', reached: 0, conversion: null });
+    expect(funnelOf([])[1]).toEqual({ stage: 'review_2', reached: 0, conversion: null });
   });
 
   it('averages days to one decimal, and rounds a % to one decimal', () => {

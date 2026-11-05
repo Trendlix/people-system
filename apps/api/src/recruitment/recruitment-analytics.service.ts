@@ -66,7 +66,7 @@ export class RecruitmentAnalyticsService {
       select: { id: true, headcount: true, applications: { where: { stage: 'hired' }, select: { id: true } } },
     });
     const activeCandidates = await this.prisma.jobApplication.count({
-      where: { vacancyId: { in: open.map((v) => v.id) }, filteredOut: false, stage: { in: ['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer'] } },
+      where: { vacancyId: { in: open.map((v) => v.id) }, filteredOut: false, stage: { in: ['applied', 'review_2', 'screening', 'interview', 'offer'] } },
     });
 
     // the year's applicants

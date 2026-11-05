@@ -120,6 +120,11 @@ export interface ApplicantsQuery {
   verdict: VerdictFilter | '';
   /** Those kept at their step as Unreachable or Pending (the recruitment tree, owner, 3 November 2026); '' for any. */
   hold: HoldOutcome | '';
+  /**
+   * Those rejected at a review, Applicants or the Final Review (owner, 5 November 2026: kept off the Rejected tab; asked,
+   * "A filter in Applicants"): the stage is then not sent.
+   */
+  reviewRejected: boolean;
 }
 
 /** The "CV match ≥ 50%" filter's threshold. */
@@ -150,6 +155,7 @@ export function readApplicantsQuery(query: Record<string, string | string[] | un
     skill: skillOf(query.skill),
     verdict: verdictOf(query.verdict),
     hold: holdFilterOf(query.hold),
+    reviewRejected: one(query.reviewRejected) === 'only',
   };
 }
 
@@ -294,7 +300,9 @@ export const skillGroups = (): { label: string; skills: string[] }[] =>
 function applicantParams(q: Partial<ApplicantsQuery>): URLSearchParams {
   const params = new URLSearchParams();
   if (q.vacancyId) params.set('vacancyId', q.vacancyId);
-  if (q.stage) params.set('stage', q.stage);
+  // rejected at a review (5 November 2026): any stage chosen gives way
+  if (q.reviewRejected) params.set('reviewRejected', 'only');
+  else if (q.stage) params.set('stage', q.stage);
   if (q.minMatch !== null && q.minMatch !== undefined) params.set('minMatch', String(q.minMatch));
   if (q.minYears !== null && q.minYears !== undefined) params.set('minYears', String(q.minYears));
   if (q.source) params.set('source', q.source);
@@ -331,7 +339,7 @@ export interface VacancyBody {
   gradeId: string | null;
   hiringManagerId: string | null;
   /**
-   * Who takes Review 1 (an HR or Super Admin's employee; 3 November 2026); null for none (HR takes it); left out when the
+   * Who reviews Applicants (an HR or Super Admin's employee; 3 November 2026); null for none (HR takes it); left out when the
    * form had no such field (the list of recruiters couldn't be read): the one set kept, the creator on a new vacancy.
    */
   recruiterId?: string | null;
@@ -544,6 +552,9 @@ export function offerFromApplication<D extends {
   };
 }
 
+/** The Applicants filter of those rejected at a review (owner, 5 November 2026: "A filter in Applicants"). */
+export const REJECTED_AT_REVIEW = 'Rejected at review';
+
 /** The stage chips of an applicants' list: every stage, in order. */
 export const STAGE_FILTERS: readonly ApplicationStage[] = APPLICATION_STAGES;
 
@@ -558,9 +569,7 @@ export const VACANCY_STATUS_STYLE: Record<(typeof VACANCY_STATUSES)[number], str
 
 export const STAGE_STYLE: Record<ApplicationStage, string> = {
   applied: 'bg-canvas text-ink',
-  review_1: 'bg-accent-soft text-accent',
   review_2: 'bg-accent-soft text-accent',
-  final_review: 'bg-accent-soft text-accent',
   screening: 'bg-accent-soft text-accent',
   interview: 'bg-accent-soft text-accent',
   offer: 'bg-warn-soft text-warn',

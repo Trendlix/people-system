@@ -48,8 +48,9 @@ const AREA = '00000000-0000-4000-8000-000000000001';
 const group = (id: string, total: number, extra: Partial<VacancyApplicantsGroup> = {}): VacancyApplicantsGroup => ({
   vacancy: { id, number: 'VAC-2026-0001', title: 'Video editor', status: 'open' },
   total,
-  byStage: { applied: total, review_1: 0, review_2: 0, final_review: 0, screening: 0, interview: 0, offer: 0, hired: 0, rejected: 0 },
+  byStage: { applied: total, review_2: 0, screening: 0, interview: 0, offer: 0, hired: 0, rejected: 0 },
   filteredOut: 0,
+  rejectedAtReview: 0,
   bySource: {},
   ...extra,
 });
@@ -91,8 +92,12 @@ describe('the Applicants page’s tabs', () => {
   });
 
   it('says a vacancy’s stages in a line, those with none left out', () => {
-    const g = group(V1, 6, { byStage: { applied: 3, review_1: 2, review_2: 0, final_review: 0, screening: 0, interview: 0, offer: 0, hired: 0, rejected: 0 }, filteredOut: 1 });
-    expect(stageCountsText(g, APPLICATION_STAGE_LABELS)).toBe('Applicants: 3 · Review 1: 2 · Filtered out: 1');
+    const g = group(V1, 6, { byStage: { applied: 3, review_2: 2, screening: 0, interview: 0, offer: 0, hired: 0, rejected: 0 }, filteredOut: 1 });
+    expect(stageCountsText(g, APPLICATION_STAGE_LABELS)).toBe('Applicants: 3 · Final Review: 2 · Filtered out: 1');
+    // those rejected at a review counted apart from Rejected (owner, 5 November 2026)
+    expect(stageCountsText({ ...g, byStage: { ...g.byStage, rejected: 1 }, rejectedAtReview: 4 }, APPLICATION_STAGE_LABELS)).toBe(
+      'Applicants: 3 · Final Review: 2 · Rejected: 1 · Rejected at review: 4 · Filtered out: 1',
+    );
   });
 });
 

@@ -5,9 +5,9 @@ import { reviewOrder } from './hiring-batches.js';
 import { cvListFactsOf, money } from './recruitment-views.js';
 
 // My Hiring's reviews waiting (the recruitment tree, owner, 3 November 2026: "HR1 (Recruter) - HR2 (Her MAnager if there
-// is) - then Manager"; "Tick several at once"; packages/shared recruitment-tree.ts): the applicants at the Review 2 of
-// the open (or on hold) vacancies whose recruiter the person manages now, and at the Final Review of those they hire for,
-// never one filtered out; each with their match, the CV's facts (the Ex-agency and Skipper flags with HR's agency marks,
+// is) - then Manager"; "Tick several at once"; 5 November 2026: Review 2 is the Final Review, the hiring manager's
+// review gone; packages/shared recruitment-tree.ts): the applicants at the Final Review of the open (or on hold)
+// vacancies whose recruiter the person manages now, never one filtered out; each with their match, the CV's facts (the Ex-agency and Skipper flags with HR's agency marks,
 // as the lists read them), the years they typed, and when they reached that review; the longest waiting first. A
 // vacancy with nobody waiting is left out. One read of the applicants, one of the agency marks.
 
@@ -19,10 +19,8 @@ export async function reviewsWaiting(prisma: PrismaService, selfId: string): Pro
     prisma.jobApplication.findMany({
       where: {
         filteredOut: false,
-        OR: [
-          { stage: 'review_2', vacancy: { status: LIVE, recruiter: { employments: { some: { endDate: null, managerId: selfId } } } } },
-          { stage: 'final_review', vacancy: { status: LIVE, hiringManagerId: selfId } },
-        ],
+        stage: 'review_2',
+        vacancy: { status: LIVE, recruiter: { employments: { some: { endDate: null, managerId: selfId } } } },
       },
       select: {
         id: true,

@@ -1,9 +1,8 @@
-import { APPLICATION_STAGE_LABELS, stageMoveProblem, type ApplicationStage, type DecisionStep, type HiringBatchResult } from '@trendlix/shared';
+import { APPLICATION_STAGE_LABELS, type ApplicationStage, type DecisionStep, type HiringBatchResult } from '@trendlix/shared';
 
 // The batches (owner, 29 October 2026: "Tick several at once" and "One message per batch"; the recruitment tree, 3
 // November 2026): which applicants a batch skips and why, in words, and the order My Hiring lists the reviews waiting
-// in. HR sends those at Applicants of the vacancy to Review 1, as Send to Review 1 on an applicant's page does; a step's
-// decisions take those at that step. Pure; tested in apps/api/src/common/hiring-batches.spec.ts.
+// in. A step's decisions take those at that step (5 November 2026: Applicants decided too, no Send to Review 1). Pure; tested in apps/api/src/common/hiring-batches.spec.ts.
 
 export const BATCH_NOT_FOUND = 'Applicant not found.';
 export const OTHER_VACANCY = 'They applied to another vacancy.';
@@ -30,16 +29,6 @@ export const skippedOf = (id: string, a: Pick<BatchApplicant, 'number' | 'fullNa
   fullName: a?.fullName ?? null,
   reason,
 });
-
-/**
- * Why HR's Send to Review 1 skips an applicant (the recruitment tree, 3 November 2026); null when they are sent. Only
- * those at Applicants of this vacancy, by the stage rules of Send to Review 1 on their page (stageMoveProblem: filtered
- * out, rejected, hired, at a later step).
- */
-export function sendSkip(a: BatchApplicant, vacancyId: string): string | null {
-  if (a.vacancyId !== vacancyId) return OTHER_VACANCY;
-  return stageMoveProblem(a.stage as ApplicationStage, 'review_1', { filteredOut: a.filteredOut, openOffer: a.openOffer ?? false });
-}
 
 /** Why a batch of decisions at `step` skips an applicant; null when they are decided. Only those at that step of this vacancy. */
 export function decideSkip(a: BatchApplicant, vacancyId: string, step: DecisionStep): string | null {

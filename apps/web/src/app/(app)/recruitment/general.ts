@@ -21,7 +21,7 @@ import {
   VACANCY_STATUS_LABELS,
 } from '@trendlix/shared';
 import { generalApiForm, generalInputOf, generalTypedValues } from '../../careers/careers';
-import { APPLICANTS_PATH, applicantsHref, minYearsOf, skillOf, vacancyHref, verdictOf, type ApplicantsQuery } from './recruitment';
+import { APPLICANTS_PATH, applicantsHref, minYearsOf, REJECTED_AT_REVIEW, skillOf, vacancyHref, verdictOf, type ApplicantsQuery } from './recruitment';
 import { shownCode } from '../../../lib/hidden';
 
 // General CVs and the applicants by posted job on the site (owner, 22 October 2026: "i want a proper viweing, what came
@@ -55,7 +55,20 @@ export const tabHref = (tab: ApplicantsTab) => (tab === 'general' ? `${APPLICANT
 
 /** Whether a filter narrows the posted jobs' list (then a vacancy without a match is left out). */
 export const filtering = (q: ApplicantsQuery): boolean =>
-  !!(q.vacancyId || q.stage || q.source || q.q || q.skill || q.verdict || q.hold || q.minMatch !== null || q.minYears !== null || q.minCvMatch !== null || q.filtered !== 'hide');
+  !!(
+    q.vacancyId ||
+    q.stage ||
+    q.reviewRejected ||
+    q.source ||
+    q.q ||
+    q.skill ||
+    q.verdict ||
+    q.hold ||
+    q.minMatch !== null ||
+    q.minYears !== null ||
+    q.minCvMatch !== null ||
+    q.filtered !== 'hide'
+  );
 
 /**
  * The posted jobs' applicants grouped by vacancy, in the summary's order (open first, then on hold, closed, filled):
@@ -401,12 +414,14 @@ export function addCvApiForm(fd: FormData): FormData {
   return out;
 }
 
-/** A vacancy's applicants by stage in words, those with none left out: "Applied 4 · Shortlisted 2". */
+/** A vacancy's applicants by stage in words, those with none left out: "Applicants: 4 · Final Review: 2". */
 export function stageCountsText(group: VacancyApplicantsGroup, labels: Readonly<Record<string, string>>): string {
   const parts = Object.entries(group.byStage)
     .filter(([, n]) => n > 0)
-    // "Review 1: 2", so a step's number never runs into its count (the tree, 3 November 2026)
+    // "Final Review: 2", a step's name then its count (the tree, 3 November 2026)
     .map(([stage, n]) => `${labels[stage] ?? stage}: ${n}`);
+  // those rejected at a review, kept off the Rejected count (owner, 5 November 2026)
+  if (group.rejectedAtReview) parts.push(`${REJECTED_AT_REVIEW}: ${group.rejectedAtReview}`);
   if (group.filteredOut) parts.push(`Filtered out: ${group.filteredOut}`);
   return parts.join(' · ');
 }

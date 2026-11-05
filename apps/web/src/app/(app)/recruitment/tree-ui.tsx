@@ -4,19 +4,22 @@ import { FEEDBACK_MAX, REJECT_REASON_LABELS, STEP_OUTCOME_LABELS, STEP_OUTCOME_N
 import { useActionState, useState } from 'react';
 import { FormErrors, useFieldIds } from '@/components/form';
 import type { FormState } from '@/lib/types';
-import { holdBadge } from './tree';
+import { holdBadge, REASONS_ASKED } from './tree';
 
-// The recruitment tree's forms (owner, 3 November 2026: "Recrutment tree"; "Reason list + feedback"): the reasons of a
-// rejection ticked (one or more) and the written feedback, the same wherever a step is decided or an applicant rejected;
-// Decide on an applicant's page (its outcomes, the reasons once Rejected is chosen); HR's Reject from any step; the
-// hold's badge.
+// The recruitment tree's forms (owner, 3 November 2026: "Recrutment tree"; "Reason list + feedback"; 5 November 2026: a
+// review is Pass or Reject with "optional Feedback"): the reasons of a rejection ticked (one or more, at HR Screening, the
+// Technical Interview and the Offer; none at a review) and the written feedback, the same wherever a step is decided or
+// an applicant rejected; Decide on an applicant's page (its outcomes, the reasons once Rejected is chosen); HR's Reject
+// from any step; the hold's badge.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
-/** The reasons of a rejection to tick, one or more. */
+/** The reasons of a rejection to tick, one or more; nothing at a step that takes none (a review). */
 export function ReasonPicker({ reasons, legend = 'Why they are rejected' }: { reasons: readonly RejectReason[]; legend?: string }) {
+  if (!reasons.length) return null;
   return (
     <fieldset>
+      <input type="hidden" name={REASONS_ASKED} value="1" />
       <legend className="label">{legend}</legend>
       <div className="flex flex-wrap gap-2">
         {reasons.map((r) => (

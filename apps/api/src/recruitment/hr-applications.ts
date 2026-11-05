@@ -14,7 +14,7 @@ export interface HrApplicationInput {
   /** A general CV's own reference, kept for the application made from it; none: the series' next. */
   number?: string;
   vacancyId: string;
-  stage: 'applied' | 'review_1';
+  stage: 'applied';
   fullName: string;
   email: string;
   mobile: string;
@@ -97,7 +97,6 @@ export async function createHrApplication(tx: Prisma.TransactionClient, a: HrApp
         steps: {
           create: [
             { event: 'applied', stage: 'applied', note: a.note, byId: a.byId, at: now },
-            ...(a.stage === 'review_1' ? [{ event: 'to_review', stage: 'review_1', byId: a.byId, at: new Date(now.getTime() + 1) }] : []),
           ],
         },
       },

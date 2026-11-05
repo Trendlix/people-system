@@ -45,7 +45,7 @@ export async function setGeneralCvStatus(id: string, to: 'review' | 'archive' | 
   return send('POST', path(id, `/${to}`), {}, to === 'review' ? 'Marked as reviewed.' : to === 'archive' ? 'Archived.' : 'Restored.');
 }
 
-/** Adds a general CV to a vacancy at Applied or Shortlisted: an application made from it; then the applicant's page. */
+/** Adds a general CV to a vacancy at Applicants: an application made from it; then the applicant's page. */
 export async function moveGeneralCv(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const vacancyId = fd.get('vacancyId');
   const stage = fd.get('stage');

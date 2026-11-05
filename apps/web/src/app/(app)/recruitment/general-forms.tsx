@@ -9,7 +9,6 @@ import {
   HR_CONSENT_TEXT,
   HR_CV_SOURCES,
   MOVE_STAGES,
-  APPLICATION_STAGE_LABELS,
   OTHER_POSITION,
   RECRUITMENT_LIMITS,
   type ApplicationSource,
@@ -186,7 +185,7 @@ export function AddCvForm({ action, positions }: { action: Action; positions: re
 
 // ---------- Add to a vacancy ----------
 
-/** Adds a general CV to an open (or on hold) vacancy at Applicants or Review 1. */
+/** Adds a general CV to an open (or on hold) vacancy, at Applicants (5 November 2026: the recruiter's review, Review 1 merged into it). */
 export function MoveForm({ action, vacancies }: { action: Action; vacancies: { id: string; label: string }[] }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
@@ -208,17 +207,7 @@ export function MoveForm({ action, vacancies }: { action: Action; vacancies: { i
             ))}
           </Select>
         </div>
-        <fieldset className="space-y-1">
-          <legend className="label">At</legend>
-          <div className="flex min-h-10 flex-wrap items-center gap-4">
-            {MOVE_STAGES.map((s) => (
-              <label key={s} className="flex items-center gap-2 text-sm">
-                <input type="radio" name="stage" value={s} defaultChecked={str(state, 'stage', 'applied') === s} />
-                {APPLICATION_STAGE_LABELS[s]}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <input type="hidden" name="stage" value={MOVE_STAGES[0]} />
         <button type="submit" disabled={pending} className="btn btn-primary">
           {pending ? 'Adding…' : 'Add to the vacancy'}
         </button>

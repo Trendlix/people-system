@@ -11,12 +11,13 @@ describe('the words', () => {
   });
 
   it('tells a reviewer once a batch reaches their review, in the app and by email', () => {
-    expect(reviewWaitingNotice('Video Editor', ['Mona Ali', 'Omar Said'], 'final_review')).toEqual({
+    // the recruiter's manager's Final Review (5 November 2026: Review 2 is the Final Review)
+    expect(reviewWaitingNotice('Video Editor', ['Mona Ali', 'Omar Said'], 'review_2')).toEqual({
       title: '2 applicants for Video Editor wait for your final review: pass or reject them',
       body: 'Mona Ali, Omar Said',
     });
-    expect(reviewWaitingNotice('Video Editor', ['Mona Ali'], 'review_2').title).toBe('1 applicant for Video Editor wait for your Review 2: pass or reject them');
-    const mail = reviewWaitingEmail('Video Editor', ['Mona Ali'], 'https://people.example/recruitment/my-hiring', 'final_review');
+    expect(reviewWaitingNotice('Video Editor', ['Mona Ali'], 'applied').title).toBe('1 applicant for Video Editor wait for your review: pass or reject them');
+    const mail = reviewWaitingEmail('Video Editor', ['Mona Ali'], 'https://people.example/recruitment/my-hiring', 'review_2');
     expect(mail.subject).toBe('1 applicant for Video Editor wait for your final review: pass or reject them');
     expect(mail.text).toContain('Please pass or reject them on My Hiring: https://people.example/recruitment/my-hiring');
   });

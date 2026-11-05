@@ -354,8 +354,8 @@ describe('CV fit and other open positions (e2e)', () => {
   });
 
   it('the hiring manager never sees them; a developer sees them masked, without Add, and adds nothing', async () => {
-    // at the hiring manager's Final Review (the recruitment tree, 3 November 2026)
-    await walkTo(app, sessions.superAdmin, apps.layla, 'final_review');
+    // at HR Screening, where the hiring manager first sees them (5 November 2026)
+    await walkTo(app, sessions.superAdmin, apps.layla, 'screening');
     const hm = await appOf('manager', apps.layla);
     expect(hm.openPositions).toBeNull();
     const card = (ok(await get('manager', `/recruitment/vacancies/${v.manager.id}/board`)).body as VacancyBoard).columns.flatMap((c) => c.cards).find((c) => c.id === apps.layla)!;

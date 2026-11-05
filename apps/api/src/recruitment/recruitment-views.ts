@@ -76,12 +76,19 @@ export const userRef = (u: { id: string; email: string } | null, names: Readonly
 
 /** Applicants by stage, and those filtered out, of each vacancy. */
 export interface VacancyCounts {
+  /** By stage: Rejected without those rejected at a review (5 November 2026), counted apart. */
   byStage: Record<ApplicationStage, number>;
   filteredOut: number;
+  rejectedAtReview: number;
   total: number;
 }
 
-export const emptyCounts = (): VacancyCounts => ({ byStage: Object.fromEntries(APPLICATION_STAGES.map((s) => [s, 0])) as Record<ApplicationStage, number>, filteredOut: 0, total: 0 });
+export const emptyCounts = (): VacancyCounts => ({
+  byStage: Object.fromEntries(APPLICATION_STAGES.map((s) => [s, 0])) as Record<ApplicationStage, number>,
+  filteredOut: 0,
+  rejectedAtReview: 0,
+  total: 0,
+});
 
 export function vacancyListView(v: VacancyRow, counts: VacancyCounts): VacancyListItem {
   return {

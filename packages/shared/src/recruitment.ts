@@ -695,15 +695,16 @@ export const APPLY_CONSENT_TEXT =
 
 // ---------- applicants ----------
 
-/** The recruitment tree's stages (owner, 3 November 2026: "Recrutment tree"; recruitment-tree.ts), in order. */
-export const APPLICATION_STAGES = ['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer', 'hired', 'rejected'] as const;
+/**
+ * The recruitment tree's stages (owner, 3 November 2026: "Recrutment tree"; 5 November 2026: Review 1 merged into
+ * Applicants, Review 2 the Final Review, the hiring manager's review gone; recruitment-tree.ts), in order.
+ */
+export const APPLICATION_STAGES = ['applied', 'review_2', 'screening', 'interview', 'offer', 'hired', 'rejected'] as const;
 export type ApplicationStage = (typeof APPLICATION_STAGES)[number];
 
 export const APPLICATION_STAGE_LABELS: Record<ApplicationStage, string> = {
   applied: 'Applicants',
-  review_1: 'Review 1',
-  review_2: 'Review 2',
-  final_review: 'Final Review',
+  review_2: 'Final Review',
   screening: 'HR Screening',
   interview: 'Technical Interview',
   offer: 'Offer',
@@ -711,35 +712,43 @@ export const APPLICATION_STAGE_LABELS: Record<ApplicationStage, string> = {
   rejected: 'Rejected',
 };
 
-/** A stage in words, those of before the tree too ("Shortlisted", kept in the histories). */
-export const applicationStageLabel = (stage: string): string => (stage in APPLICATION_STAGE_LABELS ? APPLICATION_STAGE_LABELS[stage as ApplicationStage] : stage === 'shortlisted' ? 'Shortlisted' : stage);
+/** The stages of before, kept in the histories: Shortlisted (before the tree), Review 1 and the hiring manager's review (before 5 November 2026). */
+const PAST_STAGE_LABELS: Readonly<Record<string, string>> = { shortlisted: 'Shortlisted', review_1: 'Review 1', final_review: 'Hiring Manager Review' };
+
+/** A stage in words, those of before too (PAST_STAGE_LABELS). */
+export const applicationStageLabel = (stage: string): string => (stage in APPLICATION_STAGE_LABELS ? APPLICATION_STAGE_LABELS[stage as ApplicationStage] : (PAST_STAGE_LABELS[stage] ?? stage));
 
 export const isApplicationStage = (value: unknown): value is ApplicationStage => (APPLICATION_STAGES as readonly unknown[]).includes(value);
 
 /**
- * The stages HR moves an applicant to by hand (the tree, 3 November 2026): Review 1 from Applicants ("Send to Review 1"),
- * and Rejected (with its reasons) from any step; every other step follows a decision (recruitment-tree.ts), the offer
- * and hired follow the job offer, and restore undoes.
+ * The stage HR moves an applicant to by hand: Rejected, from any step (5 November 2026: Applicants is decided as a review,
+ * so there is no "Send to Review 1" any more); every other step follows a decision (recruitment-tree.ts), the offer and
+ * hired follow the job offer, and restore undoes.
  */
-export const HAND_STAGES = ['review_1', 'rejected'] as const;
+export const HAND_STAGES = ['rejected'] as const;
 export type HandStage = (typeof HAND_STAGES)[number];
 
 /**
- * Why an applicant can't be moved to `to` by hand, in words; null when they can. Review 1 from Applicants only, never
- * one filtered out (restore them first); rejected from any stage before hired, but not while a job offer to them is open
- * (withdraw it first).
+ * Why an applicant can't be moved to `to` by hand, in words; null when they can: rejected from any stage before hired,
+ * but not while a job offer to them is open (withdraw it first).
  */
 export function stageMoveProblem(from: ApplicationStage, to: HandStage, state: { filteredOut: boolean; openOffer: boolean }): string | null {
   if (from === 'hired') return 'They were hired: their application stays as it is.';
   if (from === to) return `They are at ${APPLICATION_STAGE_LABELS[to]} already.`;
-  if (to === 'rejected') {
-    if (state.openOffer) return 'A job offer to them is open: withdraw it first.';
-    return null;
-  }
-  if (from === 'rejected') return 'They were rejected: restore them first.';
-  if (state.filteredOut) return 'They failed a must-have question and were filtered out: restore them first.';
-  return from === 'applied' ? null : `They are at ${APPLICATION_STAGE_LABELS[from]}: only Applicants are sent to Review 1.`;
+  if (state.openOffer) return 'A job offer to them is open: withdraw it first.';
+  return null;
 }
+
+/**
+ * The steps whose rejections are the reviews' (owner, 5 November 2026: the Rejected tab "compiles all rejections from
+ * the Screening and Tech Interview stages, while filtering out candidates who were only rejected during the review
+ * stages"; asked, "A filter in Applicants"): Applicants and the Final Review, and the reviews of before (Review 1, the
+ * hiring manager's).
+ */
+export const REVIEW_REJECTION_STEPS = ['applied', 'review_2', 'review_1', 'final_review'] as const;
+
+/** Whether a rejection was at a review (Applicants' "Rejected at review"), not HR Screening, the interview or the offer (the Rejected tab). */
+export const rejectedAtReview = (rejectedFrom: string | null | undefined): boolean => (REVIEW_REJECTION_STEPS as readonly string[]).includes(rejectedFrom ?? '');
 
 /** Whether an applicant can be restored: one filtered out, or one rejected. */
 export const restorable = (a: { stage: ApplicationStage; filteredOut: boolean }): boolean => a.filteredOut || a.stage === 'rejected';
@@ -874,8 +883,11 @@ export interface VacancyView extends VacancyListItem {
    * company or career based. Missing from an API before it.
    */
   experienceBasis?: ExperienceBasis;
+  /** By stage: Rejected without those rejected at a review (5 November 2026), counted apart. */
   stageCounts: Record<ApplicationStage, number>;
   filteredOut: number;
+  /** Those rejected at a review (Applicants, the Final Review): Applicants' "Rejected at review" (5 November 2026). */
+  rejectedAtReview: number;
   /** Its applicants by source (22 October 2026: the posted links apart from the careers page reached directly). */
   sourceCounts: Record<string, number>;
   submittedAt: string | null;
@@ -983,8 +995,6 @@ export interface ApplicationStepView {
 
 /** What the caller may do to an applicant now. */
 export interface ApplicationCan {
-  /** Send to Review 1 (the tree, 3 November 2026): HR, at Applicants. */
-  sendToReview: boolean;
   /**
    * Decide their step (recruitment-tree.ts takesStep): its outcomes and a rejection's reasons; null when the caller
    * doesn't take it (or it isn't a decision step).

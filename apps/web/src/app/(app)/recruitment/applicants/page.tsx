@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { Fragment, Suspense } from 'react';
 import {
   APPLICATION_SOURCE_LABELS,
   APPLICATION_SOURCES,
@@ -42,7 +42,19 @@ import {
   type ApplicantsTab,
   type GeneralQuery,
 } from '../general';
-import { APPLICANTS_PATH, applicantsHref, columnSortText, GOOD_CV_MATCH_PERCENT, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
+import {
+  APPLICANTS_PATH,
+  applicantsHref,
+  columnSortText,
+  GOOD_CV_MATCH_PERCENT,
+  managesRecruitment,
+  readApplicantsQuery,
+  readsRecruitment,
+  REJECTED_AT_REVIEW,
+  STAGE_FILTERS,
+  vacancyHref,
+  WHO_SEES,
+} from '../recruitment';
 import { ApplicantsTable, ExperienceCell, HoldSelect, LatestRoleCell, MinYearsSelect, SkillSelect, VacancyStatusBadge, VerdictBadge, VerdictSelect } from '../ui';
 import { joinShown, shownCode } from '@/lib/hidden';
 
@@ -99,20 +111,31 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
   return (
     <div className="space-y-4">
       <nav aria-label="Applicants by stage" className="flex flex-wrap gap-2">
-        <Link href={applicantsHref(APPLICANTS_PATH, { ...q, stage: '', filtered: 'hide' })} className={`${chip} ${!q.stage && q.filtered === 'hide' ? ACTIVE : IDLE}`}>
+        <Link href={applicantsHref(APPLICANTS_PATH, { ...q, stage: '', filtered: 'hide', reviewRejected: false })} className={`${chip} ${!q.stage && q.filtered === 'hide' && !q.reviewRejected ? ACTIVE : IDLE}`}>
           All
         </Link>
         {STAGE_FILTERS.map((s) => (
-          <Link key={s} href={applicantsHref(APPLICANTS_PATH, { ...q, stage: s, filtered: 'hide' })} className={`${chip} ${q.stage === s && q.filtered === 'hide' ? ACTIVE : IDLE}`}>
-            {APPLICATION_STAGE_LABELS[s]}
-          </Link>
+          <Fragment key={s}>
+            <Link
+              href={applicantsHref(APPLICANTS_PATH, { ...q, stage: s, filtered: 'hide', reviewRejected: false })}
+              className={`${chip} ${q.stage === s && q.filtered === 'hide' && !q.reviewRejected ? ACTIVE : IDLE}`}
+            >
+              {APPLICATION_STAGE_LABELS[s]}
+            </Link>
+            {/* Applicants' "Rejected at review" (owner, 5 November 2026): those rejected at a review, kept off the Rejected tab */}
+            {s === 'applied' && (
+              <Link href={applicantsHref(APPLICANTS_PATH, { ...q, stage: '', filtered: 'hide', reviewRejected: true })} className={`${chip} ${q.reviewRejected ? ACTIVE : IDLE}`}>
+                {REJECTED_AT_REVIEW}
+              </Link>
+            )}
+          </Fragment>
         ))}
-        <Link href={applicantsHref(APPLICANTS_PATH, { ...q, stage: '', filtered: 'only' })} className={`${chip} ${q.filtered === 'only' ? ACTIVE : IDLE}`}>
+        <Link href={applicantsHref(APPLICANTS_PATH, { ...q, stage: '', filtered: 'only', reviewRejected: false })} className={`${chip} ${q.filtered === 'only' ? ACTIVE : IDLE}`}>
           Filtered out
         </Link>
       </nav>
       <form method="get" className="flex flex-wrap items-end gap-3" role="search">
-        {q.stage && <input type="hidden" name="stage" value={q.stage} />}
+        {q.reviewRejected ? <input type="hidden" name="reviewRejected" value="only" /> : q.stage && <input type="hidden" name="stage" value={q.stage} />}
         {q.filtered !== 'hide' && <input type="hidden" name="filtered" value={q.filtered} />}
         {q.vacancyId && <input type="hidden" name="vacancyId" value={q.vacancyId} />}
         <div className="min-w-56 flex-1">

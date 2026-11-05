@@ -4,8 +4,9 @@ import type { RecruitmentCaller } from './recruitment-scope.js';
 import type { TreeCaller, TreeReviewers } from '@trendlix/shared';
 
 // Who takes the recruitment tree's steps on a vacancy (owner, 3 November 2026: "HR1 (Recruter) - HR2 (Her MAnager if
-// there is) - then Manager"; packages/shared recruitment-tree.ts): its recruiter (Review 1), the recruiter's direct
-// manager now (Review 2), its hiring manager (Final Review), each only with an active sign-in (else nobody is named and
+// there is) - then Manager"; 5 November 2026; packages/shared recruitment-tree.ts): its recruiter (Applicants), the
+// recruiter's direct manager now (the Final Review), its hiring manager (from HR Screening on), each only with an active
+// sign-in (else nobody is named and
 // HR takes it, so nobody waits for no one). One read of the recruiter's employment and of the accounts.
 
 /** The people named on a vacancy for its reviews, by employee id (null: none, or nobody who can sign in). */
@@ -31,8 +32,8 @@ export async function reviewersOf(prisma: PrismaService, v: { recruiterId: strin
   return { recruiterId: named(v.recruiterId), recruiterManagerId: named(job?.managerId), hiringManagerId: named(v.hiringManagerId), accounts };
 }
 
-/** Whether the vacancy's reviews have their people (Review 2 the recruiter's manager, the Final Review the hiring manager). */
-export const treeReviewers = (r: VacancyReviewers): TreeReviewers => ({ hasRecruiterManager: !!r.recruiterManagerId, hasHiringManager: !!r.hiringManagerId });
+/** Whether the vacancy's Final Review has its person: the recruiter's manager (5 November 2026). */
+export const treeReviewers = (r: VacancyReviewers): TreeReviewers => ({ hasRecruiterManager: !!r.recruiterManagerId });
 
 /** The caller as the tree's rules read them on the vacancy. */
 export function treeCaller(c: RecruitmentCaller, r: VacancyReviewers): TreeCaller {
@@ -42,9 +43,7 @@ export function treeCaller(c: RecruitmentCaller, r: VacancyReviewers): TreeCalle
     superAdmin: isSuperAdmin(c.user) && !c.user.developer,
     isRecruiter: !!me && me === r.recruiterId,
     isRecruiterManager: !!me && me === r.recruiterManagerId,
-    isHiringManager: !!me && me === r.hiringManagerId,
     hasRecruiter: !!r.recruiterId,
     hasRecruiterManager: !!r.recruiterManagerId,
-    hasHiringManager: !!r.hiringManagerId,
   };
 }

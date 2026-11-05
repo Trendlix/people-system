@@ -247,8 +247,8 @@ export class ApplicationsController {
   }
 
   /**
-   * { to: review_1 | rejected, reasons, feedback, email } (the recruitment tree, 3 November 2026): Send to Review 1 from
-   * Applicants, or reject from any step with its reasons.
+   * { to: rejected, reasons, feedback, email } (the recruitment tree, 3 November 2026; 5 November 2026): reject from any
+   * step, with its reasons (none at a review).
    */
   @Roles(...MANAGES)
   @Post(':id/stage')

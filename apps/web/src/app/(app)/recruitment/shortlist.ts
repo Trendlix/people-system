@@ -14,11 +14,12 @@ import {
 import { decisionOf, type DecisionBody } from './tree';
 
 // The batches on the site (owner, 29 October 2026: "Tick several at once"; the recruitment tree, 3 November 2026:
-// "Recrutment tree"; packages/shared recruitment-tree.ts): on a vacancy's list HR ticks applicants at Applicants and sends
-// them to Review 1 together, or ticks those at one step they decide and decides them together; on My Hiring the
-// recruiter's manager (Review 2) and the hiring manager (Final Review) tick theirs and pass or reject them together, with
-// the reasons and the feedback. The ticks, the forms read, and what a result says. Pure code (relative imports), tested
-// in shortlist.test.ts; the API checks everything again.
+// "Recrutment tree"; 5 November 2026: Review 1 merged into Applicants, Review 2 the Final Review; packages/shared
+// recruitment-tree.ts): on a vacancy's list whoever decides a step ticks those at it and decides them together (the
+// recruiter passes or rejects Applicants); on My Hiring the recruiter's manager ticks theirs at the Final Review and passes
+// or rejects them together, with optional feedback (the reasons are HR Screening's and the interview's). The ticks, the
+// forms read, and what a result says. Pure code (relative imports), tested in shortlist.test.ts; the API checks everything
+// again.
 
 // ---------- the ticks ----------
 
@@ -44,25 +45,22 @@ export const tickedIds = (ids: readonly string[], selected: ReadonlySet<string>)
 
 // ---------- who ticks what on a vacancy's list ----------
 
-/** The caller as the tree's rules know them on a vacancy (who they are against its recruiter, their manager, its hiring manager). */
-export function vacancyCaller(v: Pick<VacancyView, 'viewer' | 'recruiter' | 'recruiterManager' | 'hiringManager'>, me: { employeeId: string | null; superAdmin: boolean }): TreeCaller {
+/** The caller as the tree's rules know them on a vacancy (who they are against its recruiter and the recruiter's manager). */
+export function vacancyCaller(v: Pick<VacancyView, 'viewer' | 'recruiter' | 'recruiterManager'>, me: { employeeId: string | null; superAdmin: boolean }): TreeCaller {
   const is = (person: { id: string } | null | undefined) => !!person && !!me.employeeId && person.id === me.employeeId;
   return {
     manages: v.viewer === 'manages',
     superAdmin: me.superAdmin,
     isRecruiter: is(v.recruiter),
     isRecruiterManager: is(v.recruiterManager),
-    isHiringManager: is(v.hiringManager),
     hasRecruiter: !!v.recruiter,
     hasRecruiterManager: !!v.recruiterManager,
-    hasHiringManager: !!v.hiringManager,
   };
 }
 
-/** Whether a row may be ticked: not filtered out, at Applicants (HR sends them on) or at a step the caller decides. */
+/** Whether a row may be ticked: not filtered out, at a step the caller decides (Applicants: the recruiter). */
 export function tickable(a: Pick<ApplicationListItem, 'stage' | 'filteredOut'>, caller: TreeCaller): boolean {
   if (a.filteredOut) return false;
-  if (a.stage === 'applied') return caller.manages || caller.superAdmin;
   return isDecisionStep(a.stage) && takesStep(a.stage, caller);
 }
 
@@ -73,14 +71,11 @@ export function sharedStage(chosen: readonly string[], stageOf: Readonly<Record<
 }
 
 /** What is wrong with a batch the form can see: none ticked, or too many. */
-export function batchProblem(ids: readonly string[], verb: 'send to Review 1' | 'decide'): string | null {
-  if (!ids.length) return `Tick at least one applicant to ${verb}.`;
-  if (ids.length > HIRING_BATCH_MAX) return `${verb === 'decide' ? 'Decide' : 'Send'} at most ${HIRING_BATCH_MAX} applicants at a time.`;
+export function batchProblem(ids: readonly string[]): string | null {
+  if (!ids.length) return 'Tick at least one applicant to decide.';
+  if (ids.length > HIRING_BATCH_MAX) return `Decide at most ${HIRING_BATCH_MAX} applicants at a time.`;
   return null;
 }
-
-/** "Send to Review 1 (3)". */
-export const sendLabel = (n: number) => `Send to Review 1 (${n})`;
 
 // ---------- a step decided for several ----------
 
@@ -94,7 +89,7 @@ export function batchDecisionForm(fd: FormData): { body: BatchDecisionBody | nul
   const applicationIds = [...new Set(fd.getAll('applicationIds').filter((v): v is string => typeof v === 'string' && v !== ''))];
   const stage = fd.get('stage');
   const errors: string[] = [];
-  const problem = batchProblem(applicationIds, 'decide');
+  const problem = batchProblem(applicationIds);
   if (problem) errors.push(problem);
   if (!isDecisionStep(stage)) errors.push('Tick applicants at one step to decide them together.');
   const { body, errors: more } = decisionOf(fd);
@@ -127,15 +122,15 @@ export const outcomeLabel = (outcome: StepOutcome, n: number) => `${BUTTONS[outc
 
 // ---------- what a batch did ----------
 
-/** "they are at Review 1 already": a reason in a sentence's brackets. */
+/** "they are at HR Screening already": a reason in a sentence's brackets. */
 const bracketed = (reason: string): string => reason.replace(/\.$/, '').replace(/^./, (c) => c.toLowerCase());
 
-/** "Sara Ali (they are at Review 1 already)"; one the caller may not see by their reason alone. */
+/** "Sara Ali (they are at HR Screening already)"; one the caller may not see by their reason alone. */
 export const skippedText = (s: HiringBatchResult['skipped'][number]): string => `${s.fullName ?? s.number ?? 'One applicant'} (${bracketed(s.reason)})`;
 
 /**
- * What a batch says once done: "Sent to Review 1: 3; 2 skipped: Sara Ali (they are at Review 1 already), …", the first
- * `shown` skipped named and how many more.
+ * What a batch says once done: "Passed: 3; 2 skipped: Sara Ali (they were rejected already), …", the first `shown`
+ * skipped named and how many more.
  */
 export function batchDoneText(verb: string, result: HiringBatchResult, shown = 5): string {
   const head = `${verb}: ${result.done.length}`;

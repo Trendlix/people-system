@@ -21,7 +21,7 @@ import {
 
 describe('applying again: open or closed', () => {
   it('updates an application at Applied, Shortlisted, Interview or Offer', () => {
-    expect(REAPPLY_OPEN_STAGES).toEqual(['applied', 'review_1', 'review_2', 'final_review', 'screening', 'interview', 'offer']);
+    expect(REAPPLY_OPEN_STAGES).toEqual(['applied', 'review_2', 'screening', 'interview', 'offer']);
     for (const stage of REAPPLY_OPEN_STAGES) expect(reapplyOutcome({ stage }), stage).toBe('update');
     // an offer declined or withdrawn (back to Shortlisted), or still a draft or sent: open
     expect(reapplyOutcome({ stage: 'review_2', offers: [{ status: 'declined' }, { status: 'withdrawn' }] })).toBe('update');

@@ -66,8 +66,8 @@ export const GENERAL_CV_EVENT_LABELS: Record<string, string> = {
   moved: 'Added to a vacancy',
 };
 
-/** The stages a general CV can be moved to a vacancy at: Applicants, or straight to Review 1 (the tree, 3 November 2026). */
-export const MOVE_STAGES = ['applied', 'review_1'] as const satisfies readonly ApplicationStage[];
+/** The stage a general CV is moved to a vacancy at: Applicants, the recruiter's review (5 November 2026: Review 1 merged into it). */
+export const MOVE_STAGES = ['applied'] as const satisfies readonly ApplicationStage[];
 export type MoveStage = (typeof MOVE_STAGES)[number];
 
 export const GENERAL_CV_LIMITS = {
@@ -487,6 +487,8 @@ export interface ApplicantsSummary {
 
 /** A vacancy's applicants in counts: by stage (not those filtered out), filtered out apart, and by source. */
 export interface VacancyApplicantsGroup {
+  /** Those rejected at a review (5 November 2026), apart from `byStage.rejected`: Applicants' "Rejected at review". */
+  rejectedAtReview: number;
   vacancy: { id: string; number: string; title: string; status: VacancyStatus };
   total: number;
   byStage: Record<ApplicationStage, number>;

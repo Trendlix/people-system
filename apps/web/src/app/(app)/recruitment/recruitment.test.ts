@@ -55,9 +55,9 @@ describe('the lists', () => {
   });
 
   it('read the applicants filters, refusing what isn’t one', () => {
-    expect(readApplicantsQuery({ stage: 'final_review', minMatch: '70', source: 'linkedin', filtered: 'only', vacancyId: ID })).toEqual({
+    expect(readApplicantsQuery({ stage: 'review_2', minMatch: '70', source: 'linkedin', filtered: 'only', vacancyId: ID })).toEqual({
       vacancyId: ID,
-      stage: 'final_review',
+      stage: 'review_2',
       minMatch: 70,
       minYears: null,
       source: 'linkedin',
@@ -69,6 +69,7 @@ describe('the lists', () => {
       skill: '',
       verdict: '',
       hold: '',
+      reviewRejected: false,
     });
     expect(readApplicantsQuery({ stage: 'boss', minMatch: '170', source: 'x', filtered: 'x', vacancyId: '../x' })).toEqual({
       vacancyId: '',
@@ -84,6 +85,7 @@ describe('the lists', () => {
       skill: '',
       verdict: '',
       hold: '',
+      reviewRejected: false,
     });
     expect(applicantsApiPath({ vacancyId: ID, stage: 'offer', minMatch: 70, filtered: 'hide' })).toBe(`/recruitment/applications?vacancyId=${ID}&stage=offer&minMatch=70`);
     expect(applicantsHref(APPLICANTS_PATH, { stage: 'hired', filtered: 'all' })).toBe('/recruitment/applicants?stage=hired&filtered=all');
@@ -254,7 +256,7 @@ describe('sorting the applicants by a column', () => {
     const rows = [
       row('Nour', { cvMatchPercent: 70, stage: 'interview', yearsExperience: 3, appliedAt: '2026-10-20T10:00:00.000Z' }),
       row('amal', { matchPercent: 90, cvMatchPercent: 40, stage: 'applied', fromCv: { status: 'read', experienceMonths: 60, latestTitle: 'Designer', latestCompany: null } }),
-      row('Karim', { stage: 'review_1', filteredOut: true, fromCv: { status: 'read', experienceMonths: null, latestTitle: 'Account Manager', latestCompany: null } }),
+      row('Karim', { stage: 'review_2', filteredOut: true, fromCv: { status: 'read', experienceMonths: null, latestTitle: 'Account Manager', latestCompany: null } }),
       row('Bassem'),
     ];
     expect(names(sortApplicants(rows, { sort: '', dir: '' }))).toEqual(['Nour', 'amal', 'Karim', 'Bassem']);
@@ -279,7 +281,17 @@ describe('the recruitment tree on the lists', () => {
     expect(readApplicantsQuery({ hold: 'maybe' }).hold).toBe('');
     expect(applicantsApiPath({ vacancyId: ID, hold: 'pending' })).toBe(`/recruitment/applications?vacancyId=${ID}&hold=pending`);
     expect(applicantsHref(APPLICANTS_PATH, { stage: 'interview', hold: 'pending' })).toBe('/recruitment/applicants?stage=interview&hold=pending');
-    expect(readApplicantsQuery({ stage: 'final_review' }).stage).toBe('final_review');
-    expect(readApplicantsQuery({ stage: 'shortlisted' }).stage).toBe('');
+    expect(readApplicantsQuery({ stage: 'review_2' }).stage).toBe('review_2');
+    // the steps of before (Shortlisted; Review 1 and the hiring manager's review, 5 November 2026) are no filter
+    for (const stage of ['shortlisted', 'review_1', 'final_review']) expect(readApplicantsQuery({ stage }).stage).toBe('');
+  });
+
+  // owner, 5 November 2026: those rejected at a review are under Applicants, not on the Rejected tab
+  it('reads the Rejected at review filter, sending it in place of a stage', () => {
+    expect(readApplicantsQuery({ reviewRejected: 'only' }).reviewRejected).toBe(true);
+    expect(readApplicantsQuery({ reviewRejected: 'yes' }).reviewRejected).toBe(false);
+    expect(applicantsApiPath({ vacancyId: ID, stage: 'rejected', reviewRejected: true })).toBe(`/recruitment/applications?vacancyId=${ID}&reviewRejected=only`);
+    expect(applicantsHref(APPLICANTS_PATH, { stage: 'rejected' })).toBe('/recruitment/applicants?stage=rejected');
+    expect(applicantsHref(APPLICANTS_PATH, { reviewRejected: true })).toBe('/recruitment/applicants?reviewRejected=only');
   });
 });

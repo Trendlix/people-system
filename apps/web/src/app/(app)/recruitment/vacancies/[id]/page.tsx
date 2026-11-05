@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { Fragment, Suspense } from 'react';
 import { APPLICATION_STAGE_LABELS, GENERAL_KEY, GOOD_MATCH_PERCENT, LABELS, QUESTION_KIND_LABELS, questionMaxPoints, sourceLine, type ScreeningCv, type VacancySuggestionView, type VacancyView } from '@trendlix/shared';
 import { RichText } from '@/components/rich-text';
 import { SetUpEmailLink } from '@/components/set-up-email-link';
@@ -21,7 +21,20 @@ import { loadApplicants, loadBoard, loadSuggestions, loadVacancy, recruitmentNot
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
 import { vacancyBulkHref } from '../../general';
 import { boardHref, MY_HIRING_PATH } from '../../hiring';
-import { applicantHref, applicantsHref, careersJobHref, channelLinks, GOOD_CV_MATCH_PERCENT, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref, sortDirOf } from '../../recruitment';
+import {
+  applicantHref,
+  applicantsHref,
+  careersJobHref,
+  channelLinks,
+  GOOD_CV_MATCH_PERCENT,
+  readApplicantsQuery,
+  REJECTED_AT_REVIEW,
+  STAGE_FILTERS,
+  VACANCIES_PATH,
+  vacancyEditHref,
+  vacancyHref,
+  sortDirOf,
+} from '../../recruitment';
 import { addSuggestion, dismissSuggestion, inviteSuggestion } from '../../suggestion-actions';
 import {
   decisionText,
@@ -50,7 +63,7 @@ import { VacancySelection } from '../../shortlist-ui';
 // salary range, the links to share on each channel while it is published, the careers page's text, its screening
 // questions, and its applicants by stage (those filtered out by a must-have apart, a good match from 70%).
 // Phase 2 (22 October 2026): the applicants as a list or as the pipeline board (?view=board); the vacancy's hiring manager
-// sees it without the salary range, with its board from the Final Review on.
+// sees it without the salary range, with its board from HR Screening on (5 November 2026: their CV review is gone).
 // Suggested From Earlier CVs (owner, 24 October 2026: "does the system automatically add recomended general cv's to the
 // opened posts?"; "Suggest; HR adds", "Yes, HR presses 'Invite to apply'"): a third view (?view=suggested) for HR, the CEO
 // and a Super Admin, never the hiring manager: the earlier CVs that match, each with its reasons, its CV in the CV window,
@@ -106,9 +119,11 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
   const base = vacancyHref(v.id);
   const cvFirst = q.sort === 'cv' && sortDirOf(q) === 'desc';
   const yearsFirst = q.sort === 'years' && sortDirOf(q) === 'desc';
-  const total = Object.values(v.stageCounts).reduce((a, b) => a + b, 0);
-  // the ticks (owner, 29 October 2026: "Tick several at once"; the tree, 3 November 2026): those at Applicants for HR, and
-  // those at a step the caller decides, never one filtered out
+  // those rejected at a review, counted apart from Rejected (5 November 2026; none from an API before it)
+  const reviewRejected = v.rejectedAtReview ?? 0;
+  const total = Object.values(v.stageCounts).reduce((a, b) => a + b, 0) + reviewRejected;
+  // the ticks (owner, 29 October 2026: "Tick several at once"; the tree, 3 November 2026; 5 November 2026: Applicants for
+  // the recruiter): those at a step the caller decides, never one filtered out
   const caller = vacancyCaller(v, { employeeId: user.employeeId ?? null, superAdmin: isSuperAdmin(user) });
   const tickRows = loaded.kind === 'ok' ? loaded.value.filter((a) => tickable(a, caller)).map((a) => ({ id: a.id, stage: a.stage })) : [];
   return (
@@ -124,15 +139,29 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
         )}
       </div>
       <nav aria-label="Applicants by stage" className="flex flex-wrap gap-2">
-        <Link href={applicantsHref(base, { ...q, stage: '', filtered: 'hide' })} className={`${chip} ${!q.stage && q.filtered === 'hide' ? ACTIVE : IDLE}`}>
+        <Link
+          href={applicantsHref(base, { ...q, stage: '', filtered: 'hide', reviewRejected: false })}
+          className={`${chip} ${!q.stage && q.filtered === 'hide' && !q.reviewRejected ? ACTIVE : IDLE}`}
+        >
           All ({total - v.filteredOut})
         </Link>
         {STAGE_FILTERS.map((s) => (
-          <Link key={s} href={applicantsHref(base, { ...q, stage: s, filtered: 'hide' })} className={`${chip} ${q.stage === s && q.filtered === 'hide' ? ACTIVE : IDLE}`}>
-            {APPLICATION_STAGE_LABELS[s]} ({v.stageCounts[s]})
-          </Link>
+          <Fragment key={s}>
+            <Link
+              href={applicantsHref(base, { ...q, stage: s, filtered: 'hide', reviewRejected: false })}
+              className={`${chip} ${q.stage === s && q.filtered === 'hide' && !q.reviewRejected ? ACTIVE : IDLE}`}
+            >
+              {APPLICATION_STAGE_LABELS[s]} ({v.stageCounts[s] ?? 0})
+            </Link>
+            {/* Applicants' "Rejected at review" (owner, 5 November 2026): those rejected at a review, kept off Rejected */}
+            {s === 'applied' && (
+              <Link href={applicantsHref(base, { ...q, stage: '', filtered: 'hide', reviewRejected: true })} className={`${chip} ${q.reviewRejected ? ACTIVE : IDLE}`}>
+                {REJECTED_AT_REVIEW} ({reviewRejected})
+              </Link>
+            )}
+          </Fragment>
         ))}
-        <Link href={applicantsHref(base, { ...q, stage: '', filtered: 'only' })} className={`${chip} ${q.filtered === 'only' ? ACTIVE : IDLE}`}>
+        <Link href={applicantsHref(base, { ...q, stage: '', filtered: 'only', reviewRejected: false })} className={`${chip} ${q.filtered === 'only' ? ACTIVE : IDLE}`}>
           Filtered out ({v.filteredOut})
         </Link>
         <Link
@@ -173,7 +202,7 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
           ))}
         </p>
       )}
-      {/* ticked and sent to Review 1, or decided, together (owner, 29 October 2026: "Tick several at once"); what was done
+      {/* ticked and decided together (owner, 29 October 2026: "Tick several at once"; Applicants' Pass or Reject too); what was done
           stays said above the list once it is read again, even when nobody is left in it */}
       <VacancySelection vacancyId={v.id} rows={tickRows}>
         {loaded.kind !== 'ok' ? (
@@ -358,11 +387,11 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
             {v.hired} hired of {v.headcount}
           </Fact>
           <Fact label="Hiring manager">{v.hiringManager?.name ?? '—'}</Fact>
-          {/* the recruitment tree (3 November 2026): the recruiter takes Review 1, their manager Review 2 */}
+          {/* the recruitment tree (5 November 2026): the recruiter reviews Applicants, their manager takes the Final Review */}
           {v.recruiter !== undefined && (
             <Fact label="Recruiter">
-              {v.recruiter ? v.recruiter.name : 'None: HR takes Review 1'}
-              {v.recruiterManager && <span className="block text-xs text-muted">Review 2: {v.recruiterManager.name}</span>}
+              {v.recruiter ? v.recruiter.name : 'None: HR reviews Applicants'}
+              {v.recruiterManager && <span className="block text-xs text-muted">Final Review: {v.recruiterManager.name}</span>}
             </Fact>
           )}
           <Fact label="Grade">{v.grade ? `${v.grade.code} · ${v.grade.levelEn}` : '—'}</Fact>

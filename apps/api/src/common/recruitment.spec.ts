@@ -1,5 +1,6 @@
 import {
   answerProblems,
+  applicationStageLabel,
   applyProblems,
   canMoveVacancy,
   emailHint,
@@ -18,6 +19,7 @@ import {
   restorable,
   scoreAnswers,
   sourceOf,
+  rejectedAtReview,
   stageMoveProblem,
   takesApplications,
   tidyAnswers,
@@ -296,22 +298,27 @@ describe('applicants', () => {
   const free = { filteredOut: false, openOffer: false };
 
   // the recruitment tree (owner, 3 November 2026): Applicants to Review 1 by hand, every later step by its decision
-  it('moves by hand as the stages allow', () => {
-    expect(stageMoveProblem('applied', 'review_1', free)).toBeNull();
-    expect(stageMoveProblem('review_2', 'review_1', free)).toBe('They are at Review 2: only Applicants are sent to Review 1.');
-    expect(stageMoveProblem('applied', 'review_1', { ...free, filteredOut: true })).toBe('They failed a must-have question and were filtered out: restore them first.');
+  it('rejects by hand from any step before hired (5 November 2026: no hand move to a review any more)', () => {
+    expect(stageMoveProblem('applied', 'rejected', free)).toBeNull();
     expect(stageMoveProblem('applied', 'rejected', { ...free, filteredOut: true })).toBeNull();
-    expect(stageMoveProblem('final_review', 'rejected', free)).toBeNull();
+    expect(stageMoveProblem('review_2', 'rejected', free)).toBeNull();
     expect(stageMoveProblem('offer', 'rejected', { ...free, openOffer: true })).toBe('A job offer to them is open: withdraw it first.');
-    expect(stageMoveProblem('rejected', 'review_1', free)).toBe('They were rejected: restore them first.');
     expect(stageMoveProblem('hired', 'rejected', free)).toBe('They were hired: their application stays as it is.');
-    expect(stageMoveProblem('review_1', 'review_1', free)).toBe('They are at Review 1 already.');
+    expect(stageMoveProblem('rejected', 'rejected', free)).toBe('They are at Rejected already.');
+  });
+
+  it('tells a rejection at a review from the Rejected tab’s, the reviews of before too', () => {
+    for (const step of ['applied', 'review_2', 'review_1', 'final_review']) expect(rejectedAtReview(step), step).toBe(true);
+    for (const step of ['screening', 'interview', 'offer', null]) expect(rejectedAtReview(step), String(step)).toBe(false);
+    expect(applicationStageLabel('review_2')).toBe('Final Review');
+    expect(applicationStageLabel('review_1')).toBe('Review 1');
+    expect(applicationStageLabel('final_review')).toBe('Hiring Manager Review');
   });
 
   it('restores one filtered out or rejected, and offers only at the Offer: once the Technical Interview accepted them', () => {
     expect(restorable({ stage: 'applied', filteredOut: true })).toBe(true);
     expect(restorable({ stage: 'rejected', filteredOut: false })).toBe(true);
-    expect(restorable({ stage: 'review_1', filteredOut: false })).toBe(false);
+    expect(restorable({ stage: 'review_2', filteredOut: false })).toBe(false);
     expect(offerable({ stage: 'offer', filteredOut: false })).toBe(true);
     expect(offerProblem({ stage: 'interview', filteredOut: false, interviewsDone: 1 })).toBe('They are at Technical Interview: a job offer comes once the Technical Interview accepts them.');
     expect(offerProblem({ stage: 'screening', filteredOut: false })).toBe('They are at HR Screening: a job offer comes once the Technical Interview accepts them.');
