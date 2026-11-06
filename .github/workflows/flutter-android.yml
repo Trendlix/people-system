@@ -56,6 +56,8 @@ jobs:
       HAS_DEBUG_KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 != '' }}
       # a build for Google Play once its upload key is set (6 November 2026)
       PLAY: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 != '' && secrets.PLAY_UPLOAD_PASSWORD != '' }}
+      # uploaded to Google Play by itself once its service account is set (6 November 2026)
+      HAS_PLAY_UPLOADER: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     defaults:
       run:
         working-directory: apps/flutter
@@ -303,6 +305,22 @@ jobs:
             --notes "$notes" \
             --prerelease
           echo "- Pre-released (Google Play build, same key since $since): https://github.com/$GITHUB_REPOSITORY/releases/tag/app-$APP_VERSION_NAME" >> "$GITHUB_STEP_SUMMARY"
+
+      # Straight to Google Play's closed testing (owner, 6 November 2026: "will i upload it manually?"): once the secret
+      # PLAY_SERVICE_ACCOUNT_JSON is set (a Google Cloud service account, with the Google Play Android Developer API on,
+      # invited in the Play Console with "Release to testing tracks": docs/google-play.md), each Play build from main goes
+      # to the track PLAY_TRACK (a repository variable; Play's first closed track, "alpha", when unset), rolled out to its
+      # testers once Google has reviewed it. The app's first release is uploaded by hand: Google's API can't make it.
+      - name: Upload to Google Play
+        if: github.ref == 'refs/heads/main' && env.PLAY == 'true' && env.HAS_PLAY_UPLOADER == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.trendlix.people
+          releaseFiles: ${{ steps.aab.outputs.path }}
+          releaseName: ${{ steps.version.outputs.name }}
+          track: ${{ vars.PLAY_TRACK || 'alpha' }}
+          status: completed
 
   # "Google Play is live" (Run workflow by hand, the box ticked): the newest Play build becomes the latest release, so People
   # tells the phones still on the website's APK to remove it and get the app from Play, and /download goes to Play.

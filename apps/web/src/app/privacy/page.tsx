@@ -1,15 +1,16 @@
 import type { Metadata } from 'next';
-import { getBrand } from '@/lib/api';
 
 // The employee app's privacy policy (owner, 6 November 2026: "now i have google play console"): Google Play asks every
 // app for a public privacy policy, and for one that reads the location in the background, what it reads, why, who sees
 // it and how long it is kept. It says what Trendlix People (the app and this website) actually keeps: the employee's
 // work records, the location at check-in and, when the company switches it on, every hour while checked in, photos and
 // files people add, and the device's name; never sold, no ads, no tracking across other apps. Public
-// (lib/public-paths.ts). The contact address is CONTACT below.
+// (lib/public-paths.ts), and static: built once, with the company's name and contact address below.
 
 export const metadata: Metadata = { title: 'Privacy Policy · Trendlix People' };
 
+/** The company the system is for. */
+const company = 'Trendlix';
 /** Where privacy questions go. */
 const CONTACT = 'hr@trendlix.com';
 /** When this policy last changed (DD/MM/YYYY). */
@@ -24,9 +25,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export default async function PrivacyPage() {
-  const brand = await getBrand();
-  const company = brand.nameEn || 'Trendlix';
+export default function PrivacyPage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-12">
       <div className="card space-y-6 p-6 text-sm leading-relaxed sm:p-8">
