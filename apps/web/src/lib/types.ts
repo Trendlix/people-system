@@ -713,6 +713,12 @@ export interface EmployeeProfile {
    * out by an API from before it.
    */
   confidential?: boolean;
+  /**
+   * A test account (owner, 6 November 2026: an account for Google's and Apple's app reviewers "without real data"): kept
+   * out of payroll runs, employee lists and counts, attendance, reports and KPIs, and its requests notify nobody. Left
+   * out by an API from before it.
+   */
+  testAccount?: boolean;
   restricted?: false;
 }
 

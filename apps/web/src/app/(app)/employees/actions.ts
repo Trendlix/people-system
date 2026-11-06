@@ -267,3 +267,17 @@ export async function deleteEmployee(id: string, _prev: FormState, fd: FormData)
   if (refused) return { errors: refused };
   return save(fd, [], () => apiSend('DELETE', `/employees/${id}`), '/employees');
 }
+
+/**
+ * Makes a profile a test account, or a real one again (owner, 6 November 2026: an account for Google's and Apple's app
+ * reviewers "without real data"): HR and a Super Admin, never on their own profile, as the API checks too.
+ */
+export async function setTestAccount(id: string, testAccount: boolean): Promise<FormState> {
+  try {
+    await apiSend('PATCH', `/employees/${id}/test-account`, { testAccount });
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages };
+    throw err;
+  }
+  redirect(`/employees/${id}`);
+}

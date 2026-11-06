@@ -248,6 +248,7 @@ export class NoticesService {
       });
       if (!w) return;
       const total = totalHours(w.entries.map((e) => ({ hours: e.hours.toNumber() })));
+      if (await this.isTest(w.employeeId)) return;
       const to = w.approverId ? [...(await this.usersOf([w.approverId])).values()] : await this.stageDeciders('hr', w.employeeId);
       await this.notifications.notify(to, timesheetWaitingText(w.employee.fullNameEn, timesheetWeekText(fromDateOnly(w.weekStart)), timesheetHoursText(total), `/timesheets/${weekId}`));
     });
@@ -276,7 +277,7 @@ export class NoticesService {
   async manualChange(kind: LeaveLikeKind, id: string, action: ManualAction, actorId: string): Promise<void> {
     await this.safely('manual change', async () => {
       const r = await this.manualFacts(kind, id);
-      if (!r) return;
+      if (!r || (await this.isTest(r.employeeId))) return;
       const to = await this.manualTarget(actorId, r.employeeId);
       if (to) await this.notifications.notify([to.userId], manualChangeText(kind, action, to.by, r.name, r.when, r.link));
     });
@@ -292,7 +293,7 @@ export class NoticesService {
       const self = (await this.prisma.user.findUnique({ where: { id: actorId }, select: { employeeId: true } }))?.employeeId;
       for (const p of people) {
         // their own hours go to their approver as anyone's: nothing done for someone else
-        if (!p.weeks.length || p.employeeId === self) continue;
+        if (!p.weeks.length || p.employeeId === self || (await this.isTest(p.employeeId))) continue;
         const to = await this.manualTarget(actorId, p.employeeId);
         if (to) await this.notifications.notify([to.userId], timesheetsUploadedText(to.by, p.name, p.weeks.map((w) => w.weekStart), `/timesheets/${p.weeks[0].id}`));
       }
@@ -494,6 +495,7 @@ export class NoticesService {
     await this.safely('raise', async () => {
       const c = await this.prisma.contract.findUnique({ where: { id: contractId }, select: { approval: true, employment: { select: { employeeId: true, employee: { select: { fullNameEn: true, fullNameAr: true } } } } } });
       if (!c || c.approval !== 'pending_ceo') return;
+      if (await this.isTest(c.employment.employeeId)) return;
       const own = await this.usersOf([c.employment.employeeId]);
       const ceos = (await this.usersWith((roles) => roles.includes('ceo'))).filter((id) => id !== own.get(c.employment.employeeId));
       const who = { en: c.employment.employee.fullNameEn, ar: c.employment.employee.fullNameAr };
@@ -577,6 +579,8 @@ export class NoticesService {
    * 2026); HR or Finance (the CEO for a C-level person's).
    */
   private async deciders(stage: Stage, r: Pick<RequestFacts, 'employeeId' | 'managerId'>): Promise<string[]> {
+    // a test account's requests tell nobody (6 November 2026)
+    if (await this.isTest(r.employeeId)) return [];
     if (stage === 'manager') {
       if (!r.managerId || r.managerId === r.employeeId) return [];
       const standIn = await standInOfApprover(this.prisma, r.managerId);
@@ -610,6 +614,7 @@ export class NoticesService {
         select: { employeeId: true, startDate: true, endDate: true, halfDay: true, employee: { select: { fullNameEn: true, fullNameAr: true } } },
       });
       if (!r) return;
+      if (await this.isTest(r.employeeId)) return;
       const span = { from: fromDateOnly(r.startDate), to: fromDateOnly(r.endDate), halfDay: r.halfDay };
       const text = coverText(r.employee.fullNameEn, daysText(span.from, span.to, r.halfDay), REQUEST_LINKS.covering, ended);
       const user = (await this.usersOf([coverId])).get(coverId);
@@ -663,6 +668,7 @@ export class NoticesService {
    * read it apart.
    */
   async stageDeciders(stage: 'hr' | 'finance', employeeId: string): Promise<string[]> {
+    if (await this.isTest(employeeId)) return [];
     const [confidential, own] = await Promise.all([this.confidential.isConfidential(employeeId), this.usersOf([employeeId])]);
     const self = own.get(employeeId);
     const ids = await this.usersWith((roles) => (confidential ? decidesConfidentialStage({ roles }, [stage]) : actsAs(roles, [stage])));
@@ -689,6 +695,14 @@ export class NoticesService {
   }
 
   /** Runs a notice; a failure is logged, never thrown into the flow. */
+  /**
+   * A test account (owner, 6 November 2026: an account for Google's and Apple's app reviewers "without real data"):
+   * nothing about it is told to anyone else, its own notices only.
+   */
+  private async isTest(employeeId: string): Promise<boolean> {
+    return (await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { testAccount: true } }))?.testAccount === true;
+  }
+
   private async safely(what: string, run: () => Promise<void>): Promise<void> {
     try {
       await run();

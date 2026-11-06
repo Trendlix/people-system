@@ -10,6 +10,7 @@ import { employmentHidden, shownCode } from '@/lib/hidden';
 import type { EmployeeProfile, ProfileGap } from '@/lib/types';
 import { confirmationStatus, pendingRequest } from '../confirmation';
 import { ownPhotoHref, pendingPhoto } from '../photo-requests';
+import { TEST_ACCOUNT_BADGE_TITLE } from '../test-account';
 import { Avatar, gradeLabel, photoHref, PROFILE_TABS, profileHref, standingOf, StandingBadge, tabShowing, type ProfileTabKey } from '../ui';
 import { ConfirmedNotice } from './confirm/confirm-notices';
 import { PhotoCropButton } from './photo-crop';
@@ -207,6 +208,12 @@ export function ProfileHeader({
             <StandingBadge standing={standing} />
             {e && !hidden && <span className="badge bg-line-soft text-ink">{LABELS.employmentType[e.employmentType]}</span>}
             {p.confidential && <CLevelBadge title={cLevelTitle(false)} />}
+            {/* a test account, e.g. for app reviewers (owner, 6 November 2026) */}
+            {p.testAccount && (
+              <span title={TEST_ACCOUNT_BADGE_TITLE} className="badge bg-accent-soft text-accent">
+                Test account
+              </span>
+            )}
           </div>
           <p className="text-muted">
             {hidden

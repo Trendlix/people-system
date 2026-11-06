@@ -37,6 +37,7 @@ import { canSeeSalaryRaises, RAISES_PATH } from '../payroll/reports/salary-raise
 import { CONTRACT_TONE_STYLE, directoryContractStatus } from './contract-status';
 import { BulkBar, RowBox, SelectAllBox } from './bulk-bar';
 import { InviteBar } from './invite-bar';
+import { employeesApiPath, managesTestAccounts } from './test-account';
 import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge, todayInCairo } from './ui';
 
 // Not an employee's: someone who is only an employee and/or a direct manager is sent to their dashboard, which links
@@ -58,15 +59,17 @@ import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, g
 const UUID = /^[0-9a-f-]{36}$/i;
 
 type Query = Record<string, string | string[] | undefined>;
-type Filters = { q: string; departmentId: string; gradeId: string; standing: Standing | ''; access: AccessFilter };
+/** `tests`: the test accounts alone (owner, 6 November 2026: an account for app reviewers "without real data"). */
+type Filters = { q: string; departmentId: string; gradeId: string; standing: Standing | ''; access: AccessFilter; tests: boolean };
 
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');
 
 /**
  * The filters in the address. A developer's never narrow by department or grade (owner, 22 October 2026: "Hide per-person
- * details"): those are hidden from them, so filtering by them would say who is where.
+ * details"): those are hidden from them, so filtering by them would say who is where. ?tests=only lists the test accounts
+ * alone, for HR and a Super Admin (`tests`); anyone else's list leaves them out, as the API does.
  */
-function readFilters(query: Query, byJob = true): Filters {
+function readFilters(query: Query, byJob = true, tests = false): Filters {
   const departmentId = byJob ? one(query.departmentId) : '';
   const gradeId = byJob ? one(query.gradeId) : '';
   // ?status= is how the filter was named before standings (Active, Probation, On leave and Notice period kept their names)
@@ -77,6 +80,7 @@ function readFilters(query: Query, byJob = true): Filters {
     gradeId: UUID.test(gradeId) ? gradeId : '',
     standing: (STANDINGS as readonly string[]).includes(standing) ? (standing as Standing) : '',
     access: readAccessFilter(one(query.access)),
+    tests: tests && one(query.tests) === 'only',
   };
 }
 
@@ -88,6 +92,7 @@ function directoryHref(f: Filters): string {
   if (f.gradeId) params.set('gradeId', f.gradeId);
   if (f.standing) params.set('standing', f.standing);
   if (f.access) params.set('access', f.access);
+  if (f.tests) params.set('tests', 'only');
   const qs = params.toString();
   return qs ? `/employees?${qs}` : '/employees';
 }
@@ -101,7 +106,7 @@ function matches(e: EmployeeSummary, q: string): boolean {
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
 
-function StandingChip({ href, label, count, active }: { href: string; label: string; count: number; active: boolean }) {
+function StandingChip({ href, label, count, active }: { href: string; label: string; count?: number; active: boolean }) {
   return (
     <Link
       href={href}
@@ -109,7 +114,7 @@ function StandingChip({ href, label, count, active }: { href: string; label: str
       className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
     >
       {label}
-      <span className={`tabular-nums ${active ? 'opacity-75' : 'text-muted'}`}>{count}</span>
+      {count !== undefined && <span className={`tabular-nums ${active ? 'opacity-75' : 'text-muted'}`}>{count}</span>}
     </Link>
   );
 }
@@ -186,20 +191,27 @@ function AccessCell({ employee: e, today }: { employee: EmployeeSummary; today: 
 }
 
 async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
-  const [user, departments, grades, everyone, query] = await Promise.all([
-    getCurrentUser(),
+  // who it is first (StaffOnly has read it already): only HR and a Super Admin ask for the test accounts
+  const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
+  const byJob = filtersByJob(user);
+  const managesTests = managesTestAccounts(user);
+  const f = readFilters(query, byJob, managesTests);
+  const [departments, grades, everyone] = await Promise.all([
     apiGet<Department[]>('/departments'),
     apiGet<Grade[]>('/grades'),
-    apiGet<EmployeeSummary[]>('/employees'),
-    searchParams,
+    apiGet<EmployeeSummary[]>(employeesApiPath(f.tests)),
   ]);
-  const byJob = filtersByJob(user);
-  const f = readFilters(query, byJob);
   const canAdd = canAddEmployees(user);
   // after the data has loaded: it reads the clock
   const today = todayInCairo();
 
   if (everyone.length === 0) {
+    if (f.tests)
+      return (
+        <Empty>
+          No test accounts. <Link href="/employees">Back to everyone</Link>
+        </Empty>
+      );
     return seesEveryone(user) || canAdd ? (
       <Empty>No employees yet. {canAdd && <Link href="/employees/new">Add the first employee.</Link>}</Empty>
     ) : (
@@ -225,7 +237,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   const counts = new Map<Standing, number>();
   for (const e of base) counts.set(e.standing, (counts.get(e.standing) ?? 0) + 1);
   const standings = STANDINGS.filter((s) => counts.has(s) || s === f.standing);
-  const filtered = Boolean(f.q || f.departmentId || f.gradeId || f.standing || f.access);
+  const filtered = Boolean(f.q || f.departmentId || f.gradeId || f.standing || f.access || f.tests);
   // the Access column: the API sends it to HR, an Admin and a Super Admin only
   const showAccess = everyone.some((e) => !e.restricted && e.access !== undefined);
   // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): how many, for the filter and the note
@@ -299,6 +311,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
           </div>
         )}
         {f.standing && <input type="hidden" name="standing" value={f.standing} />}
+        {f.tests && <input type="hidden" name="tests" value="only" />}
         <button type="submit" className="btn btn-secondary">
           Search
         </button>
@@ -309,18 +322,23 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
         )}
       </form>
 
-      <nav aria-label="Filter by standing" className="flex flex-wrap gap-2 px-4 pb-4">
-        <StandingChip href={directoryHref({ ...f, standing: '' })} label="All" count={base.length} active={!f.standing} />
-        {standings.map((s) => (
-          <StandingChip
-            key={s}
-            href={directoryHref({ ...f, standing: s })}
-            label={STANDING_LABELS[s]}
-            count={counts.get(s) ?? 0}
-            active={f.standing === s}
-          />
-        ))}
-      </nav>
+      <div className="flex flex-wrap items-start justify-between gap-2 px-4 pb-4">
+        <nav aria-label="Filter by standing" className="flex flex-wrap gap-2">
+          <StandingChip href={directoryHref({ ...f, standing: '' })} label="All" count={base.length} active={!f.standing} />
+          {standings.map((s) => (
+            <StandingChip
+              key={s}
+              href={directoryHref({ ...f, standing: s })}
+              label={STANDING_LABELS[s]}
+              count={counts.get(s) ?? 0}
+              active={f.standing === s}
+            />
+          ))}
+        </nav>
+        {/* the test accounts, e.g. for app reviewers, kept out of everyone else's list (owner, 6 November 2026): HR's and
+            a Super Admin's; pressed again, back to everyone */}
+        {managesTests && <StandingChip href={directoryHref({ ...f, tests: !f.tests })} label="Test accounts" active={f.tests} />}
+      </div>
 
       {showAccess && noContracts > 0 && f.access !== 'no_contract' && (
         // HR's list of those with an account and no contract entered (23 October 2026: "Hold them after 7 days")

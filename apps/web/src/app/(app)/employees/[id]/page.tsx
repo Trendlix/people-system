@@ -11,6 +11,7 @@ import { MyCustody } from '../../assets/custody/my-custody';
 import { OffboardingBanner } from '../../offboarding/profile-banner';
 import { OnboardingBanner } from '../../onboarding/profile-banner';
 import { loadProfileOrCard } from '../data';
+import { managesTestAccounts } from '../test-account';
 import { askedTab, BackLink, Loading, PROFILE_TABS, profileHref, seesEveryone, todayInCairo, type ProfileTabKey } from '../ui';
 import { AccessTab } from './access/access-tab';
 import { AttendanceHistoryTab } from './attendance/attendance-history-tab';
@@ -22,6 +23,7 @@ import { EmploymentTab } from './employment-tab';
 import { InsuranceTab } from './insurance/insurance-tab';
 import { ProfileHeader } from './profile-header';
 import { ProfileTabs } from './profile-tabs';
+import { TestAccountSection } from './test-account-section';
 
 // An employee's profile (after Prime ERP's owner profile): who they are and how complete the profile is above the tabs
 // Basic Data, Education, Employment, Social Insurance and Documents. Employment holds the job and everything the company
@@ -130,8 +132,15 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
               <EmployeeFile employee={p} today={today} />
             </Suspense>
           ) : (
-            // Education under Basic Data's other sections (owner, 17 October 2026)
-            <BasicTab profile={p} show={one(query.show)} today={today} education={<EducationTab profile={p} />} />
+            // Education under Basic Data's other sections (owner, 17 October 2026); the Test Account switch, HR's and a
+            // Super Admin's, never on their own profile (6 November 2026)
+            <BasicTab
+              profile={p}
+              show={one(query.show)}
+              today={today}
+              education={<EducationTab profile={p} />}
+              testAccount={managesTestAccounts(user) && user.employeeId !== p.id ? <TestAccountSection profile={p} /> : null}
+            />
           )}
         </ProfileTabs>
 

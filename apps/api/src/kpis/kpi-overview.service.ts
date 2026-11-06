@@ -101,7 +101,10 @@ export class KpiOverviewService {
     const [rows, previous, hiddenCount] = await Promise.all([
       this.rows({ ...visible, month: toDateOnly(firstDay(chosen)) }),
       this.rows({ ...visible, month: toDateOnly(firstDay(kpiMonthAdd(chosen, -1))) }),
-      hidden.length ? this.prisma.kpiScorecard.count({ where: { month: toDateOnly(firstDay(chosen)), employeeId: { in: hidden }, practice: false } }) : 0,
+      // the C-level people only: a test account (6 November 2026) is left out without a word
+      hidden.some((id) => caller.confidential.all.has(id))
+        ? this.prisma.kpiScorecard.count({ where: { month: toDateOnly(firstDay(chosen)), employeeId: { in: hidden.filter((id) => caller.confidential.all.has(id)) }, practice: false } })
+        : 0,
     ]);
     const scored = rows.filter(isScoredRow);
     const byStatus = Object.fromEntries(KPI_STATUSES.map((s) => [s, 0])) as Record<KpiStatus, number>;

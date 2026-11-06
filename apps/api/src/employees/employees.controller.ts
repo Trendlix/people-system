@@ -1,8 +1,8 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from './confidential.guard.js';
-import { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
+import { CreateEmployeeDto, TestAccountDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
 import { EmployeesService } from './employees.service.js';
 
 // Reading is open to every signed-in user, limited to the employees they may see (see access.ts). A C-level person
@@ -12,9 +12,20 @@ import { EmployeesService } from './employees.service.js';
 export class EmployeesController {
   constructor(private readonly employees: EmployeesService) {}
 
+  /** Everyone the caller may see; `?tests=only`: the test accounts instead (HR and a Super Admin, 6 November 2026). */
   @Get()
-  list(@CurrentUser() user: SessionUser) {
-    return this.employees.list(user);
+  list(@Query('tests') tests: string | undefined, @CurrentUser() user: SessionUser) {
+    return this.employees.list(user, tests === 'only');
+  }
+
+  /**
+   * Makes a profile a test account, or a real one again (owner, 6 November 2026: an account for Google's and Apple's app
+   * reviewers "without real data"): { testAccount }. HR and a Super Admin.
+   */
+  @Roles('hr', 'super_admin')
+  @Patch(':id/test-account')
+  setTestAccount(@Param('id', ParseUUIDPipe) id: string, @Body() dto: TestAccountDto, @CurrentUser() user: SessionUser) {
+    return this.employees.setTestAccount(id, dto.testAccount, user);
   }
 
   @Get(':id')

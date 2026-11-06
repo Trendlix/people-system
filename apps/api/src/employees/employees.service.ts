@@ -54,7 +54,7 @@ import {
 } from './access.js';
 import { birthDateFromNationalId, maskTail } from './checks.js';
 import { completeness, papersOf, topGradeRank } from './completeness.js';
-import { ConfidentialService } from './confidential.service.js';
+import { ConfidentialService, managesTestAccounts } from './confidential.service.js';
 import { contractFactsOf, STATUS_CONTRACTS, STATUS_ENDING } from './contract-facts.js';
 import type { CreateEmployeeDto, UpdateBankDto, UpdateEmployeeDto, UpdateIdentityDto } from './employee.dto.js';
 import { INSURED_VERSION, insuredContractPay, insuredVersionOf, insuredWageOfEmployee } from './insured-wage.js';
@@ -309,12 +309,18 @@ export class EmployeesService {
    * force else its latest draft (contractFactsOf), and its approved ending's last working day for those who see endings
    * (HR, Admin, the CEO; null for the others); never on a card.
    */
-  async list(user: SessionUser) {
+  async list(user: SessionUser, testsOnly = false) {
     const confidential = await this.confidential.view(user);
     const salary = seesSalary(user);
     const endings = seesEndings(user);
+    // the test accounts apart (6 November 2026): only on their own list, HR's and a Super Admin's; a test account sees itself
+    const tests: Prisma.EmployeeWhereInput = testsOnly
+      ? managesTestAccounts(user)
+        ? { testAccount: true }
+        : { id: { in: [] } }
+      : { OR: [{ testAccount: false }, ...(user.employeeId ? [{ id: user.employeeId }] : [])] };
     const rows = await this.prisma.employee.findMany({
-      where: await this.visibleTo(user),
+      where: { AND: [await this.visibleTo(user), tests] },
       select: {
         id: true,
         employeeCode: true,
@@ -684,6 +690,22 @@ export class EmployeesService {
     const diff = restrictedChanges(changes(bankView(before), dto as Record<string, unknown>), ['accountNo', 'iban']);
     if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: id, diff: { bank: diff } });
     return maskedBank(row);
+  }
+
+  /**
+   * Makes a profile a test account, or a real one again (owner, 6 November 2026: an account for Google's and Apple's app
+   * reviewers "without real data"): kept out of payroll runs, lists, counts and reports, its requests telling nobody
+   * (ConfidentialService, NoticesService). HR and a Super Admin, never for their own profile; in the audit log.
+   */
+  async setTestAccount(id: string, testAccount: boolean, user: SessionUser) {
+    if (!managesTestAccounts(user)) throw new ForbiddenException('Only HR or a Super Admin marks a test account.');
+    const e = await this.row(id);
+    if (user.employeeId === id) throw new ForbiddenException("Your own profile can't be made a test account.");
+    if (e.testAccount !== testAccount) {
+      await this.prisma.employee.update({ where: { id }, data: { testAccount } });
+      await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: id, diff: { testAccount: { from: e.testAccount, to: testAccount } } });
+    }
+    return this.get(id, user);
   }
 
   /**

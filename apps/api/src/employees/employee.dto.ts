@@ -354,3 +354,9 @@ export class UpdateBankDto {
   @IsOptional() @IsString() @MaxLength(150)
   holderName?: string | null;
 }
+
+/** A test account, or a real profile again (owner, 6 November 2026: an account for app reviewers "without real data"). */
+export class TestAccountDto {
+  @IsBoolean({ message: 'Send whether it is a test account as true or false.' })
+  testAccount!: boolean;
+}

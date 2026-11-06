@@ -926,7 +926,8 @@ export class PayrollService {
     const to = toDateOnly(lastDay(month));
     const [rows, holidays, leaveSetup] = await Promise.all([
       db.employment.findMany({
-        where: { ...(employeeId && { employeeId }), joinDate: { lte: to }, OR: [{ endDate: null }, { endDate: { gte: from } }] },
+        // never a test account's (6 November 2026): not on the run, nor among those left out
+        where: { ...(employeeId && { employeeId }), employee: { testAccount: false }, joinDate: { lte: to }, OR: [{ endDate: null }, { endDate: { gte: from } }] },
         select: rosterSelect(from, to),
       }),
       this.holidays.datesBetween(firstDay(month), lastDay(month)),

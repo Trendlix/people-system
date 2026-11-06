@@ -257,7 +257,8 @@ export class AttendanceService {
     const ids = [...new Set([...days.map((d) => d.employeeId), ...employed.map((e) => e.employeeId)])];
     // the C-level people with days hidden from the caller: one note, where the filters would list them by their card
     // (the person and the place are the directory's), never by their figures
-    let hidden = ids.filter((id) => confidential.hidden.has(id) && days.some((d) => d.employeeId === id));
+    // the C-level people only: a test account (6 November 2026) is left out without a word
+    let hidden = ids.filter((id) => confidential.hidden.has(id) && confidential.all.has(id) && days.some((d) => d.employeeId === id));
     if (filter.employeeId) hidden = hidden.filter((id) => id === filter.employeeId);
     if (filter.departmentId && hidden.length) {
       const placed = await this.prisma.employment.findMany({
@@ -348,7 +349,8 @@ export class AttendanceService {
       orderBy: { date: 'asc' },
       select: DAY_SELECT,
     });
-    const hidden = new Set(days.filter((d) => confidential.hidden.has(d.employeeId)).map((d) => d.employeeId));
+    // the C-level people only: a test account (6 November 2026) is left out without a word
+    const hidden = new Set(days.filter((d) => confidential.hidden.has(d.employeeId) && confidential.all.has(d.employeeId)).map((d) => d.employeeId));
     const shown = days.filter((d) => !confidential.hidden.has(d.employeeId));
     const rows: AttendanceSummaryReport['rows'] = [];
     const withDays: string[] = [];

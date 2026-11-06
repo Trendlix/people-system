@@ -26,7 +26,9 @@ const PEOPLE = [
 function prismaStub() {
   return {
     employee: {
-      findMany: async () => PEOPLE.map((p) => ({ id: p.id, employments: p.employments.slice(0, 1) })),
+      // the C-level query, else the test accounts' (6 November 2026): none here
+      findMany: async (args?: { where?: { testAccount?: boolean } }) =>
+        args?.where?.testAccount ? [] : PEOPLE.map((p) => ({ id: p.id, employments: p.employments.slice(0, 1) })),
       // their own profile is found by their account's link (22 October 2026)
       findUnique: async ({ where }: { where: { id: string } }) => {
         const p = PEOPLE.find((x) => x.id === where.id);

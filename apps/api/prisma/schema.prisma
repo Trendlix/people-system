@@ -1095,6 +1095,10 @@ model Employee {
   // personal; none: the work email, else the personal one (packages/shared signInEmailOf)
   signInEmail                String?                    @map("sign_in_email")
   account                    User?                      @relation("UserEmployee") // their sign-in account (users.employee_id)
+  // a test account (owner, 6 November 2026: an account for Google's and Apple's app reviewers "without real data"):
+  // seen only by themself, and by HR and a Super Admin who manage it (Employees → Test accounts); never on a payroll run,
+  // in a list, a count or a report, and its requests tell nobody (ConfidentialService, NoticesService)
+  testAccount                Boolean                    @default(false) @map("test_account")
   // their Employee Id in Zoho People (owner, 19 October 2026: attendance imported from Zoho, people matched by name and
   // the links HR confirms remembered), e.g. "103" or "10001 - HYB": the next import matches them by it
   zohoPeopleId               String?                    @unique @map("zoho_people_id")

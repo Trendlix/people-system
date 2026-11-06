@@ -22,6 +22,9 @@ export const CONFIDENTIAL_GRADE_REFUSED = 'Only the CEO or a Super Admin sees C-
  * and 404 for every record of their personal or pay data, as for anyone they may not see, so its existence isn't
  * confirmed. One helper for every module: the routes about one person's record ask ConfidentialGuard, the lists filter
  * with hiddenFrom / employeeWhere / ownedWhere, and the services check again where a route can't (a file upload's form).
+ * Test accounts (owner, 6 November 2026: an account for Google's and Apple's app reviewers "without real data") ride the
+ * same filters: hidden from everyone but themself, so they are in no list, count or report; HR and a Super Admin, who
+ * manage them, still open one's records (isHidden), and list them apart (Employees → Test accounts).
  */
 @Injectable()
 export class ConfidentialService {
@@ -36,6 +39,12 @@ export class ConfidentialService {
     return new Set(rows.filter((r) => isConfidentialGrade(r.employments[0]?.grade)).map((r) => r.id));
   }
 
+  /** Every test account's employee id (a handful at most). */
+  async testIds(db: Db = this.prisma): Promise<Set<string>> {
+    const rows = await db.employee.findMany({ where: { testAccount: true }, select: { id: true } });
+    return new Set(rows.map((r) => r.id));
+  }
+
   /** Whether this person is C-level, whoever asks. */
   async isConfidential(employeeId: string): Promise<boolean> {
     return (await this.ids()).has(employeeId);
@@ -47,22 +56,21 @@ export class ConfidentialService {
     return me?.id ?? null;
   }
 
-  /** The C-level people hidden from the caller: none for the CEO and a Super Admin; never the caller themself. */
+  /**
+   * The people hidden from the caller: the C-level people (none for the CEO and a Super Admin) and the test accounts
+   * (for everyone); never the caller themself.
+   */
   async hiddenFrom(user: SessionUser): Promise<string[]> {
-    if (seesConfidential(user)) return [];
-    const ids = await this.ids();
-    if (!ids.size) return [];
-    const self = await this.selfId(user);
-    if (self) ids.delete(self);
-    return [...ids];
+    return [...(await this.view(user)).hidden];
   }
 
   /** The same as a set, with whether the caller sees every C-level person, for the services that ask per row. */
   async view(user: SessionUser): Promise<ConfidentialView> {
-    if (seesConfidential(user)) return { sees: true, all: await this.ids(), hidden: new Set() };
-    const all = await this.ids();
-    const self = all.size ? await this.selfId(user) : null;
-    return { sees: false, all, hidden: new Set([...all].filter((id) => id !== self)) };
+    const [all, tests] = await Promise.all([this.ids(), this.testIds()]);
+    const sees = seesConfidential(user);
+    const self = (sees ? 0 : all.size) + tests.size ? await this.selfId(user) : null;
+    const hidden = new Set([...(sees ? [] : all), ...tests].filter((id) => id !== self));
+    return { sees, all, hidden, tests };
   }
 
   /** The employees the caller may see in full, as a Prisma filter on employees: those not hidden from them. */
@@ -77,8 +85,12 @@ export class ConfidentialService {
     return hidden.length ? { employeeId: { notIn: hidden } } : {};
   }
 
-  /** Whether this person's details are hidden from the caller. */
+  /**
+   * Whether this person's details are hidden from the caller: a C-level person's from all but the CEO and a Super Admin;
+   * a test account's from all but HR and a Super Admin, who manage it; never one's own.
+   */
   async isHidden(user: SessionUser, employeeId: string): Promise<boolean> {
+    if ((await this.testIds()).has(employeeId)) return !managesTestAccounts(user) && (await this.selfId(user)) !== employeeId;
     if (seesConfidential(user)) return false;
     if (!(await this.ids()).has(employeeId)) return false;
     return (await this.selfId(user)) !== employeeId;
@@ -129,9 +141,14 @@ export interface ConfidentialView {
   sees: boolean;
   /** Every C-level person. */
   all: ReadonlySet<string>;
-  /** Those hidden from the caller: all but themself, or none. */
+  /** Those hidden from the caller, but themself: the C-level people (none for the CEO and a Super Admin) and the test accounts. */
   hidden: ReadonlySet<string>;
+  /** The test accounts (6 November 2026): in `hidden`, but never counted as C-level ("C-level (N people) — hidden"). */
+  tests?: ReadonlySet<string>;
 }
+
+/** Who manages test accounts, opens their records and lists them apart: HR and a Super Admin (never a developer's view). */
+export const managesTestAccounts = (user: SessionUser): boolean => !user.developer && (user.roles.includes('hr') || user.roles.includes('super_admin'));
 
 /** Nobody hidden: for code that runs for no caller (the system), or before anyone is C-level. */
 export const NONE_HIDDEN: ConfidentialView = { sees: true, all: new Set(), hidden: new Set() };

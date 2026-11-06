@@ -36,7 +36,20 @@ function Reveal({ href, shown, what }: { href: string; shown: boolean; what: str
 const number = (value: string | null | undefined) => value && <span className="tabular-nums">{value}</span>;
 
 /** Basic Data: personal, contact and address, emergency contact, then (for those allowed) the national ID and bank details. */
-export async function BasicTab({ profile: p, show, today, education }: { profile: EmployeeProfile; show: string; today: string; education?: React.ReactNode }) {
+export async function BasicTab({
+  profile: p,
+  show,
+  today,
+  education,
+  testAccount,
+}: {
+  profile: EmployeeProfile;
+  show: string;
+  today: string;
+  education?: React.ReactNode;
+  /** The Test Account switch, for HR and Super Admins (test-account-section.tsx); left out for anyone else. */
+  testAccount?: React.ReactNode;
+}) {
   // The full national ID and bank numbers are only fetched (and audited) when asked for with ?show=.
   const [identity, bank] = await Promise.all([
     show === 'national-id' && p.access.identity && p.identity ? apiGet<EmployeeIdentity>(`/employees/${p.id}/identity`) : null,
@@ -225,6 +238,8 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
       )}
 
       {education}
+
+      {testAccount}
 
       {/* A Super Admin only (owner's decision, 15 October 2026). The API refuses (409) while this person is anyone's manager
           on record; the form shows its reason. */}
