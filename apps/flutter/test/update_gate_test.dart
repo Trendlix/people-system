@@ -31,14 +31,18 @@ void main() {
       ..on('GET /api/me/attendance/today', (req) => json({'next': 'in', 'punches': <Object>[]}));
   });
 
-  Future<void> open(WidgetTester tester, {String version = '0.6.14', String? token = 'kept', Widget? app}) async {
+  late int playAsked;
+
+  Future<void> open(WidgetTester tester, {String version = '0.6.14', String? token = 'kept', Widget? app, String store = ''}) async {
     phoneScreen(tester);
+    playAsked = 0;
     await tester.pumpWidget(
       ProviderScope(
         retry: noRetry,
         overrides: [
           ...overridesFor(people, store: MemorySessionStore(token: token), locator: locator),
-          configProvider.overrideWithValue(AppConfig.parse(apiUrl: '', caBase64: '', version: version)),
+          configProvider.overrideWithValue(AppConfig.parse(apiUrl: '', caBase64: '', version: version, store: store)),
+          playUpdateProvider.overrideWithValue(() async => playAsked++),
           linkOpenerProvider.overrideWithValue((uri) async {
             opened.add(uri);
             return opens;
@@ -61,6 +65,21 @@ void main() {
     expect(isOlderVersion('0.6.16', '0.6.15'), isFalse);
     expect(isOlderVersion('0.6', '0.6.1'), isTrue);
     expect(isOlderVersion('0.6.x', '0.6.15'), isFalse);
+  });
+
+  // a Play build (owner, 6 November 2026: "now i have google play console"; "Play only"): Play updates it
+  testWidgets('a Play build asks Google Play, never People, and never shows Update required', (tester) async {
+    latest('0.6.15');
+    await open(tester, store: 'play');
+    expect(playAsked, 1);
+    expect(find.text(UpdateWords.title), findsNothing);
+    expect(opened, isEmpty);
+    expect(people.calls, isNot(contains('GET /api/app/latest')));
+  });
+
+  test('a build is a Play one only when built so', () {
+    expect(AppConfig.parse(apiUrl: '', caBase64: '', version: '1.0.1', store: 'play').playStore, isTrue);
+    expect(AppConfig.parse(apiUrl: '', caBase64: '', version: '1.0.1').playStore, isFalse);
   });
 
   testWidgets('an older build: only Update required, the download opened by itself once, and again from the button', (tester) async {

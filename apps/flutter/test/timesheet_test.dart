@@ -132,9 +132,10 @@ void main() {
 
       // today's Add hours: the client theirs first, a task, the hours
       final today = todayIso();
-      final dayIndex = weekDays(weekOf(today)).indexOf(today);
-      await tester.scrollUntilVisible(find.text(TimesheetWords.addLine).at(dayIndex), 200, scrollable: find.descendant(of: find.byType(TimesheetScreen), matching: find.byType(Scrollable)).first);
-      await tester.tap(find.text(TimesheetWords.addLine).at(dayIndex));
+      // today's own Add hours, by its date (the week's days below are built as they scroll into view)
+      final add = find.byKey(ValueKey('add:$today'));
+      await tester.scrollUntilVisible(add, 200, scrollable: find.descendant(of: find.byType(TimesheetScreen), matching: find.byType(Scrollable)).first);
+      await tester.tap(add);
       await tester.pumpAndSettle();
       await tester.tap(find.text(TimesheetWords.noClient));
       await tester.pumpAndSettle();
@@ -168,9 +169,9 @@ void main() {
       await openApp(tester, people);
       await tester.tap(find.text(TimesheetWords.logHours));
       await tester.pumpAndSettle();
-      final dayIndex = weekDays(weekOf(todayIso())).indexOf(todayIso());
-      await tester.scrollUntilVisible(find.text(TimesheetWords.addLine).at(dayIndex), 200, scrollable: find.descendant(of: find.byType(TimesheetScreen), matching: find.byType(Scrollable)).first);
-      await tester.tap(find.text(TimesheetWords.addLine).at(dayIndex));
+      final add = find.byKey(ValueKey('add:${todayIso()}'));
+      await tester.scrollUntilVisible(add, 200, scrollable: find.descendant(of: find.byType(TimesheetScreen), matching: find.byType(Scrollable)).first);
+      await tester.tap(add);
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('text:${TimesheetWords.hours}')), '1.1');
       await tester.tap(find.text(TimesheetWords.keep));

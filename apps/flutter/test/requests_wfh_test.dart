@@ -37,7 +37,11 @@ void main() {
         {'date': '$y-11-20', 'status': 'with_manager'},
       ],
     });
-    expect(wfhProblems(a, '$y-10-29'), ['29/10/$y has gone by: ask for a work from home day a day before it at the latest.']);
+    // a day gone by may be asked for until the end of 2026 (owner, 5 November 2026: request_text.dart pastDateAllowed)
+    final goneBy = ['29/10/$y has gone by: ask for a work from home day a day before it at the latest.'];
+    expect(wfhProblems(a, '$y-10-29'), pastDateAllowed('$y-10-29', '$y-10-30') ? isEmpty : goneBy);
+    final nextYear = WfhAllowance.fromJson({...wfhAllowanceJson(), 'month': '2027-01', 'today': '2027-01-15', 'nextPossible': '2027-01-16'});
+    expect(wfhProblems(nextYear, '2027-01-14'), ['14/01/2027 has gone by: ask for a work from home day a day before it at the latest.']);
     expect(wfhProblems(a, '$y-10-30'), ['30/10/$y is today: ask for a work from home day a day before it at the latest.']);
     expect(wfhProblems(a, '$y-11-05'), ['You have a work from home day on 05/11/$y already.']);
     expect(wfhProblems(a, '$y-11-12'), ['November $y\'s 2 days of working from home are already asked for: 2 of 2.']);

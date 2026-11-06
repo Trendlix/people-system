@@ -14,6 +14,15 @@ name: Flutter app (Android)
 # app's force update (owner, 31 October 2026: "Always the latest build", "A fixed People link") asks People for the newest
 # one (GET /api/app/latest), and people.trendlix.com/download sends everyone to it. The version: versionCode = 1000 + the run number (the old app's builds stopped at 11, so every Flutter build
 # is newer), versionName = <major.minor of apps/flutter/pubspec.yaml>.<run> (e.g. 0.2.3).
+#
+# Google Play (owner, 6 November 2026: "now i have google play console"; asked, "Employees only", "Play only"): once the
+# secrets PLAY_UPLOAD_KEYSTORE_BASE64 and PLAY_UPLOAD_PASSWORD are set (the upload key, ~/TrendLIX-Play-Upload-Key on the
+# owner's Mac), each build is an app bundle for Play (trendlix-people-<version>.aab in the run's Artifacts, uploaded to
+# the Play Console's closed testing track), built with PEOPLE_STORE=play so the app takes its updates from Play. Its
+# release here is a pre-release, which People's app/latest ignores, so the phones on the website's APK aren't moved
+# before Play has the app. Once the app is live on Play, "Run workflow" with "Google Play is live" ticked makes the newest
+# Play build the latest release: People then tells those phones to remove their version and get the app from Play
+# (app-releases.ts), and the website's /download goes to Play.
 
 on:
   push:
@@ -22,6 +31,11 @@ on:
       - 'apps/flutter/**'
       - '.github/workflows/flutter-android.yml'
   workflow_dispatch:
+    inputs:
+      play_live:
+        description: 'Google Play is live: move the phones on the website APK to Play (no build)'
+        type: boolean
+        default: false
 
 # write: the release each build is published as
 permissions:
@@ -34,11 +48,14 @@ concurrency:
 
 jobs:
   build:
-    name: Check and build the APK
+    name: Check and build the app
+    if: ${{ !inputs.play_live }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       HAS_DEBUG_KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 != '' }}
+      # a build for Google Play once its upload key is set (6 November 2026)
+      PLAY: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 != '' && secrets.PLAY_UPLOAD_PASSWORD != '' }}
     defaults:
       run:
         working-directory: apps/flutter
@@ -85,14 +102,14 @@ jobs:
       # each had a key of their own: the cache of ~/.android/debug.keystore was never saved, Gradle's key being elsewhere.
       # The build signs with it through PEOPLE_KEYSTORE (android/app/build.gradle.kts). A debug keystore's passwords.
       - name: Signing key from the cache
-        if: env.HAS_DEBUG_KEYSTORE != 'true'
+        if: env.PLAY != 'true' && env.HAS_DEBUG_KEYSTORE != 'true'
         uses: actions/cache@v6
         with:
           path: ~/.people-signing/people.keystore
           key: people-signing-keystore-v1
 
       - name: Signing key from the secret
-        if: env.HAS_DEBUG_KEYSTORE == 'true'
+        if: env.PLAY != 'true' && env.HAS_DEBUG_KEYSTORE == 'true'
         env:
           KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
@@ -100,6 +117,7 @@ jobs:
           printf '%s' "$KEYSTORE" | base64 -d > ~/.people-signing/people.keystore
 
       - name: Signing key
+        if: env.PLAY != 'true'
         run: |
           mkdir -p ~/.people-signing
           if [ ! -s ~/.people-signing/people.keystore ]; then
@@ -109,6 +127,16 @@ jobs:
             echo "::warning::A new signing key was made: this APK doesn't install over the last one, so the app says to remove the old version first (once)."
           fi
           echo "PEOPLE_KEYSTORE=$HOME/.people-signing/people.keystore" >> "$GITHUB_ENV"
+
+      # Google Play's upload key (PKCS12, alias "upload"): Play checks the bundle with it and signs the app with its own
+      # key (android/app/build.gradle.kts). The password stays in the build step's environment.
+      - name: Play upload key
+        if: env.PLAY == 'true'
+        env:
+          KEYSTORE: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.p12"
+          echo "PLAY_UPLOAD_KEYSTORE=$RUNNER_TEMP/upload.p12" >> "$GITHUB_ENV"
 
       - name: Version
         id: version
@@ -132,12 +160,16 @@ jobs:
       - name: Build
         env:
           API_CA_CERT: ${{ vars.API_CA_CERT }}
+          PLAY_UPLOAD_PASSWORD: ${{ secrets.PLAY_UPLOAD_PASSWORD }}
         run: |
           if [ -z "$API_CA_CERT" ]; then
             echo "::error::The repository variable API_CA_CERT is not set (deploy/ca-cert.sh prints it): without it the app can't reach People."
             exit 1
           fi
-          flutter build apk --release \
+          # for Google Play: an app bundle, taking its updates from Play (PEOPLE_STORE=play); else the website's APK
+          if [ "$PLAY" = "true" ]; then kind=appbundle; store=play; else kind=apk; store=; fi
+          flutter build "$kind" --release \
+            --dart-define=PEOPLE_STORE="$store" \
             --build-name="$APP_VERSION_NAME" \
             --build-number="$APP_VERSION_CODE" \
             --dart-define=PEOPLE_API_URL=https://srv2055591.hstgr.cloud:8443 \
@@ -149,6 +181,7 @@ jobs:
 
       - name: Name the APK
         id: apk
+        if: env.PLAY != 'true'
         run: |
           src=build/app/outputs/flutter-apk/app-release.apk
           dest="$RUNNER_TEMP/trendlix-people-$APP_VERSION_NAME.apk"
@@ -167,10 +200,31 @@ jobs:
             echo "- Install: Artifacts below -> trendlix-people-$APP_VERSION_NAME -> unzip -> open the .apk on the phone"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # the bundle for the Play Console, and its upload certificate's fingerprint (the Console shows the one it expects)
+      - name: Name the bundle
+        id: aab
+        if: env.PLAY == 'true'
+        run: |
+          dest="$RUNNER_TEMP/trendlix-people-$APP_VERSION_NAME.aab"
+          cp build/app/outputs/bundle/release/app-release.aab "$dest"
+          echo "path=$dest" >> "$GITHUB_OUTPUT"
+          cert="$(keytool -printcert -jarfile "$dest" 2>/dev/null | sed -n 's/^[[:space:]]*SHA256: //p' | head -1)"
+          if [ -z "$cert" ]; then
+            echo "::error::The bundle isn't signed with the upload key: check the secrets PLAY_UPLOAD_KEYSTORE_BASE64 and PLAY_UPLOAD_PASSWORD."
+            exit 1
+          fi
+          {
+            echo "### Trendlix People $APP_VERSION_NAME for Google Play"
+            echo ""
+            echo "- App bundle, version code $APP_VERSION_CODE, $(du -h "$dest" | cut -f1)"
+            echo "- Upload certificate SHA-256 \`$cert\`"
+            echo "- Upload: Artifacts below -> trendlix-people-$APP_VERSION_NAME -> unzip -> the .aab to the Play Console (Testing -> Closed testing -> Create new release)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v7
         with:
           name: trendlix-people-${{ steps.version.outputs.name }}
-          path: ${{ steps.apk.outputs.path }}
+          path: ${{ steps.apk.outputs.path || steps.aab.outputs.path }}
           if-no-files-found: error
           retention-days: 30
 
@@ -178,7 +232,7 @@ jobs:
       # commit, its file always named trendlix-people.apk, so the website's /download (releases/latest/download/…)
       # always finds it. Only from main; a build by hand of another branch stays in the run's artifacts.
       - name: Publish the release
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && env.PLAY != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           APK: ${{ steps.apk.outputs.path }}
@@ -215,3 +269,59 @@ jobs:
             --notes "$notes" \
             --latest
           echo "- Released: https://github.com/$GITHUB_REPOSITORY/releases/tag/app-$APP_VERSION_NAME" >> "$GITHUB_STEP_SUMMARY"
+
+      # A Play build's release: a pre-release (app/latest ignores it), its bundle attached, saying it is one and since
+      # which version Play's key is the same (the first Play build's), so the phones on an older, website-signed build are
+      # told to remove it first once it is made the latest ("Google Play is live" below).
+      - name: Publish the Play build
+        if: github.ref == 'refs/heads/main' && env.PLAY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AAB: ${{ steps.aab.outputs.path }}
+        run: |
+          if gh release view "app-$APP_VERSION_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "app-$APP_VERSION_NAME" "$AAB" --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
+          since=""
+          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName -q '.[].tagName'); do
+            body="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
+            if printf '%s' "$body" | grep -q '^Google Play build'; then
+              since="$(printf '%s' "$body" | sed -n 's/^Same signing key since \(app-[0-9.]*\).*/\1/p' | head -1)"
+              break
+            fi
+          done
+          since="${since:-app-$APP_VERSION_NAME}"
+          notes="$(printf '%s\n\n%s\n%s\n' \
+            "The employee app, version $APP_VERSION_NAME (code $APP_VERSION_CODE), for Google Play." \
+            "Google Play build" \
+            "Same signing key since $since")"
+          gh release create "app-$APP_VERSION_NAME" "$AAB" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Trendlix People $APP_VERSION_NAME (Google Play)" \
+            --notes "$notes" \
+            --prerelease
+          echo "- Pre-released (Google Play build, same key since $since): https://github.com/$GITHUB_REPOSITORY/releases/tag/app-$APP_VERSION_NAME" >> "$GITHUB_STEP_SUMMARY"
+
+  # "Google Play is live" (Run workflow by hand, the box ticked): the newest Play build becomes the latest release, so People
+  # tells the phones still on the website's APK to remove it and get the app from Play, and /download goes to Play.
+  play-live:
+    name: Google Play is live
+    if: ${{ inputs.play_live }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Make the newest Play build the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName -q '.[].tagName'); do
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body -q .body | grep -q '^Google Play build'; then
+              gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease=false --latest
+              echo "### $tag is the latest release: the phones on the website's APK are sent to Google Play" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          done
+          echo "::error::No Google Play build is released yet: push a build with the Play upload key set first."
+          exit 1

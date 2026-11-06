@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:in_app_update/in_app_update.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../providers.dart';
@@ -47,6 +48,23 @@ final linkOpenerProvider = Provider<Future<bool> Function(Uri)>(
       (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
 );
 
+/// A Play build's update (owner, 6 November 2026: "now i have google play console"; asked, "Play only"): Google Play says
+/// whether a newer version of the app is live there, and when it is, Play's own full-screen update runs (an "immediate"
+/// update: the app restarts on the new version). Never in the way when Play can't tell (a build not installed from Play,
+/// no Play services). Replaced in the tests.
+final playUpdateProvider = Provider<Future<void> Function()>(
+  (ref) => () async {
+    try {
+      final info = await InAppUpdate.checkForUpdate();
+      if (info.updateAvailability == UpdateAvailability.updateAvailable && info.immediateUpdateAllowed) {
+        await InAppUpdate.performImmediateUpdate();
+      }
+    } on Exception {
+      // not installed from Play, or Play unreachable: the app carries on
+    }
+  },
+);
+
 /// Always the newest build (owner, 31 October 2026: "in the next build i would prefare to apply the force update rule";
 /// asked, "Always the latest build" and "A fixed People link"): on opening and coming back, the app asks People for the
 /// newest build (GitHub's latest release, flutter-android.yml); when this one is older, only "Update required" shows,
@@ -55,7 +73,7 @@ final linkOpenerProvider = Provider<Future<bool> Function(Uri)>(
 /// old version till posted to the app store or google playstore"; People's removeOldFirst), with a button to the app's
 /// App info page, where Uninstall is. Never in the way when it can't tell: a build without a version (a developer's,
 /// 0.0.0), not on Android (only an APK is built), or People unreachable. Once known old, it stays held until the new
-/// build is installed.
+/// build is installed. A Play build asks Play instead (playUpdateProvider): Play updates it.
 class UpdateGate extends ConsumerStatefulWidget {
   const UpdateGate({super.key, required this.child, this.askEvery = const Duration(minutes: 2)});
 
@@ -98,10 +116,19 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
   }
 
   Future<void> _ask() async {
-    final mine = ref.read(configProvider).version;
+    final config = ref.read(configProvider);
+    final mine = config.version;
     if (_asking || mine == '0.0.0' || defaultTargetPlatform != TargetPlatform.android) return;
     _asking = true;
     _askedAt = DateTime.now();
+    if (config.playStore) {
+      try {
+        await ref.read(playUpdateProvider)();
+      } finally {
+        _asking = false;
+      }
+      return;
+    }
     try {
       final body = await ref.read(peopleClientProvider).get('/api/app/latest');
       if (!mounted || body is! Map) return;

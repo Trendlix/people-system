@@ -300,7 +300,13 @@ class _DayCard extends StatelessWidget {
           if (onAdd != null)
             Align(
               alignment: Alignment.centerLeft,
-              child: TextButton.icon(onPressed: onAdd, icon: const Icon(CupertinoIcons.add, size: 16), label: const Text(TimesheetWords.addLine)),
+              // keyed by the day: found by its date, whichever day of the week it is
+              child: TextButton.icon(
+                key: ValueKey('add:$date'),
+                onPressed: onAdd,
+                icon: const Icon(CupertinoIcons.add, size: 16),
+                label: const Text(TimesheetWords.addLine),
+              ),
             ),
         ],
       ),

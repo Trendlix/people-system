@@ -24,8 +24,9 @@ const pingTask = 'people.locationPing';
 
 class PingWords {
   static const title = 'Location while checked in';
+  // in the form Google Play asks for a background location's prominent disclosure (6 November 2026)
   static const disclosure =
-      'While you’re checked in, Trendlix People reads your location every hour, even when the app is closed or not in use, and sends it to HR to confirm you’re at the place you checked in. It stops when you check out.\n\nOn the next screen, choose “Allow all the time”.';
+      'Trendlix People collects location data to confirm you’re at the place you checked in, every hour while you’re checked in, even when the app is closed or not in use. It is sent to HR and stops when you check out.\n\nOn the next screen, choose “Allow all the time”.';
   static const notNow = 'Not now';
   static const allow = 'Continue';
 }

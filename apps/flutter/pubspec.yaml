@@ -21,6 +21,8 @@ dependencies:
   url_launcher: 6.3.3
   # the hourly location while checked in, in the background (owner, 1 November 2026: "Silent automatic ping")
   workmanager: 0.10.10
+  # Google Play's own update check, for a Play build (owner, 6 November 2026: "now i have google play console")
+  in_app_update: 4.2.5
 
 dev_dependencies:
   flutter_test:

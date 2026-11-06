@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { APP_DOWNLOAD_URL, appVersionOf, compareVersions, latestFor, latestFromRelease, removeOldFirstFor, UNKNOWN_APP } from './app-releases.js';
+import { APP_DOWNLOAD_URL, appVersionOf, compareVersions, latestFor, latestFromRelease, PLAY_TESTING_URL, removeOldFirstFor, UNKNOWN_APP } from './app-releases.js';
 import { AppReleasesService } from './app-releases.service.js';
 
 const release = (tag: string, more: Record<string, unknown> = {}) => ({ tag_name: tag, published_at: '2026-10-31T18:00:00Z', draft: false, prerelease: false, ...more });
@@ -13,6 +13,20 @@ describe('the newest build from a release', () => {
     const body = 'The employee app, version 0.6.29 (code 1029). Install: open the .apk on the phone.\n\nSigning certificate SHA-256: ab12\nSame signing key since app-0.6.27\n';
     expect(latestFromRelease(release('app-0.6.29', { body }))?.sameKeySince).toBe('0.6.27');
     expect(latestFromRelease(release('app-0.6.26', { body: 'The employee app, version 0.6.26 (code 1026). Install: open the .apk on the phone.' }))?.sameKeySince).toBeNull();
+  });
+
+  // owner, 6 November 2026: "now i have google play console"; "Play only": once a Play build is the latest, Play
+  it('sends the phones to Google Play once a Play build is the latest, those on another key removing theirs first', () => {
+    const body = 'The employee app, version 0.7.40 (code 1040), for Google Play.\n\nGoogle Play build\nSame signing key since app-0.7.40\n';
+    expect(latestFromRelease(release('app-0.7.40', { body }))).toEqual({
+      version: '0.7.40',
+      publishedAt: '2026-10-31T18:00:00Z',
+      downloadUrl: PLAY_TESTING_URL,
+      removeOldFirst: true,
+      sameKeySince: '0.7.40',
+    });
+    // while it is a pre-release (Play not live yet), nobody is moved
+    expect(latestFromRelease(release('app-0.7.40', { body, prerelease: true }))).toBeNull();
   });
 
   it('takes no other tag, a draft or a pre-release', () => {

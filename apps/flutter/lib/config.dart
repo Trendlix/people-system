@@ -5,7 +5,7 @@ import 'dart:convert';
 /// from the GitHub Actions variable `API_CA_CERT`). A build without them talks to the live server and trusts only the
 /// phone's own authorities (which don't know People's): enough for the tests, never for a phone.
 class AppConfig {
-  const AppConfig({required this.apiUrl, required this.caPem, required this.version, this.build = '', this.commit = '', this.builtAt = ''});
+  const AppConfig({required this.apiUrl, required this.caPem, required this.version, this.build = '', this.commit = '', this.builtAt = '', this.playStore = false});
 
   /// People's API, without a trailing slash: `https://srv2055591.hstgr.cloud:8443`.
   final String apiUrl;
@@ -22,6 +22,10 @@ class AppConfig {
   final String commit;
   final String builtAt;
 
+  /// A build for Google Play (owner, 6 November 2026: "now i have google play console"; CI: `PEOPLE_STORE=play`): Play
+  /// updates it, so the app asks Play for a newer version rather than People (update_gate.dart).
+  final bool playStore;
+
   static const _defaultApi = 'https://srv2055591.hstgr.cloud:8443';
 
   /// The settings this build was given.
@@ -32,6 +36,7 @@ class AppConfig {
     build: const String.fromEnvironment('PEOPLE_APP_BUILD'),
     commit: const String.fromEnvironment('PEOPLE_APP_COMMIT'),
     builtAt: const String.fromEnvironment('PEOPLE_APP_BUILT'),
+    store: const String.fromEnvironment('PEOPLE_STORE'),
   );
 
   /// The settings from their raw values: an empty address the live server's, a base64 root decoded (null when it
@@ -43,6 +48,7 @@ class AppConfig {
     String build = '',
     String commit = '',
     String builtAt = '',
+    String store = '',
   }) {
     final url = apiUrl.trim().isEmpty ? _defaultApi : apiUrl.trim().replaceAll(RegExp(r'/+$'), '');
     return AppConfig(
@@ -52,6 +58,7 @@ class AppConfig {
       build: build.trim(),
       commit: commit.trim(),
       builtAt: builtAt.trim(),
+      playStore: store.trim() == 'play',
     );
   }
 

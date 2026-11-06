@@ -10,6 +10,15 @@ export const APP_RELEASES_URL = 'https://api.github.com/repos/Trendlix/people-sy
 export const APP_DOWNLOAD_URL = 'https://people.trendlix.com/download';
 
 /**
+ * Where the app is on Google Play for the employees (owner, 6 November 2026: "now i have google play console"; asked,
+ * "Employees only", "Play only"): the closed test's page, where someone on its testers' list joins and installs it.
+ */
+export const PLAY_TESTING_URL = 'https://play.google.com/apps/testing/com.trendlix.people';
+
+/** A Play build's release says so on a line of its own (flutter-android.yml "Publish the Play build"). */
+const PLAY_BUILD = /^Google Play build\s*$/m;
+
+/**
  * Whether the app may tell people to remove the old version before installing the new one (owner, 31 October 2026:
  * "remind him to remove the old version till posted to the app store or google playstore"). Set it to false once the app
  * is installed from Google Play and the App Store (and point APP_DOWNLOAD_URL at the store). Until then it says so only
@@ -45,7 +54,9 @@ export function latestFromRelease(release: unknown): LatestApp | null {
   const version = tag.replace(/^app-/, '');
   if (!tag.startsWith('app-') || !VERSION.test(version)) return null;
   const sameKeySince = typeof body === 'string' ? (SAME_KEY_SINCE.exec(body)?.[1] ?? null) : null;
-  return { version, publishedAt: typeof at === 'string' ? at : null, downloadUrl: APP_DOWNLOAD_URL, removeOldFirst: APP_REMOVE_OLD_FIRST, sameKeySince };
+  // once a Play build is the latest (Google Play is live): the app is got from Play
+  const play = typeof body === 'string' && PLAY_BUILD.test(body);
+  return { version, publishedAt: typeof at === 'string' ? at : null, downloadUrl: play ? PLAY_TESTING_URL : APP_DOWNLOAD_URL, removeOldFirst: APP_REMOVE_OLD_FIRST, sameKeySince };
 }
 
 /** The app's version from its user agent ("Trendlix People/0.6.26 (android) …", the app's userAgentOf); null otherwise. */
