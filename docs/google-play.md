@@ -13,11 +13,12 @@ This is what to do in the Play Console, in order. The answers to its forms are b
 
 1. Add the two GitHub secrets from `~/TrendLIX-Play-Upload-Key/README.txt`: `PLAY_UPLOAD_KEYSTORE_BASE64` and `PLAY_UPLOAD_PASSWORD`.
 2. Push any change to `apps/flutter` (or open Actions → *Flutter app (Android)* → *Run workflow*). The run's Artifacts then hold `trendlix-people-<version>.aab`.
-3. In People, create the reviewers' account (Google signs in to check the app):
-   - an employee profile, e.g. "Play Reviewer";
-   - a sign-in with a password;
+3. In People, create the reviewers' account (Google signs in to check the app), `testing@trendlix.com`:
+   - an employee profile with an employment (Work from home arrangement, no contract);
+   - a sign-in with a password, linked to the profile;
    - the Employee role only;
-   - no real data.
+   - no real data;
+   - on its profile, Basic Data → **Test Account** → *Make it a test account*. It then stays out of payroll, lists, counts and reports, and its requests notify nobody. HR finds it under Employees → **Test accounts**.
 
 ## 1. Create the app
 
@@ -129,9 +130,13 @@ Not collected:
 > - ask for leave, work from home, official duty, permissions and compensatory days, and follow each request;
 > - log hours on a timesheet;
 > - see their attendance, KPIs and payslips;
-> - approve their team's requests, for managers.
+> - approve their team's requests (for managers).
+>
+> Location: when the company switches it on, the app reads your location every hour while you're checked in, even when the app is closed, to confirm you're still at the place you checked in. It stops when you check out.
 >
 > The app is for Trendlix employees only and needs an account from the company's HR.
+
+The location paragraph is there because Google's reviewers check that a feature using background location is described in the store listing.
 
 **Graphics:**
 
