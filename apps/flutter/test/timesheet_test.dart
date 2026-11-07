@@ -65,6 +65,14 @@ Future<void> openApp(WidgetTester tester, FakePeople people) async {
   await tester.pumpAndSettle();
 }
 
+/// Scrolls a day's button into the middle of the screen: late in the week it is built below, and once in view it can
+/// still sit under the floating bottom bar, where a tap lands on the bar (seen on a Saturday, 7 November 2026).
+Future<void> showDay(WidgetTester tester, Finder button) async {
+  await tester.scrollUntilVisible(button, 200, scrollable: find.descendant(of: find.byType(TimesheetScreen), matching: find.byType(Scrollable)).first);
+  await Scrollable.ensureVisible(tester.element(button), alignment: 0.5);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('the week’s rules', () {
     test('runs Sunday to Saturday', () {
@@ -134,7 +142,7 @@ void main() {
       final today = todayIso();
       // today's own Add hours, by its date (the week's days below are built as they scroll into view)
       final add = find.byKey(ValueKey('add:$today'));
-      await tester.scrollUntilVisible(add, 200, scrollable: find.descendant(of: find.byType(TimesheetScreen), matching: find.byType(Scrollable)).first);
+      await showDay(tester, add);
       await tester.tap(add);
       await tester.pumpAndSettle();
       await tester.tap(find.text(TimesheetWords.noClient));
@@ -145,8 +153,10 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('text:${TimesheetWords.hours}')), '7:30');
       await tester.tap(find.text(TimesheetWords.keep));
       await tester.pumpAndSettle();
-      expect(find.text(TimesheetWords.unsaved), findsOneWidget);
       expect(find.text('Acme · Editing'), findsOneWidget);
+      // the note sits above the week: back up to it (late in the week the day is far below)
+      await tester.scrollUntilVisible(find.text(TimesheetWords.unsaved), -300, scrollable: find.descendant(of: find.byType(TimesheetScreen), matching: find.byType(Scrollable)).first);
+      expect(find.text(TimesheetWords.unsaved), findsOneWidget);
 
       // sent: saved first, then sent
       await tester.scrollUntilVisible(find.text(TimesheetWords.send), 300, scrollable: find.descendant(of: find.byType(TimesheetScreen), matching: find.byType(Scrollable)).first);
@@ -170,7 +180,7 @@ void main() {
       await tester.tap(find.text(TimesheetWords.logHours));
       await tester.pumpAndSettle();
       final add = find.byKey(ValueKey('add:${todayIso()}'));
-      await tester.scrollUntilVisible(add, 200, scrollable: find.descendant(of: find.byType(TimesheetScreen), matching: find.byType(Scrollable)).first);
+      await showDay(tester, add);
       await tester.tap(add);
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('text:${TimesheetWords.hours}')), '1.1');
