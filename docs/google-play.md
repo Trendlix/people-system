@@ -13,12 +13,13 @@ This is what to do in the Play Console, in order. The answers to its forms are b
 
 1. Add the two GitHub secrets from `~/TrendLIX-Play-Upload-Key/README.txt`: `PLAY_UPLOAD_KEYSTORE_BASE64` and `PLAY_UPLOAD_PASSWORD`.
 2. Push any change to `apps/flutter` (or open Actions → *Flutter app* → *Run workflow*). The run's Artifacts then hold `trendlix-people-<version>.aab`.
-3. In People, create the reviewers' account (Google signs in to check the app), `testing@trendlix.com`:
-   - an employee profile with an employment (Work from home arrangement, no contract);
-   - a sign-in with a password, linked to the profile;
-   - the Employee role only;
-   - no real data;
-   - on its profile, Basic Data → **Test Account** → *Make it a test account*. It then stays out of payroll, lists, counts and reports, and its requests notify nobody. HR finds it under Employees → **Test accounts**.
+3. In People, set up the reviewers' account (Google and Apple sign in with it to check the app), `testing@trendlix.com`:
+   - Users → add `testing@trendlix.com` with a password (any role: it becomes Employee only);
+   - Employees → **Test accounts** → *Sample account for app reviewers* → type the email → **Set up**.
+
+   People makes it an invented employee, Nour Hassan (code TEST-1), with a signed contract, working from home and checking in from anywhere. It gets two months of check-ins, leave taken, a permission, and a leave request waiting for HR. Its details are confirmed, so the reviewers go straight in. It is a test account: out of payroll, lists, counts and reports, and its requests notify nobody.
+
+   Before a new review, press **Set up** again (or *Make its sample data again* on its profile): its data is made afresh as of that day.
 
 ## 1. Create the app
 

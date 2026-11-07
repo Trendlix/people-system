@@ -37,6 +37,7 @@ import { canSeeSalaryRaises, RAISES_PATH } from '../payroll/reports/salary-raise
 import { CONTRACT_TONE_STYLE, directoryContractStatus } from './contract-status';
 import { BulkBar, RowBox, SelectAllBox } from './bulk-bar';
 import { InviteBar } from './invite-bar';
+import { SampleAccountForm } from './sample-account-form';
 import { employeesApiPath, managesTestAccounts } from './test-account';
 import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge, todayInCairo } from './ui';
 
@@ -208,9 +209,12 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   if (everyone.length === 0) {
     if (f.tests)
       return (
-        <Empty>
-          No test accounts. <Link href="/employees">Back to everyone</Link>
-        </Empty>
+        <section className="card">
+          <SampleAccountForm />
+          <p className="p-4 text-sm text-muted">
+            No test accounts yet. <Link href="/employees">Back to everyone</Link>
+          </p>
+        </section>
       );
     return seesEveryone(user) || canAdd ? (
       <Empty>No employees yet. {canAdd && <Link href="/employees/new">Add the first employee.</Link>}</Empty>
@@ -250,6 +254,8 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
 
   return (
     <section className="card">
+      {/* a sample account for the app stores' reviewers (owner, 7 November 2026), on the Test accounts list */}
+      {f.tests && <SampleAccountForm />}
       <form className="flex flex-wrap items-end gap-3 p-4">
         <div className="min-w-56 flex-1">
           <label htmlFor="employee-search" className="label">

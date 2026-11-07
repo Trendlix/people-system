@@ -132,6 +132,8 @@ Nothing else is collected:
 | Sign-in required | Yes |
 | User name | testing@trendlix.com |
 | Password | The testing account's password |
+
+The account must be set up as the sample account first (Employees → **Test accounts** → *Sample account for app reviewers*; [the Google Play guide](google-play.md), step 0.3). Otherwise the app is empty after sign-in.
 | Contact | The owner's name, phone and email |
 
 **Notes for review:**

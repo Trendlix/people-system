@@ -360,3 +360,10 @@ export class TestAccountDto {
   @IsBoolean({ message: 'Send whether it is a test account as true or false.' })
   testAccount!: boolean;
 }
+
+/** A sample account for the app stores' reviewers (7 November 2026): the email of the account made on the Users page. */
+export class SampleAccountDto {
+  @IsEmail({}, { message: 'Enter the email of the account the reviewers sign in with.' })
+  @MaxLength(254)
+  email!: string;
+}

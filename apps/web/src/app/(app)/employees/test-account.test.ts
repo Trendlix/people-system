@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { employeesApiPath, managesTestAccounts, TEST_ACCOUNTS_HREF, testAccountConfirm } from './test-account';
+import { employeesApiPath, managesTestAccounts, sampleAccountMessage, TEST_ACCOUNTS_HREF, testAccountConfirm } from './test-account';
 
 // Test accounts for app reviewers (owner, 6 November 2026: a tester account for Google and Apple "without real data").
 
@@ -30,5 +30,12 @@ describe('the Employees list', () => {
 describe('the confirm', () => {
   it('names the person', () => {
     expect(testAccountConfirm('Play Reviewer')).toMatch(/^Make Play Reviewer a test account\?/);
+  });
+});
+
+describe('the sample account', () => {
+  it('says what was made', () => {
+    expect(sampleAccountMessage({ created: true, days: 46, requests: 4 })).toBe('Sample account set up, with 46 days of check-ins and 4 requests.');
+    expect(sampleAccountMessage({ created: false, days: 46, requests: 4 })).toBe('Sample data made again as of today: 46 days of check-ins and 4 requests.');
   });
 });

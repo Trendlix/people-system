@@ -32,3 +32,28 @@ export function testAccountConfirm(name: string): string {
 export function employeesApiPath(tests: boolean): string {
   return tests ? '/employees?tests=only' : '/employees';
 }
+
+// A sample account for the app stores' reviewers (owner, 7 November 2026: "the test account shows nothing after the
+// login, allow apple testers to see some dummy data"): the API makes the account with this email a test profile with
+// sample data (apps/api sample-account.service.ts).
+
+/** What the API answers when it set one up or made its data again. */
+export interface SampleAccountResult {
+  employeeId: string;
+  created: boolean;
+  days: number;
+  requests: number;
+}
+
+/** What the Sample account form on Employees → Test accounts says. */
+export const SAMPLE_ACCOUNT_TEXT =
+  'For Google’s and Apple’s reviewers: the account they sign in with (made on the Users page, with a password) becomes an invented employee, Nour Hassan, signing in as an Employee only, working from home and checking in from anywhere. It gets two months of check-ins, leave, a permission and a leave request waiting for HR. Again for the same account: its data is made afresh as of today.';
+
+/** The confirm before a test profile's data is made again. */
+export const SAMPLE_REFRESH_CONFIRM = 'Make its sample data again as of today? Its check-ins and requests, the reviewers’ own too, are replaced.';
+
+/** What the website says once it is done. */
+export function sampleAccountMessage(r: Pick<SampleAccountResult, 'created' | 'days' | 'requests'>): string {
+  const what = `${r.days} days of check-ins and ${r.requests} requests`;
+  return r.created ? `Sample account set up, with ${what}.` : `Sample data made again as of today: ${what}.`;
+}

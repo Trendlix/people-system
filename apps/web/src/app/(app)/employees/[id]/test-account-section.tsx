@@ -1,5 +1,6 @@
 import type { EmployeeProfile } from '@/lib/types';
-import { setTestAccount } from '../actions';
+import { refreshSampleData, setTestAccount } from '../actions';
+import { SampleRefreshButton } from '../sample-account-form';
 import { TEST_ACCOUNT_TEXT, testAccountConfirm } from '../test-account';
 import { ActionButton } from './contracts/contract-buttons';
 
@@ -15,9 +16,13 @@ export function TestAccountSection({ profile: p }: { profile: EmployeeProfile })
       <h2 className="font-semibold">Test Account</h2>
       <p className="text-sm text-muted">{TEST_ACCOUNT_TEXT}</p>
       {test ? (
-        <ActionButton action={setTestAccount.bind(null, p.id, false)} pendingText="Saving…">
-          Make it a real profile again
-        </ActionButton>
+        <div className="flex flex-wrap gap-3">
+          {/* its sample data made again as of today, e.g. before a new review (owner, 7 November 2026) */}
+          <SampleRefreshButton action={refreshSampleData.bind(null, p.id)} />
+          <ActionButton action={setTestAccount.bind(null, p.id, false)} pendingText="Saving…">
+            Make it a real profile again
+          </ActionButton>
+        </div>
       ) : (
         <ActionButton action={setTestAccount.bind(null, p.id, true)} pendingText="Saving…" confirmText={testAccountConfirm(p.fullNameEn)}>
           Make it a test account

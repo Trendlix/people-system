@@ -11,6 +11,7 @@ import type { EmployeeProfile, FormState, LearnedField } from '@/lib/types';
 import { priorServiceFrom } from './leave-facts';
 import { LEARNED_FIELDS, readKey } from './paperwork';
 import { monthFrom } from './student';
+import { sampleAccountMessage, type SampleAccountResult } from './test-account';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
 
@@ -280,4 +281,33 @@ export async function setTestAccount(id: string, testAccount: boolean): Promise<
     throw err;
   }
   redirect(`/employees/${id}`);
+}
+
+/**
+ * Sets up a sample account for the app stores' reviewers (owner, 7 November 2026: "allow apple testers to see some
+ * dummy data"): the account with the email typed becomes a test profile with sample data, or its data is made again.
+ */
+export async function setUpSampleAccount(_prev: FormState, fd: FormData): Promise<FormState> {
+  const email = text(fd, 'email').trim();
+  if (!email) return { errors: ['Enter the email of the account the reviewers sign in with.'], values: submitted(fd) };
+  try {
+    const r = await apiSend<SampleAccountResult>('POST', '/employees/test-accounts/sample', { email });
+    if (!r) return { errors: ['People sent no answer. Please try again.'], values: submitted(fd) };
+    return { message: sampleAccountMessage(r), values: { employeeId: r.employeeId } };
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages, values: submitted(fd) };
+    throw err;
+  }
+}
+
+/** A test profile's sample data made again as of today. */
+export async function refreshSampleData(id: string): Promise<FormState> {
+  try {
+    const r = await apiSend<SampleAccountResult>('POST', `/employees/${id}/test-account/sample`, {});
+    if (!r) return { errors: ['People sent no answer. Please try again.'] };
+    return { message: sampleAccountMessage(r) };
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages };
+    throw err;
+  }
 }

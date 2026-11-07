@@ -13521,6 +13521,18 @@
    "id": "9cf409e1-d166-44e6-811b-d95dafd75062"
   }
  },
+ "EmployeesController.sampleAccount": {
+  "status": 200,
+  "body": {
+   "email": "user1794060735763-3@test.local"
+  },
+  "response": {
+   "employeeId": "d6da9cf9-e9da-4076-a30e-0c769e99c20d",
+   "created": false,
+   "days": 45,
+   "requests": 4
+  }
+ },
  "EmployeesController.update": {
   "status": 200,
   "params": {
