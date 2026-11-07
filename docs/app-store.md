@@ -136,9 +136,30 @@ Nothing else is collected:
 The account must be set up as the sample account first (Employees → **Test accounts** → *Sample account for app reviewers*; [the Google Play guide](google-play.md), step 0.3). Otherwise the app is empty after sign-in.
 | Contact | The owner's name, phone and email |
 
-**Notes for review:**
+**Notes for review:** `REVIEW_NOTES` in `apps/flutter/tool/app_store_listing.py`, which the script writes there. They answer Apple's six questions from its first review (7 November 2026, Guideline 2.1 "Information Needed"):
 
-> Trendlix People is the HR app for Trendlix's own employees: attendance, leave and other requests, timesheets and KPIs. Accounts are created by the company's HR; there is no sign-up. Please sign in with the account above: a test employee with no real data. Check-in asks for the location while the app is in use, to confirm the employee is at a place they may check in from. We are requesting Unlisted App Distribution for this app, as it is for our employees only.
+1. the screen recording;
+2. the app's purpose and audience;
+3. how to try it;
+4. the external services;
+5. regional differences;
+6. regulation.
+
+They also say the app is meant for unlisted distribution, which Apple asks for before the unlisted request.
+
+**Attachment: the screen recording.** Apple wants one made on a physical iPhone on the latest iOS, starting with launching the app. To make it:
+
+1. Install the build under review from **TestFlight**.
+2. Sign in with the reviewers' account, not your own, so no real person's data shows.
+3. Start the recording from Control Center, then tap the app's icon.
+4. In the recording:
+   - sign in;
+   - check in (allow location);
+   - Requests → **Request leave** → send it;
+   - Attendance;
+   - Profile → **Sign out**.
+
+Afterwards, **Make its sample data again** on the test profile clears what the recording added. Upload the video under App Review Information → **Attachment**.
 
 ## 8. Send for review, and ask for unlisted distribution
 

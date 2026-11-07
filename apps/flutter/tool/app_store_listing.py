@@ -44,13 +44,43 @@ DESCRIPTION = """Trendlix People is the employee app of Trendlix. Employees sign
 
 The app is for Trendlix employees only and needs an account from the company's HR."""
 REVIEW_ACCOUNT = 'testing@trendlix.com'
-REVIEW_NOTES = (
-    "Trendlix People is the HR app for Trendlix's own employees: attendance, leave and other requests, timesheets and "
-    "KPIs. Accounts are created by the company's HR; there is no sign-up. Please sign in with the account above: a test "
-    "employee with no real data. Check-in asks for the location while the app is in use, to confirm the employee is at a "
-    "place they may check in from. We are requesting Unlisted App Distribution for this app, as it is for our employees "
-    "only."
-)
+# Apple's six questions (Guideline 2.1 - Information Needed, 7 November 2026), answered in order; at most 4,000 characters
+REVIEW_NOTES = """This app is intended for unlisted distribution. It is an employee resource for Trendlix's own staff, used on their own iPhones. We send Apple's unlisted app distribution request with this submission.
+
+1. Screen recording
+Attached under App Review Information (Attachment). It was recorded on a physical iPhone on the latest iOS, with this build from TestFlight. It starts by launching the app and shows sign-in, a check-in, a leave request, attendance, the profile and signing out.
+- Registration and account deletion: the app has no sign-up. Only the company's HR creates accounts, for its employees, and closes them when someone leaves. Nobody can create an account in the app, so it has no account deletion either.
+- Nothing is shared between users (no posts, chat or comments), and nothing is paid (no purchases or subscriptions).
+
+2. Purpose and audience
+Trendlix People is the HR app of Trendlix L.L.C for its own employees in Egypt. It replaces paper forms, messages and spreadsheets. In one place, an employee:
+- checks in and out for work; the location at that moment tells the office from elsewhere;
+- asks for leave, work from home, permissions and other requests, and follows each one until it is decided;
+- logs hours on a timesheet (staff paid by the hour);
+- sees their attendance, leave balance and KPIs.
+Managers approve their team's requests. HR runs the rest on our website, people.trendlix.com.
+
+3. How to try it
+Sign in with the demo account in Sign-In Information. It is an invented test employee (Nour Hassan) with two months of sample attendance and requests, and no real person's data. Nothing else needs setting up, and no files are needed.
+- Home: tap Check in. iOS asks for location while using the app. The test account may check in from anywhere; real employees only from the places HR allows.
+- Requests: the leave balance and past requests. Request leave sends a new one. One sample request is waiting for HR.
+- Attendance: each day's check-in and check-out.
+- Profile: personal, employment and contract details, and Sign out.
+If Face ID is set up on the device, the app offers it for the next sign-in and asks for it when reopened after a minute away. The test account has no manager, so nothing it sends reaches a real person.
+
+4. External services
+- Our own server (the Trendlix People API, on a virtual private server we rent from Hostinger): accounts, sign-in and all data. No third-party sign-in.
+- Apple's Core Location (only at check-in and check-out, never in the background on iPhone) and Face ID / Touch ID (on the device).
+- Email through our company's email provider: set-password links and sign-in codes.
+- A Google Maps web link, opened outside the app, to see where a past check-in was made.
+No payments, advertising, analytics, tracking or AI services.
+
+5. Regions
+Available in Egypt only, where Trendlix's employees work. The app works the same for every user. Leave balances follow Egyptian labour law.
+
+6. Regulation
+The app is not in a regulated industry and contains no third-party protected material. Trendlix processes its own employees' data as their employer. Privacy policy: https://people.trendlix.com/privacy"""
+assert len(REVIEW_NOTES) <= 4000, len(REVIEW_NOTES)
 # each folder of tool/frame_screenshots.py's and its set: the 6.7" and 6.9" iPhones' (1320 x 2868 is a 6.9" picture), and
 # the 12.9" and 13" iPads' (2048 x 2732; the app runs on iPads since 7 November 2026, and Apple then asks for them)
 SCREENSHOT_SETS = {'app-store': ('APP_IPHONE_67', 'iPhone 6.9"'), 'app-store-ipad': ('APP_IPAD_PRO_3GEN_129', 'iPad 13"')}
