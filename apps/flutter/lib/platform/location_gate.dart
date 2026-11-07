@@ -6,6 +6,7 @@ import '../auth/auth_controller.dart';
 import '../providers.dart';
 import '../theme/parts.dart';
 import '../theme/tokens.dart';
+import '../theme/wide.dart';
 import 'locator.dart';
 
 /// The gate's words, in one place (ready for Arabic).
@@ -101,7 +102,7 @@ class _LocationGateState extends ConsumerState<LocationGate> with WidgetsBinding
             backgroundColor: p.canvas,
             body: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                padding: centredPadding(context, const EdgeInsets.fromLTRB(24, 24, 24, 32), max: Tokens.noticeMaxWidth),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

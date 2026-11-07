@@ -8,6 +8,7 @@ import '../../models/review.dart';
 import '../../providers.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import '../../theme/wide.dart';
 import '../dashboard/dashboard_data.dart';
 import '../profile/change_request_sheet.dart';
 import '../profile/profile_parts.dart';
@@ -94,12 +95,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         child: own == null
             ? (profile.hasError
                   ? Padding(
-                      padding: Tokens.pagePadding,
+                      padding: centredPadding(context, Tokens.pagePadding),
                       child: LoadFailed(error: profile.error!, what: ReviewWords.notLoaded, onRetry: () => ref.invalidate(ownProfileProvider)),
                     )
                   : const Center(child: CircularProgressIndicator()))
             : ListView(
-                padding: Tokens.pagePadding.copyWith(bottom: 32 + MediaQuery.paddingOf(context).bottom),
+                padding: centredPadding(context, Tokens.pagePadding.copyWith(bottom: 32 + MediaQuery.paddingOf(context).bottom)),
                 children: [
                   if (!widget.leavable)
                     Row(

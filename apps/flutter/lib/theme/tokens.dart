@@ -28,6 +28,16 @@ abstract final class Tokens {
 
   /// Room under a tab's page for the floating tab bar (72 high, 12 from the bottom).
   static const underTabBar = 112.0;
+
+  /// On an iPad or another wide screen (owner, 7 November 2026: "can the app be optimized for ipad screen?"): the widest
+  /// a page grows, its margins included (wide.dart); the floating tab bar's widest; a full-screen notice's widest.
+  static const pageMaxWidth = 760.0;
+  static const tabBarMaxWidth = 560.0;
+  static const noticeMaxWidth = 560.0;
+
+  /// From this width a page's tiles go four across instead of two: an iPad's page (708 inside its margins on the
+  /// smallest, the iPad mini), not a phone's (under 450 upright, about 600 on its side).
+  static const wideFrom = 640.0;
   static const cardPadding = EdgeInsets.all(20);
 
   /// The smallest a thing to tap may be (accessibility: 48 on Android).

@@ -2,8 +2,8 @@
 """Fills Trendlix People's App Store page through the App Store Connect API (owner, 7 November 2026: "can you take
 control and fill the field in apple store connect?"; docs/app-store.md has the same answers): the app's subtitle,
 categories, privacy policy, content rights and age rating; the version's description, keywords, promotional text,
-support address, copyright and manual release; the review notes and the reviewers' account name; the iPhone 6.9"
-screenshots (tool/frame_screenshots.py); a free price; Egypt. With --version it also names the version as the build
+support address, copyright and manual release; the review notes and the reviewers' account name; the iPhone 6.9" and
+the 13" iPad screenshots (tool/frame_screenshots.py); a free price; Egypt. With --version it also names the version as the build
 (0.6.<run>) and chooses that build.
 
 Left to a person, as the API can't do them or they are theirs to give: App Privacy, the review contact and the
@@ -51,7 +51,9 @@ REVIEW_NOTES = (
     "place they may check in from. We are requesting Unlisted App Distribution for this app, as it is for our employees "
     "only."
 )
-SCREENSHOT_TYPE = 'APP_IPHONE_67'  # the 6.7" and 6.9" iPhones' set (1320 x 2868 is a 6.9" picture)
+# each folder of tool/frame_screenshots.py's and its set: the 6.7" and 6.9" iPhones' (1320 x 2868 is a 6.9" picture), and
+# the 12.9" and 13" iPads' (2048 x 2732; the app runs on iPads since 7 November 2026, and Apple then asks for them)
+SCREENSHOT_SETS = {'app-store': ('APP_IPHONE_67', 'iPhone 6.9"'), 'app-store-ipad': ('APP_IPAD_PRO_3GEN_129', 'iPad 13"')}
 TERRITORIES = ['EGY']
 
 
@@ -95,7 +97,7 @@ def step(name: str, fn) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     p.add_argument('--signing', default='~/TrendLIX-Apple-Signing', type=Path)
-    p.add_argument('--screenshots', default='~/TrendLIX-Store-Screenshots/app-store', type=Path)
+    p.add_argument('--screenshots', default='~/TrendLIX-Store-Screenshots', type=Path, help="tool/frame_screenshots.py's folder")
     p.add_argument('--version', help="the build's version (0.6.<run>): the version takes its name and that build")
     a = p.parse_args()
     apple = Apple(a.signing.expanduser())
@@ -183,17 +185,16 @@ def main() -> None:
         return f'sign-in {REVIEW_ACCOUNT} (its password and the contact are set in App Store Connect)'
     step('App Review notes', review)
 
-    def screenshots():
-        folder = a.screenshots.expanduser()
+    def screenshots(folder: Path, display_type: str):
         files = sorted(folder.glob('*.png'))
         if not files:
             raise SystemExit(f'none in {folder} (tool/frame_screenshots.py makes them)')
         locs = apple.call('GET', f'/v1/appStoreVersions/{vid}/appStoreVersionLocalizations')['data']
         loc = next(l for l in locs if l['attributes']['locale'] == 'en-US')
         sets = apple.call('GET', f"/v1/appStoreVersionLocalizations/{loc['id']}/appScreenshotSets")['data']
-        shot_set = next((s for s in sets if s['attributes']['screenshotDisplayType'] == SCREENSHOT_TYPE), None)
+        shot_set = next((s for s in sets if s['attributes']['screenshotDisplayType'] == display_type), None)
         if shot_set is None:
-            shot_set = apple.call('POST', '/v1/appScreenshotSets', {'data': {'type': 'appScreenshotSets', 'attributes': {'screenshotDisplayType': SCREENSHOT_TYPE},
+            shot_set = apple.call('POST', '/v1/appScreenshotSets', {'data': {'type': 'appScreenshotSets', 'attributes': {'screenshotDisplayType': display_type},
                 'relationships': {'appStoreVersionLocalization': {'data': {'type': 'appStoreVersionLocalizations', 'id': loc['id']}}}}})['data']
         there = {s['attributes']['fileName'] for s in apple.call('GET', f"/v1/appScreenshotSets/{shot_set['id']}/appScreenshots")['data']}
         added = 0
@@ -211,7 +212,8 @@ def main() -> None:
                 'attributes': {'uploaded': True, 'sourceFileChecksum': hashlib.md5(data).hexdigest()}}})
             added += 1
         return f'{added} uploaded, {len(there)} already there'
-    step('iPhone 6.9" screenshots', screenshots)
+    for folder, (display_type, name) in SCREENSHOT_SETS.items():
+        step(f'{name} screenshots', lambda folder=folder, display_type=display_type: screenshots(a.screenshots.expanduser() / folder, display_type))
 
     def price():
         points = apple.call('GET', f'/v1/apps/{app_id}/appPricePoints?filter[territory]=USA&limit=200')['data']

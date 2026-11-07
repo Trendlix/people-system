@@ -20,12 +20,14 @@ import '../providers.dart';
 import '../theme/look.dart';
 import '../theme/parts.dart';
 import '../theme/tokens.dart';
+import '../theme/wide.dart';
 import 'notifications.dart';
 import 'shell_words.dart';
 
 // The app's frame, from the phone design (Figma "Mobile Flutter App", 30 October 2026): the header (the wordmark's
 // tile, the sun/moon, the bell, the avatar that opens the account's menu), the tab's page, and the floating, frosted tab
-// bar at the bottom: Dashboard, Requests, Attendance, Profile, and More, which opens the menu.
+// bar at the bottom: Dashboard, Requests, Attendance, Profile, and More, which opens the menu. On an iPad (7 November 2026)
+// the header and the page keep to a column in the middle and the tab bar to its own width (wide.dart).
 
 /// The four tabs with pages, in the bar's order (More is the menu, not a page).
 const shellTabs = ['/dashboard', '/requests', '/attendance', '/profile'];
@@ -89,7 +91,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final theme = Theme.of(context);
     // a message (a SnackBar) shows above the floating tab bar, never over it
     return Theme(
-      data: theme.copyWith(snackBarTheme: theme.snackBarTheme.copyWith(insetPadding: EdgeInsets.fromLTRB(16, 0, 16, 96 + bottom))),
+      data: theme.copyWith(snackBarTheme: theme.snackBarTheme.copyWith(insetPadding: centredPadding(context, EdgeInsets.fromLTRB(16, 0, 16, 96 + bottom)))),
       // Review your details first while it waits (owner, 31 October 2026: "make the data review obligatory upon the signin
       // for employees")
       child: ReviewGate(
@@ -109,7 +111,12 @@ class _AppShellState extends ConsumerState<AppShell> {
                 left: 12,
                 right: 12,
                 bottom: 12 + bottom,
-                child: TabBarFloating(current: widget.shell.currentIndex, onTab: _go, onMore: () => showMoreMenu(context, widget.me)),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: Tokens.tabBarMaxWidth),
+                    child: TabBarFloating(current: widget.shell.currentIndex, onTab: _go, onMore: () => showMoreMenu(context, widget.me)),
+                  ),
+                ),
               ),
             ],
           ),
@@ -129,7 +136,7 @@ class AppHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final p = context.palette;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 16, 6),
+      padding: centredPadding(context, const EdgeInsets.fromLTRB(20, 14, 16, 6)),
       child: Row(
         children: [
           Container(
@@ -422,5 +429,6 @@ class _MenuRow extends StatelessWidget {
   }
 }
 
-/// The room a tab's page leaves at its foot for the tab bar.
-EdgeInsets tabPagePadding(BuildContext context) => Tokens.pagePadding.copyWith(bottom: Tokens.underTabBar + MediaQuery.paddingOf(context).bottom);
+/// The room a tab's page leaves at its foot for the tab bar; on an iPad, its column in the middle.
+EdgeInsets tabPagePadding(BuildContext context) =>
+    centredPadding(context, Tokens.pagePadding.copyWith(bottom: Tokens.underTabBar + MediaQuery.paddingOf(context).bottom));

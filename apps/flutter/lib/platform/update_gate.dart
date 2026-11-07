@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../providers.dart';
 import '../theme/parts.dart';
 import '../theme/tokens.dart';
+import '../theme/wide.dart';
 
 /// The gate's words, in one place (ready for Arabic).
 abstract final class UpdateWords {
@@ -180,7 +181,7 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
             backgroundColor: p.canvas,
             body: SafeArea(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                padding: centredPadding(context, const EdgeInsets.fromLTRB(24, 24, 24, 32), max: Tokens.noticeMaxWidth),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

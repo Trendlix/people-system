@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../platform/biometrics.dart';
 import '../theme/parts.dart';
 import '../theme/tokens.dart';
+import '../theme/wide.dart';
 import 'auth_controller.dart';
 
 /// The app lock's words, in one place (ready for Arabic).
@@ -132,7 +133,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       backgroundColor: p.canvas,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          padding: centredPadding(context, const EdgeInsets.fromLTRB(24, 24, 24, 32), max: Tokens.noticeMaxWidth),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

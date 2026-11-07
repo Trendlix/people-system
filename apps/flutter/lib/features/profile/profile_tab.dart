@@ -12,6 +12,7 @@ import '../../providers.dart';
 import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import '../../theme/wide.dart';
 import '../assets/assets_data.dart';
 import '../assets/my_assets_screen.dart';
 import '../dashboard/dashboard_data.dart';
@@ -285,30 +286,25 @@ class _Tiles extends StatelessWidget {
     Widget tile(IconData icon, String label, String? value) => Expanded(
       child: _Tile(icon: icon, label: label, value: value ?? ProfileWords.none),
     );
-    return Column(
-      children: [
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              tile(CupertinoIcons.person_2, ProfileWords.manager, j?.manager),
-              const SizedBox(width: 10),
-              tile(CupertinoIcons.square_grid_2x2, ProfileWords.workLocation, EmployeeLabels.of(EmployeeLabels.workArrangement, j?.workArrangement)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              tile(CupertinoIcons.calendar, ProfileWords.joined, j?.joinDate == null ? null : shortDateOf(j!.joinDate!)),
-              const SizedBox(width: 10),
-              tile(CupertinoIcons.doc_text, ProfileWords.employment, EmployeeLabels.of(EmployeeLabels.employmentType, j?.employmentType)),
-            ],
-          ),
-        ),
-      ],
+    final tiles = [
+      tile(CupertinoIcons.person_2, ProfileWords.manager, j?.manager),
+      tile(CupertinoIcons.square_grid_2x2, ProfileWords.workLocation, EmployeeLabels.of(EmployeeLabels.workArrangement, j?.workArrangement)),
+      tile(CupertinoIcons.calendar, ProfileWords.joined, j?.joinDate == null ? null : shortDateOf(j!.joinDate!)),
+      tile(CupertinoIcons.doc_text, ProfileWords.employment, EmployeeLabels.of(EmployeeLabels.employmentType, j?.employmentType)),
+    ];
+    Widget row(List<Widget> these) => IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, t) in these.indexed) ...[if (i > 0) const SizedBox(width: 10), t],
+        ],
+      ),
+    );
+    // two rows of two on a phone, one row of four on an iPad (7 November 2026)
+    return LayoutBuilder(
+      builder: (context, c) => isWide(c.maxWidth)
+          ? row(tiles)
+          : Column(children: [row(tiles.sublist(0, 2)), const SizedBox(height: 10), row(tiles.sublist(2))]),
     );
   }
 }
@@ -396,12 +392,21 @@ class _SectionSwitch extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: p.line),
         ),
-        child: Column(
-          children: [
-            Row(children: [item(ProfileSection.personal), const SizedBox(width: 4), item(ProfileSection.contact)]),
-            const SizedBox(height: 4),
-            Row(children: [item(ProfileSection.employment), const SizedBox(width: 4), item(ProfileSection.kpis)]),
-          ],
+        // two rows of two on a phone, one row of four on an iPad (7 November 2026)
+        child: LayoutBuilder(
+          builder: (context, c) => isWide(c.maxWidth)
+              ? Row(
+                  children: [
+                    for (final (i, s) in ProfileSection.values.indexed) ...[if (i > 0) const SizedBox(width: 4), item(s)],
+                  ],
+                )
+              : Column(
+                  children: [
+                    Row(children: [item(ProfileSection.personal), const SizedBox(width: 4), item(ProfileSection.contact)]),
+                    const SizedBox(height: 4),
+                    Row(children: [item(ProfileSection.employment), const SizedBox(width: 4), item(ProfileSection.kpis)]),
+                  ],
+                ),
         ),
       ),
     );

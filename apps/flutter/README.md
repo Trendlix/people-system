@@ -91,8 +91,11 @@ phase, and record every decision the owner makes here (with the date and their w
   first (30 October 2026), then the phone version's screens (the same day), which also carry Phase 2's requests and
   more of Phase 4 (attendance, the profile, the account's screens).
 - **Phase 6 — iPhone** (7 November 2026: "my apple developer account is ready"; asked, "Unlisted App Store page"): built
-  and uploaded to App Store Connect by CI (job "iphone"), signed with `tool/apple_signing.py`'s secret; iPhone-only, the
-  owner's icon and the T on black at launch; no location while checked in on iPhone yet. Steps: docs/app-store.md.
+  and uploaded to App Store Connect by CI (job "iphone"), signed with `tool/apple_signing.py`'s secret; the owner's
+  icon and the T on black at launch; no location while checked in on iPhone yet. Steps: docs/app-store.md. On iPads
+  too (7 November 2026: "can the app be optimized for ipad screen?"): a page keeps to a column in the middle
+  (`lib/theme/wide.dart`, at most 760 wide), the tab bar to 560, and the tiles go four across from 640; a phone is
+  unchanged. Store pictures for the 13" iPad (2048 × 2732) come with the iPhone's.
 
 ## 4. Rules for the work
 

@@ -1,8 +1,8 @@
 // The App Store's and Google Play's screenshots (owner, 7 November 2026: "prepare screenshots"): the real screens, drawn
 // by Flutter over the tests' fakes with invented people only (no real data: every name in the fixtures becomes Nour
 // Hassan), at each store's size: an iPhone 6.9" display for the App Store (1320 × 2868, 440 × 956 points at 3x, its
-// status bar and home indicator insets, as on iOS), and an Android phone for Google Play (1080 × 2160: Play takes no
-// picture more than twice as tall as wide). Not part of `flutter test` (outside test/); run by hand:
+// status bar and home indicator insets, as on iOS), a 12.9" iPad for its iPad pictures (2048 × 2732), and an Android
+// phone for Google Play (1080 × 2160: Play takes no picture more than twice as tall as wide). Not part of `flutter test` (outside test/); run by hand:
 //
 //   flutter test screenshots/
 //   python3 tool/frame_screenshots.py ~/TrendLIX-Store-Screenshots
@@ -28,6 +28,7 @@ import 'package:people/auth/session_store.dart';
 import 'package:people/features/attendance/attendance_data.dart';
 import 'package:people/features/attendance/attendance_tab.dart';
 import 'package:people/features/attendance/attendance_words.dart';
+import 'package:people/features/profile/profile_words.dart';
 import 'package:people/format.dart' show isoDayOf;
 import 'package:people/providers.dart';
 import 'package:people/shell/shell_words.dart';
@@ -41,8 +42,11 @@ import '../test/requests_fixtures.dart';
 /// The person in every picture.
 const person = 'Nour Hassan';
 
-/// The fixtures' names, all made up but some like a colleague's: shown as [person].
+/// The fixtures' names, all made up but some like a colleague's: shown as [person], in Arabic as [personAr], the
+/// preferred name as Nour.
 const renamed = ['Hazem Soliman', 'Mohamed Abdelrahman'];
+const personAr = 'نور حسن';
+const renamedAr = ['حازم سليمان', 'محمد عبد الرحمن'];
 
 /// People over the fixtures, the names swapped, the routes nobody answered kept to print.
 class SamplePeople extends FakePeople {
@@ -62,6 +66,10 @@ class SamplePeople extends FakePeople {
     for (final name in renamed) {
       body = body.replaceAll(name, person);
     }
+    for (final name in renamedAr) {
+      body = body.replaceAll(name, personAr);
+    }
+    body = body.replaceAll('"preferredName":"Mohamed"', '"preferredName":"Nour"');
     return http.Response.bytes(utf8.encode(body), res.statusCode, headers: res.headers);
   });
 }
@@ -71,6 +79,10 @@ typedef Device = ({String name, Size size, double ratio, double top, double bott
 
 /// An iPhone 6.9" display (iPhone 16 and 17 Pro Max), for the App Store.
 const Device iPhone = (name: 'app-store', size: Size(1320, 2868), ratio: 3, top: 62, bottom: 34, platform: TargetPlatform.iOS);
+
+/// A 12.9" iPad Pro, for the App Store's iPad pictures (owner, 7 November 2026: "can the app be optimized for ipad
+/// screen?"): 2048 × 2732, 1024 × 1366 points at 2x, the size the 13" iPad set takes.
+const Device iPad = (name: 'app-store-ipad', size: Size(2048, 2732), ratio: 2, top: 24, bottom: 20, platform: TargetPlatform.iOS);
 
 /// An Android phone, for Google Play.
 const Device android = (name: 'google-play', size: Size(1080, 2160), ratio: 2.625, top: 24, bottom: 16, platform: TargetPlatform.android);
@@ -216,7 +228,7 @@ Future<void> scrollTo(WidgetTester tester, Finder list, Finder target, double al
 void main() {
   setUpAll(loadFonts);
 
-  for (final device in [iPhone, android]) {
+  for (final device in [iPhone, iPad, android]) {
     final on = TargetPlatformVariant.only(device.platform);
 
     testWidgets('${device.name}: sign-in', (tester) async {
@@ -256,6 +268,11 @@ void main() {
       final people = samplePeople();
       await openApp(tester, device, people);
       await tester.tap(find.text(ShellWords.profile));
+      // the iPad's taller picture reaches the name in Arabic, which the tests can't draw (no Arabic font): its Employment
+      if (device == iPad) {
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(ProfileWords.employment).last);
+      }
       await shoot(tester, device, '5-profile', people);
     }, variant: on);
   }

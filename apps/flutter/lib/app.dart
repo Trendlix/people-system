@@ -24,6 +24,7 @@ import 'theme/app_theme.dart';
 import 'theme/look.dart';
 import 'theme/parts.dart';
 import 'theme/tokens.dart';
+import 'theme/wide.dart';
 import 'auth/app_lock.dart';
 import 'platform/location_gate.dart';
 import 'platform/update_gate.dart';
@@ -210,7 +211,7 @@ class _Unreachable extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: Tokens.pagePadding,
+          padding: centredPadding(context, Tokens.pagePadding, max: Tokens.noticeMaxWidth),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,

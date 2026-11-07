@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The stores' pictures from screenshots/out (screenshots/store_screenshots_test.dart; owner, 7 November 2026: "prepare
-screenshots"): each screen with a phone's status bar drawn in its empty top (9:41, signal, Wi-Fi, battery), and for
+screenshots"): each screen with a phone's (or the iPad's) status bar drawn in its empty top (9:41, signal, Wi-Fi, battery), and for
 Google Play the app icon (512 x 512) and the feature graphic (1024 x 500), from the owner's icon
 (apps/mobile/assets/source/trendlix-icon.jpg). Needs Pillow.
 
@@ -24,6 +24,8 @@ WHITE = (255, 255, 255)
 # each store's phone: points per pixel, the status bar's height and where its parts sit (points)
 PHONES = {
     'app-store': {'ratio': 3.0, 'bar': 62, 'time_x': 52, 'mid_y': 32, 'time_size': 17, 'right': 34},
+    # the 12.9" iPad's (owner, 7 November 2026: "can the app be optimized for ipad screen?"): a thinner bar, smaller type
+    'app-store-ipad': {'ratio': 2.0, 'bar': 24, 'time_x': 24, 'mid_y': 13, 'time_size': 13, 'right': 22},
     'google-play': {'ratio': 2.625, 'bar': 24, 'time_x': 16, 'mid_y': 12, 'time_size': 13, 'right': 14},
 }
 

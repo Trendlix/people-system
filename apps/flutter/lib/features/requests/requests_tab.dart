@@ -11,6 +11,7 @@ import '../../models/requests.dart';
 import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import '../../theme/wide.dart';
 import '../dashboard/dashboard_data.dart';
 import '../dashboard/dashboard_screen.dart' show DashboardWords;
 import 'approvals.dart';
@@ -111,8 +112,7 @@ class _RequestsTabState extends ConsumerState<RequestsTab> {
           ),
           const SizedBox(height: 24),
           if (employment is Map && underLabourLaw(employmentType)) ...[_AnnualCard(year: year), const SizedBox(height: 12)],
-          _YearTile(year: year),
-          if (employment is Map && underLabourLaw(employmentType)) const _PermissionTile(),
+          _YearAndPermission(year: year, permission: employment is Map && underLabourLaw(employmentType)),
           const SizedBox(height: 12),
           const _History(),
           _OtherLeave(year: year),
@@ -219,7 +219,7 @@ class _AnnualCard extends ConsumerWidget {
               children: [
                 for (final (label, value) in figures)
                   SizedBox(
-                    width: c.maxWidth / 2,
+                    width: c.maxWidth / (isWide(c.maxWidth) ? 4 : 2),
                     child: MergeSemantics(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,7 +370,9 @@ class _YearTile extends ConsumerWidget {
 }
 
 class _PermissionTile extends ConsumerWidget {
-  const _PermissionTile();
+  const _PermissionTile({this.top = 12});
+
+  final double top;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -379,8 +381,38 @@ class _PermissionTile extends ConsumerWidget {
     if (m == null) return const SizedBox.shrink();
     final f = permissionFigure(m);
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: EdgeInsets.only(top: top),
       child: _FigureTile(icon: CupertinoIcons.clock, label: f.off ? RequestsWords.permission : RequestsWords.permissionLeft, value: f.value, note: f.note),
+    );
+  }
+}
+
+/// This year's requests and the permission left: one under the other on a phone, side by side on an iPad (7 November
+/// 2026).
+class _YearAndPermission extends StatelessWidget {
+  const _YearAndPermission({required this.year, required this.permission});
+
+  final int year;
+  final bool permission;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) => permission && isWide(c.maxWidth)
+          ? IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _YearTile(year: year)),
+                  const SizedBox(width: 12),
+                  const Expanded(child: _PermissionTile(top: 0)),
+                ],
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [_YearTile(year: year), if (permission) const _PermissionTile()],
+            ),
     );
   }
 }

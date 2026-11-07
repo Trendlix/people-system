@@ -104,7 +104,7 @@ Nothing else is collected:
 
 | Field | Value |
 |---|---|
-| Screenshots | **iPhone 6.9" display**: the five in `~/TrendLIX-Store-Screenshots/app-store` (1320 × 2868, invented people only), made by `apps/flutter/screenshots/` and `apps/flutter/tool/frame_screenshots.py`. The app is iPhone-only, so no iPad screenshots. |
+| Screenshots | **iPhone 6.9" display**: the five in `~/TrendLIX-Store-Screenshots/app-store` (1320 × 2868, invented people only); **iPad 13" display**: the five in `~/TrendLIX-Store-Screenshots/app-store-ipad` (2048 × 2732; the app runs on iPads since 7 November 2026). Made by `apps/flutter/screenshots/` and `apps/flutter/tool/frame_screenshots.py`. |
 | Promotional text | Check in, ask for leave and follow your requests, log hours and see your KPIs. |
 | Keywords | HR,attendance,check in,leave,timesheet,KPI,employee,Trendlix |
 | Support URL | `https://people.trendlix.com/privacy` (it gives hr@trendlix.com) |

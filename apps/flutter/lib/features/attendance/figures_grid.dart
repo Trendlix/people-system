@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/my_attendance.dart';
 import '../../theme/tokens.dart';
+import '../../theme/wide.dart';
 import 'attendance_logic.dart';
 
-/// The month's figures in two columns (the phone design, 30 October 2026): each card what it counts and the figure; an
+/// The month's figures in two columns (the phone design, 30 October 2026; four on an iPad, 7 November 2026): each card what it counts and the figure; an
 /// absent day's figure in red. No note under the figure (owner, 31 October 2026: "remove the description below the
 /// numbers to save more space"): a screen reader still hears it. The attendance rate is its own card (rate_card.dart).
 class FiguresGrid extends StatelessWidget {
@@ -15,22 +16,28 @@ class FiguresGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tiles = figureTiles(month);
-    return Column(
-      children: [
-        for (var i = 0; i < tiles.length; i += 2) ...[
-          if (i > 0) const SizedBox(height: 10),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: _Figure(tile: tiles[i])),
-                const SizedBox(width: 10),
-                Expanded(child: i + 1 < tiles.length ? _Figure(tile: tiles[i + 1]) : const SizedBox()),
-              ],
-            ),
-          ),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, c) {
+        final across = isWide(c.maxWidth) ? 4 : 2;
+        return Column(
+          children: [
+            for (var i = 0; i < tiles.length; i += across) ...[
+              if (i > 0) const SizedBox(height: 10),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var j = i; j < i + across; j++) ...[
+                      if (j > i) const SizedBox(width: 10),
+                      Expanded(child: j < tiles.length ? _Figure(tile: tiles[j]) : const SizedBox()),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

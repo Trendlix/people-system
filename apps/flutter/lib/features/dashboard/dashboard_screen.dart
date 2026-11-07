@@ -12,6 +12,7 @@ import '../../models/my_attendance.dart' show MonthRates;
 import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import '../../theme/wide.dart';
 import '../today/today_controller.dart';
 import 'dashboard_data.dart';
 import '../requests/kinds/od.dart' show showOdSheet;
@@ -141,17 +142,20 @@ class _QuickActions extends ConsumerWidget {
         '/dashboard/performance',
       ),
     ];
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 1.02,
-      children: [
-        for (final (icon, title, sub, path) in tiles)
-          _QuickTile(icon: icon, title: title, subtitle: sub, onTap: () => path == null ? showOdSheet(context) : context.go(path)),
-      ],
+    // four across on an iPad (7 November 2026), two on a phone
+    return LayoutBuilder(
+      builder: (context, c) => GridView.count(
+        crossAxisCount: isWide(c.maxWidth) ? 4 : 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.02,
+        children: [
+          for (final (icon, title, sub, path) in tiles)
+            _QuickTile(icon: icon, title: title, subtitle: sub, onTap: () => path == null ? showOdSheet(context) : context.go(path)),
+        ],
+      ),
     );
   }
 }
@@ -259,14 +263,24 @@ class _Glance extends ConsumerWidget {
         note: next?.nameEn,
       ),
     ];
+    // on an iPad (7 November 2026) all four side by side, as wide as the page; on a phone they scroll sideways
     return SizedBox(
       height: 150,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        clipBehavior: Clip.none,
-        itemCount: tiles.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 12),
-        itemBuilder: (_, i) => tiles[i],
+      child: LayoutBuilder(
+        builder: (context, c) => isWide(c.maxWidth)
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (i, tile) in tiles.indexed) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: tile)],
+                ],
+              )
+            : ListView.separated(
+                scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                itemCount: tiles.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (_, i) => tiles[i],
+              ),
       ),
     );
   }
