@@ -6,6 +6,7 @@ import '../api/people_client.dart';
 import '../models/me.dart';
 import '../platform/away_watch.dart';
 import '../platform/biometrics.dart';
+import '../platform/location_pings.dart';
 import '../providers.dart';
 import 'session_store.dart';
 import 'app_lock.dart';
@@ -172,14 +173,15 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// People refused the session (401) while signed in: it ended, or was signed out elsewhere.
   Future<void> sessionEnded() async {
     if (state.value is! SignedIn) return;
-    _stopAwayWatch();
+    // the watch stops with its session; the check-in's spot is kept, so signing in again starts it again (today loads)
+    if (awayWatchOn) unawaited(ref.read(awayWatchProvider).stop());
     await _store.clear();
     state = AsyncData(await _signedOut(notice: AuthWords.sessionEnded));
   }
 
-  /// The location while checked in stops with the session on iPhones and iPads (7 November 2026); Android's hourly task
-  /// stops by itself, finding no session.
+  /// Signed out: the location while checked in stops on iPhones and iPads, the check-in's spot forgotten (7 November
+  /// 2026); Android's hourly task stops by itself, finding no session.
   void _stopAwayWatch() {
-    if (awayWatchOn) unawaited(ref.read(awayWatchProvider).stop());
+    if (awayWatchOn) unawaited(ref.read(pingSchedulerProvider).stop());
   }
 }

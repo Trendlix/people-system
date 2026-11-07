@@ -162,6 +162,7 @@ List<Override> overridesFor(
   FakeLocator? locator,
   MemoryLookStore? look,
   FakeAwayWatch? awayWatch,
+  MemoryAwaySpotStore? awaySpots,
 }) => [
   sessionStoreProvider.overrideWithValue(store),
   lookStoreProvider.overrideWithValue(look ?? MemoryLookStore()),
@@ -169,6 +170,7 @@ List<Override> overridesFor(
   deviceIdentityProvider.overrideWithValue(FakeIdentity()),
   locatorProvider.overrideWithValue(locator ?? FakeLocator()),
   awayWatchProvider.overrideWithValue(awayWatch ?? FakeAwayWatch()),
+  awaySpotStoreProvider.overrideWithValue(awaySpots ?? MemoryAwaySpotStore()),
   peopleClientProvider.overrideWith(
     (ref) => PeopleClient(
       baseUrl: 'https://people.example.test',
@@ -182,8 +184,18 @@ List<Override> overridesFor(
 ];
 
 /// A container over the fakes, for tests without widgets.
-ProviderContainer containerFor(FakePeople people, {required MemorySessionStore store, FakeBiometrics? biometrics, FakeLocator? locator, FakeAwayWatch? awayWatch}) {
-  final c = ProviderContainer(retry: noRetry, overrides: overridesFor(people, store: store, biometrics: biometrics, locator: locator, awayWatch: awayWatch));
+ProviderContainer containerFor(
+  FakePeople people, {
+  required MemorySessionStore store,
+  FakeBiometrics? biometrics,
+  FakeLocator? locator,
+  FakeAwayWatch? awayWatch,
+  MemoryAwaySpotStore? awaySpots,
+}) {
+  final c = ProviderContainer(
+    retry: noRetry,
+    overrides: overridesFor(people, store: store, biometrics: biometrics, locator: locator, awayWatch: awayWatch, awaySpots: awaySpots),
+  );
   addTearDown(c.dispose);
   return c;
 }

@@ -10,6 +10,7 @@ import 'package:people/auth/auth_controller.dart';
 import 'package:people/auth/session_store.dart';
 import 'package:people/config.dart';
 import 'package:people/features/today/check_in_words.dart';
+import 'package:people/features/today/today_controller.dart';
 import 'package:people/platform/away_watch.dart';
 import 'package:people/platform/location_pings.dart';
 import 'package:people/providers.dart';
@@ -20,9 +21,15 @@ import 'fakes.dart';
 
 // The location while checked in on iPhones and iPads (owner, 7 November 2026: "yes" to "location when leaving the
 // check-in area"): the area around a check-in's spot watched while the company has it on, "Always" asked for after
-// saying why, one ping saying so when it isn't given, and the watch stopped at check-out and sign-out. Android as it was.
+// saying why, one ping saying so when it isn't given, and the watch stopped at check-out and sign-out. Its spot kept, so
+// each load of today starts it again with the session the app has now (sessions last 8 hours). Android as it was.
 
+/// The area of the spot read at the press (FakeLocator's).
 const _area = (latitude: 30.0596, longitude: 31.3462, radius: 300.0);
+
+/// A spot kept from an earlier check-in, apart from any reading now.
+const _kept = (latitude: 30.0444, longitude: 31.2357);
+const _keptArea = (latitude: 30.0444, longitude: 31.2357, radius: 300.0);
 
 Map<String, Object?> _today({bool pings = true, bool checkedIn = false}) => {
   ...todayJson(next: checkedIn ? 'out' : 'in', punches: [if (checkedIn) punchJson('in', '2026-10-30T06:58:00.000Z')]),
@@ -39,16 +46,22 @@ Map<String, Object?> _pressed({bool pings = true, required bool checkedIn}) => {
   'kept': true,
 };
 
-Future<void> open(WidgetTester tester, FakePeople people, FakeAwayWatch watch) async {
+Future<void> open(WidgetTester tester, FakePeople people, FakeAwayWatch watch, {MemoryAwaySpotStore? spots}) async {
   phoneScreen(tester);
   await tester.pumpWidget(
     ProviderScope(
       retry: noRetry,
-      overrides: overridesFor(people, store: MemorySessionStore(token: 'kept'), awayWatch: watch),
+      overrides: overridesFor(people, store: MemorySessionStore(token: 'kept'), awayWatch: watch, awaySpots: spots),
       child: const PeopleApp(),
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// The app closed and opened again: a new container over what the phone keeps.
+Future<void> reopen(WidgetTester tester, FakePeople people, FakeAwayWatch watch, MemoryAwaySpotStore spots) async {
+  await tester.pumpWidget(const SizedBox());
+  await open(tester, people, watch, spots: spots);
 }
 
 Future<void> checkIn(WidgetTester tester) async {
@@ -75,26 +88,33 @@ void main() {
       if (r.url.path == '/api/me/attendance/pings') jsonDecode(r.body),
   ];
 
-  testWidgets('checked in with the location on: watches 300 m around the spot read at the press', (tester) async {
+  testWidgets('checked in with the location on: watches 300 m around the spot read at the press, and keeps it', (tester) async {
     final watch = FakeAwayWatch();
-    await open(tester, people, watch);
+    final spots = MemoryAwaySpotStore();
+    await open(tester, people, watch, spots: spots);
     await checkIn(tester);
     expect(watch.area, _area);
+    expect(spots.spot, (latitude: 30.0596, longitude: 31.3462));
     // "Always" already: nothing asked, nothing sent
     expect(find.text(PingWords.title), findsNothing);
     expect(watch.calls, isNot(contains('requestAlways')));
     expect(pings(), isEmpty);
   }, variant: _iOS);
 
-  testWidgets('with the location off at the company: nothing watched, asked or sent', (tester) async {
+  testWidgets('with the location off at the company: nothing watched, asked or sent, a kept spot forgotten', (tester) async {
     people
-      ..on('GET /api/me/attendance/today', (req) => json(_today(pings: false)))
+      ..on('GET /api/me/attendance/today', (req) => json(_today(pings: false, checkedIn: true)))
       ..on('POST /api/me/attendance/punches', (req) => json(_pressed(pings: false, checkedIn: true)));
     final watch = FakeAwayWatch(access: LocationAccess.whenInUse);
-    await open(tester, people, watch);
+    final spots = MemoryAwaySpotStore(_kept);
+    await open(tester, people, watch, spots: spots);
+    expect(spots.spot, isNull);
+    people.on('GET /api/me/attendance/today', (req) => json(_today(pings: false)));
+    await reopen(tester, people, watch, spots);
     await checkIn(tester);
     expect(watch.calls, everyElement('stop'));
     expect(watch.area, isNull);
+    expect(spots.spot, isNull);
     expect(find.text(PingWords.title), findsNothing);
     expect(pings(), isEmpty);
   }, variant: _iOS);
@@ -142,56 +162,114 @@ void main() {
     ]);
   }, variant: _iOS);
 
-  testWidgets('today read again leaves a running watch as it is; a check-out stops it', (tester) async {
-    people
-      ..on('GET /api/me/attendance/today', (req) => json(_today(checkedIn: true)))
-      ..on('POST /api/me/attendance/punches', (req) => json(_pressed(checkedIn: false)));
-    final watch = FakeAwayWatch(area: _area);
-    await open(tester, people, watch);
-    expect(watch.calls, isEmpty);
-    expect(watch.area, _area);
-    await tester.tap(find.text(CheckInWords.checkOut));
-    await tester.pumpAndSettle();
-    expect(people.bodyOf('POST /api/me/attendance/punches')['kind'], 'out');
-    expect(watch.calls, ['stop']);
-    expect(watch.area, isNull);
+  testWidgets('today loaded while checked in starts the watch again at the kept spot, not at a new reading', (tester) async {
+    people.on('GET /api/me/attendance/today', (req) => json(_today(checkedIn: true)));
+    final watch = FakeAwayWatch();
+    final spots = MemoryAwaySpotStore(_kept);
+    await open(tester, people, watch, spots: spots);
+    expect(watch.calls, ['start']);
+    expect(watch.area, _keptArea);
+    expect(spots.spot, _kept);
     expect(find.text(PingWords.title), findsNothing);
   }, variant: _iOS);
 
-  testWidgets('stops at sign-out', (tester) async {
+  testWidgets('without a kept spot, today loaded while checked in starts nothing', (tester) async {
     people.on('GET /api/me/attendance/today', (req) => json(_today(checkedIn: true)));
-    final watch = FakeAwayWatch(area: _area);
+    final watch = FakeAwayWatch();
     await open(tester, people, watch);
+    expect(watch.calls, isEmpty);
+  }, variant: _iOS);
+
+  testWidgets('the spot outlives the app: opened again, the watch starts at the check-in’s', (tester) async {
+    final spots = MemoryAwaySpotStore();
+    await open(tester, people, FakeAwayWatch(), spots: spots);
+    await checkIn(tester);
+    people.on('GET /api/me/attendance/today', (req) => json(_today(checkedIn: true)));
+    final again = FakeAwayWatch();
+    await reopen(tester, people, again, spots);
+    expect(again.calls, ['start']);
+    expect(again.area, _area);
+  }, variant: _iOS);
+
+  testWidgets('a check-out stops the watch and forgets the spot, so today loaded again starts nothing', (tester) async {
+    people
+      ..on('GET /api/me/attendance/today', (req) => json(_today(checkedIn: true)))
+      ..on('POST /api/me/attendance/punches', (req) => json(_pressed(checkedIn: false)));
+    final watch = FakeAwayWatch();
+    final spots = MemoryAwaySpotStore(_kept);
+    await open(tester, people, watch, spots: spots);
+    await tester.tap(find.text(CheckInWords.checkOut));
+    await tester.pumpAndSettle();
+    expect(people.bodyOf('POST /api/me/attendance/punches')['kind'], 'out');
+    expect(watch.calls, ['start', 'stop']);
+    expect(watch.area, isNull);
+    expect(spots.spot, isNull);
+    expect(find.text(PingWords.title), findsNothing);
+    // checked in again elsewhere (the website): nothing to start from
+    final again = FakeAwayWatch();
+    await reopen(tester, people, again, spots);
+    expect(again.calls, isEmpty);
+  }, variant: _iOS);
+
+  testWidgets('sign-out stops the watch and forgets the spot', (tester) async {
+    people.on('GET /api/me/attendance/today', (req) => json(_today(checkedIn: true)));
+    final watch = FakeAwayWatch();
+    final spots = MemoryAwaySpotStore(_kept);
+    await open(tester, people, watch, spots: spots);
     await tester.tap(find.text(ShellWords.more));
     await tester.pumpAndSettle();
     await tester.tap(find.text(ShellWords.signOut));
     await tester.pumpAndSettle();
-    expect(watch.calls, ['stop']);
+    expect(watch.calls, ['start', 'stop']);
     expect(watch.area, isNull);
+    expect(spots.spot, isNull);
+    final again = FakeAwayWatch();
+    await reopen(tester, people, again, spots);
+    expect(again.calls, isEmpty);
   }, variant: _iOS);
 
-  testWidgets('stops when People ends the session', (tester) async {
-    final watch = FakeAwayWatch(area: _area);
-    final c = containerFor(people, store: MemorySessionStore(token: 'kept'), awayWatch: watch);
+  testWidgets('People ending the session stops the watch; signing in again starts it at the kept spot', (tester) async {
+    final watch = FakeAwayWatch();
+    final spots = MemoryAwaySpotStore(_kept);
+    final c = containerFor(people, store: MemorySessionStore(token: 'kept'), awayWatch: watch, awaySpots: spots);
     await c.read(authProvider.future);
     people.on('GET /api/me/attendance/today', (req) => json({'message': 'Your session has ended.'}, 401));
     await expectLater(c.read(peopleClientProvider).get('/api/me/attendance/today'), throwsA(isA<ApiException>()));
     await tester.pump();
     expect(c.read(authProvider).value, isA<SignedOut>());
     expect(watch.calls, ['stop']);
+    expect(spots.spot, _kept);
+
+    people
+      ..on('POST /api/auth/login', (req) => signedIn('fresh', meJson()))
+      ..on('GET /api/me/attendance/today', (req) => json(_today(checkedIn: true)));
+    await c.read(authProvider.notifier).signInWithPassword('h.test@example.test', 'secret');
+    final today = c.listen(todayProvider, (_, _) {});
+    addTearDown(today.close);
+    await c.read(todayProvider.future);
+    await tester.pump();
+    expect(watch.calls, ['stop', 'start']);
+    expect(watch.area, _keptArea);
   }, variant: _iOS);
 
   testWidgets('on Android: no watch, the hourly task and its explanation as before', (tester) async {
     final watch = FakeAwayWatch(access: LocationAccess.whenInUse);
-    await open(tester, people, watch);
+    final spots = MemoryAwaySpotStore();
+    await open(tester, people, watch, spots: spots);
     await checkIn(tester);
     expect(find.text(PingWords.disclosureIos), findsNothing);
     expect(pings(), isEmpty);
+    expect(spots.spot, isNull);
+    // a spot kept anyhow starts nothing either
+    spots.spot = _kept;
+    people.on('GET /api/me/attendance/today', (req) => json(_today(checkedIn: true)));
+    await reopen(tester, people, watch, spots);
     await tester.tap(find.text(ShellWords.more));
     await tester.pumpAndSettle();
     await tester.tap(find.text(ShellWords.signOut));
     await tester.pumpAndSettle();
     expect(watch.calls, isEmpty);
+    expect(spots.spot, _kept);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
   group('the native side, over people/away_watch', () {
@@ -228,6 +306,34 @@ void main() {
       await watch.stop();
       expect(calls.map((c) => c.method), ['start', 'watching', 'authorization', 'requestAlways', 'stop']);
     }, variant: _iOS);
+
+    testWidgets('starting again at the kept spot hands it the session the app has now', (tester) async {
+      final calls = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async => calls.add(call));
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+      final store = MemorySessionStore(token: 'first');
+      final spots = MemoryAwaySpotStore();
+      final scheduler = AwayPingScheduler(ChannelAwayWatch(config: config, store: store), spots);
+      await scheduler.start(at: (latitude: 30.0596, longitude: 31.3462, accuracy: 12, mock: false));
+      // eight hours on, or signed in again: a new session
+      store.token = 'second';
+      await scheduler.start();
+      final starts = [for (final c in calls) c.arguments as Map];
+      expect(starts.map((a) => a['token']), ['first', 'second']);
+      expect(starts.map((a) => (a['latitude'], a['longitude'])), [(30.0596, 31.3462), (30.0596, 31.3462)]);
+      await scheduler.stop();
+      expect(spots.spot, isNull);
+      await scheduler.start();
+      expect(calls.map((c) => c.method), ['start', 'start', 'stop']);
+    }, variant: _iOS);
+
+    test('keeps the spot as JSON, and nothing from what it can’t read', () {
+      expect(awaySpotOf('{"latitude":30.0596,"longitude":31.3462}'), (latitude: 30.0596, longitude: 31.3462));
+      expect(awaySpotOf('{"latitude":30,"longitude":31}'), (latitude: 30.0, longitude: 31.0));
+      expect(awaySpotOf(null), isNull);
+      expect(awaySpotOf('not json'), isNull);
+      expect(awaySpotOf('{"latitude":"30.0596"}'), isNull);
+    });
 
     testWidgets('signed out: nothing started', (tester) async {
       final calls = <MethodCall>[];

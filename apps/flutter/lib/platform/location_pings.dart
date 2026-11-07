@@ -80,25 +80,36 @@ class WorkmanagerPingScheduler implements PingScheduler {
   }
 }
 
-/// iPhones and iPads (7 November 2026): the watch of the area around the check-in's spot. Only a check-in's own spot
-/// starts it: today read again leaves it as it is, running or not (one not running, after the app was put back, starts
-/// at the next check-in).
+/// iPhones and iPads (7 November 2026): the watch of the area around the check-in's spot, started at the check-in and
+/// the spot kept. Today loaded again starts it again at the kept spot, which hands the native side the session the app
+/// has now (a session lasts 8 hours; a new sign-in ends the last one); none kept, nothing starts until the next check-in.
+/// Stopped, the spot is forgotten.
 class AwayPingScheduler implements PingScheduler {
-  const AwayPingScheduler(this.watch);
+  const AwayPingScheduler(this.watch, this.spots);
 
   final AwayWatch watch;
+  final AwaySpotStore spots;
 
   @override
   Future<void> start({Spot? at}) async {
-    if (at != null) await watch.start(at.latitude, at.longitude);
+    if (at != null) {
+      await watch.start(at.latitude, at.longitude);
+      await spots.write((latitude: at.latitude, longitude: at.longitude));
+      return;
+    }
+    final kept = await spots.read();
+    if (kept != null) await watch.start(kept.latitude, kept.longitude);
   }
 
   @override
-  Future<void> stop() => watch.stop();
+  Future<void> stop() async {
+    await watch.stop();
+    await spots.clear();
+  }
 }
 
 final pingSchedulerProvider = Provider<PingScheduler>(
-  (ref) => awayWatchOn ? AwayPingScheduler(ref.watch(awayWatchProvider)) : const WorkmanagerPingScheduler(),
+  (ref) => awayWatchOn ? AwayPingScheduler(ref.watch(awayWatchProvider), ref.watch(awaySpotStoreProvider)) : const WorkmanagerPingScheduler(),
 );
 
 /// Whether the hourly task should run for today as People sees it: switched on, and checked in now.

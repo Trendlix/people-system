@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../api/people_client.dart';
 import '../auth/session_store.dart';
@@ -11,7 +14,10 @@ import '../providers.dart';
 // check-in area"). iOS can't wake an app every hour as Android's task does, so the native side (ios/Runner) watches an
 // area around the check-in's spot, and iOS's significant location changes, and sends the ping itself when the phone
 // leaves (POST /api/me/attendance/pings, as Android's). Started at a check-in with its spot, stopped at check-out, when
-// People says they aren't checked in or it's switched off, and at sign-out. Needs "Always" to wake the app.
+// People says they aren't checked in or it's switched off, and at sign-out. Needs "Always" to wake the app. The native
+// side keeps the session it was started with, and a session lasts 8 hours (a new sign-in ends the last one), so the
+// check-in's spot is kept here too, and each time today loads while checked in the watch starts again there with the
+// session the app has now.
 
 /// The area watched around the check-in's spot, in metres: the distance People still reads as there for a check-in at
 /// no named place (packages/shared location-pings.ts `PING_NEAR_METRES`).
@@ -102,3 +108,82 @@ class ChannelAwayWatch implements AwayWatch {
 }
 
 final awayWatchProvider = Provider<AwayWatch>((ref) => ChannelAwayWatch(config: ref.watch(configProvider), store: ref.watch(sessionStoreProvider)));
+
+/// The spot of the check-in the watch started at.
+typedef AwaySpot = ({double latitude, double longitude});
+
+/// Where that spot is kept between launches; forgotten when the watch stops.
+abstract interface class AwaySpotStore {
+  Future<AwaySpot?> read();
+  Future<void> write(AwaySpot spot);
+  Future<void> clear();
+}
+
+/// The phone's secure storage, beside the session (iOS Keychain). Nothing here throws: not kept, the watch starts again
+/// at the next check-in.
+class SecureAwaySpotStore implements AwaySpotStore {
+  const SecureAwaySpotStore([this._storage = const FlutterSecureStorage()]);
+
+  final FlutterSecureStorage _storage;
+  static const _key = 'people.awaySpot';
+
+  @override
+  Future<AwaySpot?> read() async {
+    try {
+      return awaySpotOf(await _storage.read(key: _key));
+    } on Exception {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> write(AwaySpot spot) async {
+    try {
+      await _storage.write(key: _key, value: jsonEncode({'latitude': spot.latitude, 'longitude': spot.longitude}));
+    } on Exception catch (e) {
+      debugPrint('The check-in’s spot could not be kept: $e');
+    }
+  }
+
+  @override
+  Future<void> clear() async {
+    try {
+      await _storage.delete(key: _key);
+    } on Exception catch (e) {
+      debugPrint('The check-in’s spot could not be forgotten: $e');
+    }
+  }
+}
+
+/// The spot as kept (JSON), or none when it is missing or unreadable.
+AwaySpot? awaySpotOf(String? kept) {
+  if (kept == null) return null;
+  try {
+    final m = jsonDecode(kept);
+    if (m is Map) {
+      final latitude = m['latitude'], longitude = m['longitude'];
+      if (latitude is num && longitude is num) return (latitude: latitude.toDouble(), longitude: longitude.toDouble());
+    }
+  } on FormatException {
+    // unreadable: as if none
+  }
+  return null;
+}
+
+/// In memory only: the tests'.
+class MemoryAwaySpotStore implements AwaySpotStore {
+  MemoryAwaySpotStore([this.spot]);
+
+  AwaySpot? spot;
+
+  @override
+  Future<AwaySpot?> read() async => spot;
+
+  @override
+  Future<void> write(AwaySpot spot) async => this.spot = spot;
+
+  @override
+  Future<void> clear() async => spot = null;
+}
+
+final awaySpotStoreProvider = Provider<AwaySpotStore>((ref) => const SecureAwaySpotStore());

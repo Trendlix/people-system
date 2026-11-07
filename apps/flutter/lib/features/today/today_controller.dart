@@ -39,7 +39,8 @@ class TodayController extends AsyncNotifier<Today> {
   @override
   Future<Today> build() async {
     final today = Today.fromJson(await ref.read(peopleClientProvider).get('/api/me/attendance/today'));
-    // the hourly location while checked in (1 November 2026): started or stopped as today says
+    // the hourly location while checked in (1 November 2026): started or stopped as today says; on iPhones and iPads
+    // started again at the check-in's kept spot, which hands the native side the session the app has now
     unawaited(syncPings(today, ref.read(pingSchedulerProvider)));
     return today;
   }
