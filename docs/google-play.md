@@ -96,7 +96,7 @@ Data is **encrypted in transit**: yes. Data is **never sold or shared with third
 | Location: precise | Yes | No | Required for check-in | App functionality |
 | Location: approximate | Yes | No | Required for check-in | App functionality |
 | Personal info: name, email address, user IDs, phone number | Yes | No | Required | App functionality, account management |
-| Financial info: other (salary, payslips) | Yes | No | Required | App functionality |
+| Financial info: other (expense claims) | Yes | No | Required | App functionality |
 | Photos | Yes | No | Optional | App functionality |
 | Files and docs | Yes | No | Optional | App functionality |
 | Device or other IDs (device name) | Yes | No | Required | Account management, security |
@@ -117,7 +117,7 @@ Not collected:
 | Field | Value |
 |---|---|
 | App name | Trendlix People |
-| Short description (≤ 80 characters) | Trendlix's employee app: check in, requests, timesheets and payslips. |
+| Short description (≤ 80 characters) | Trendlix's employee app: check in, requests, timesheets and KPIs. |
 | Category | Business |
 | Contact email | hr@trendlix.com (confirm) |
 | Website | https://people.trendlix.com |
@@ -129,7 +129,7 @@ Not collected:
 > - check in and out for work, with the place confirmed by location;
 > - ask for leave, work from home, official duty, permissions and compensatory days, and follow each request;
 > - log hours on a timesheet;
-> - see their attendance, KPIs and payslips;
+> - see their attendance and KPIs;
 > - approve their team's requests (for managers).
 >
 > Location: when the company switches it on, the app reads your location every hour while you're checked in, even when the app is closed, to confirm you're still at the place you checked in. It stops when you check out.
@@ -142,7 +142,7 @@ The location paragraph is there because Google's reviewers check that a feature 
 
 - **App icon:** 512 × 512 PNG.
 - **Feature graphic:** 1024 × 500.
-- **Screenshots:** at least 2 phone screenshots (sign-in, Today, Requests, Payslips), from the reviewer account so no real data shows.
+- **Screenshots:** the five in `~/TrendLIX-Store-Screenshots/google-play` (1080 × 2160, invented people only), made by `apps/flutter/screenshots/` and `apps/flutter/tool/frame_screenshots.py`. The icon and feature graphic are there too.
 
 ## 8. Going live, and moving everyone to Play
 

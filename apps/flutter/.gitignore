@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# store screenshots (screenshots/store_screenshots_test.dart)
+/screenshots/out/
+/screenshots/failures/

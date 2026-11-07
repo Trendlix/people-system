@@ -55,7 +55,6 @@ To try it before review:
 
 1. TestFlight → **Internal Testing** → add yourself.
 2. Install the **TestFlight** app on your iPhone and open the invite.
-3. Take the screenshots for step 7 with the testing account (testing@trendlix.com), so no real data shows.
 
 ## 5. App Information
 
@@ -82,7 +81,7 @@ For every data type below:
 | Category | Data types |
 |---|---|
 | Contact Info | Name, Email Address, Phone Number |
-| Financial Info | Other Financial Info (salary and payslips) |
+| Financial Info | Other Financial Info (expense claims) |
 | Location | Precise Location |
 | User Content | Photos or Videos (profile photo, receipts), Other User Content (documents and requests) |
 | Identifiers | User ID |
@@ -101,9 +100,9 @@ Nothing else is collected:
 
 | Field | Value |
 |---|---|
-| Screenshots | **iPhone 6.9" display**: 2 to 10 portrait screenshots, 1320 × 2868 (or 1290 × 2796). For example: sign-in, Today, Requests, Payslips. The app is iPhone-only, so no iPad screenshots. |
-| Promotional text | Check in, ask for leave and follow your requests, log hours and see your payslips. |
-| Keywords | HR,attendance,check in,leave,timesheet,payslip,employee,Trendlix |
+| Screenshots | **iPhone 6.9" display**: the five in `~/TrendLIX-Store-Screenshots/app-store` (1320 × 2868, invented people only), made by `apps/flutter/screenshots/` and `apps/flutter/tool/frame_screenshots.py`. The app is iPhone-only, so no iPad screenshots. |
+| Promotional text | Check in, ask for leave and follow your requests, log hours and see your KPIs. |
+| Keywords | HR,attendance,check in,leave,timesheet,KPI,employee,Trendlix |
 | Support URL | `https://people.trendlix.com/privacy` (it gives hr@trendlix.com) |
 | Copyright | 2026 Trendlix |
 | Version | The build's version, e.g. 0.6.52. It must match the build you choose. |
@@ -117,7 +116,7 @@ Nothing else is collected:
 > • check in and out for work, with the place confirmed by location
 > • ask for leave, work from home, official duty, permissions and compensatory days, and follow each request
 > • log hours on a timesheet
-> • see their attendance, KPIs and payslips
+> • see their attendance and KPIs
 > • approve their team's requests (for managers)
 >
 > The app is for Trendlix employees only and needs an account from the company's HR.
@@ -133,7 +132,7 @@ Nothing else is collected:
 
 **Notes for review:**
 
-> Trendlix People is the HR app for Trendlix's own employees: attendance, leave and other requests, timesheets and payslips. Accounts are created by the company's HR; there is no sign-up. Please sign in with the account above: a test employee with no real data. Check-in asks for the location while the app is in use, to confirm the employee is at a place they may check in from. We are requesting Unlisted App Distribution for this app, as it is for our employees only.
+> Trendlix People is the HR app for Trendlix's own employees: attendance, leave and other requests, timesheets and KPIs. Accounts are created by the company's HR; there is no sign-up. Please sign in with the account above: a test employee with no real data. Check-in asks for the location while the app is in use, to confirm the employee is at a place they may check in from. We are requesting Unlisted App Distribution for this app, as it is for our employees only.
 
 ## 8. Send for review, and ask for unlisted distribution
 
@@ -141,7 +140,7 @@ Nothing else is collected:
 2. Once it is submitted, the **Account Holder** fills in Apple's unlisted request form. It is linked from https://developer.apple.com/support/unlisted-app-distribution/. Give:
    - **App name:** Trendlix People;
    - **Apple ID:** App Information → General Information → Apple ID;
-   - **Why unlisted:** "Trendlix People is the HR app for Trendlix's employees only (attendance, requests, timesheets and payslips). Only employees with an account from our HR can use it, so it shouldn't be found in the App Store; HR sends employees the link."
+   - **Why unlisted:** "Trendlix People is the HR app for Trendlix's employees only (attendance, requests, timesheets and KPIs). Only employees with an account from our HR can use it, so it shouldn't be found in the App Store; HR sends employees the link."
 3. When Apple approves both:
    - go to Pricing and Availability → **App Distribution Methods**, where **Unlisted** shows its link;
    - **Release** the version;
