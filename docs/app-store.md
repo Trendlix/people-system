@@ -3,7 +3,7 @@
 The owner's Apple Developer account was ready on 7 November 2026. They chose:
 
 - **Unlisted App Store page:** a normal App Store app, approved by App Review, that opens only from its link and never shows in search. It is for employees only.
-- **No location while checked in on iPhone (for now):** iPhones read the location at check-in and check-out only. Android also reads it hourly when HR switches that on.
+- **Location while checked in on iPhone: in the first update after approval** (7 November 2026: "yes" to "location when leaving the check-in area"; being built on a branch). Until then, iPhones read the location at check-in and check-out only, and Android also reads it hourly when HR switches that on. With the update, the same switch makes iPhones and iPads send the location when the phone leaves the area around the check-in place. Section 10 has the details.
 - **No location gate on iPhones and iPads** (since 7 November 2026, for Apple's review): the app opens without the location, and iOS asks for it at the first **Check in**. Check-in and check-out from the app still need it. Apple (Guideline 5.1.1) refuses an app locked until a permission that most of it doesn't use, and a screen of the app's own with "Allow" before iOS asks. Android keeps the whole-app gate.
 
 Every build of the app (GitHub → Actions → *Flutter app*) also builds the iPhone app on a Mac, with the same version as the Android build. Once the secret below is set, each build from `main` is signed and uploaded to App Store Connect. Sending a version for review stays a manual step.
@@ -92,6 +92,8 @@ For every data type below:
 | Identifiers | User ID |
 | Other Data | Other Data Types (the phone's name and model, shown under the account's signed-in devices) |
 
+Precise Location also covers the next version's location while checked in, read in the background (section 10). It has the same purpose, is linked and isn't tracking, so nothing changes here for it.
+
 Nothing else is collected:
 
 - no health data;
@@ -133,9 +135,9 @@ Nothing else is collected:
 | Sign-in required | Yes |
 | User name | testing@trendlix.com |
 | Password | The testing account's password |
+| Contact | The owner's name, phone and email |
 
 The account must be set up as the sample account first (Employees → **Test accounts** → *Sample account for app reviewers*; [the Google Play guide](google-play.md), step 0.3). Otherwise the app is empty after sign-in.
-| Contact | The owner's name, phone and email |
 
 **Notes for review:** `REVIEW_NOTES` in `apps/flutter/tool/app_store_listing.py`, which the script writes there. They answer Apple's six questions from its first review (7 November 2026, Guideline 2.1 "Information Needed"):
 
@@ -184,3 +186,30 @@ Each push to `main` uploads a new build. To ship one:
 3. Release it.
 
 iPhones update from the App Store by themselves. The app's own "Update required" screen is Android-only for now.
+
+## 10. Next version: location while checked in
+
+The owner said "yes" to "location when leaving the check-in area" on 7 November 2026. It is being built on a branch and ships in the first update after Apple approves this version and the unlisted page.
+
+**What it does on iPhones and iPads.** iOS can't wake an app every hour, as Android's hourly location does, so:
+
+- It works only with Organization → Check-in Setup → **Hourly Location** on (off by default; it is company-wide), and only while the person is checked in.
+- iOS wakes the app when the phone leaves an area of about 300 m around the spot where the person checked in. It also wakes it on iOS's "significant location changes" (about 500 m).
+- The app sends that location to People the same way as Android's. People compares it with the check-in place and flags "away" for HR on the day's records.
+- It needs iOS's **Always** location. After the check-in, the app explains first (button **Continue**), then iOS asks. Refused, nothing else changes, and HR sees "Location not allowed all the time" for that check-in.
+- Never after check-out, never with the switch off.
+- iOS itself reminds the person now and then that the app used their location in the background.
+
+**What changes for the review:**
+
+- **Review notes:** append `NEXT_REVIEW_NOTES_ADDITION` (in `apps/flutter/tool/app_store_listing.py`) to `REVIEW_NOTES`, as "7. Location while checked in". It says why the app asks for Always: an attendance rule the company switches on, read only when leaving the check-in area while checked in, never after check-out, and the employee is told first. In the same notes, section 4's "only at check-in and check-out, never in the background on iPhone" changes, and section 1 describes the new recording. The two together just fit Apple's 4,000 characters, so those edits mustn't make the notes longer.
+- **Privacy policy:** already describes both Android and iPhone (7 November 2026).
+- **App Privacy:** unchanged (section 6).
+- **Info.plist:** the location wording ("never read in the background" goes) comes with the build.
+
+**How a reviewer sees it.** The switch is company-wide. Turning it on for the reviewers' account would turn it on for every real employee too. So the demo account doesn't show it, and the notes say so. The screen recording shows it instead:
+
+1. Make the usual recording (section 7), on the new build.
+2. If **Hourly Location** is off, switch it on for a few minutes, at a time nobody is checked in, for example in the evening.
+3. In the recording: **Check in** → the explanation → **Continue** → iOS's prompt → allow **Always**. Then **Check out**.
+4. Switch **Hourly Location** off again if it was off before.

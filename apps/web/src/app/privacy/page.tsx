@@ -3,9 +3,10 @@ import type { Metadata } from 'next';
 // The employee app's privacy policy (owner, 6 November 2026: "now i have google play console"): Google Play asks every
 // app for a public privacy policy, and for one that reads the location in the background, what it reads, why, who sees
 // it and how long it is kept. It says what Trendlix People (the app and this website) actually keeps: the employee's
-// work records, the location at check-in and, when the company switches it on, every hour while checked in, photos and
-// files people add, and the device's name; never sold, no ads, no tracking across other apps. Public
-// (lib/public-paths.ts), and static: built once, with the company's name and contact address below.
+// work records, the location at check-in and, when the company switches it on, while checked in (every hour on Android;
+// on iPhones and iPads when the phone leaves the check-in area, from the first App Store update after approval: owner,
+// 7 November 2026), photos and files people add, and the device's name; never sold, no ads, no tracking across other
+// apps. Public (lib/public-paths.ts), and static: built once, with the company's name and contact address below.
 
 export const metadata: Metadata = { title: 'Privacy Policy · Trendlix People' };
 
@@ -14,7 +15,7 @@ const company = 'Trendlix';
 /** Where privacy questions go. */
 const CONTACT = 'hr@trendlix.com';
 /** When this policy last changed (DD/MM/YYYY). */
-const UPDATED = '06/11/2026';
+const UPDATED = '07/11/2026';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -50,10 +51,12 @@ export default function PrivacyPage() {
               <strong>Your location when you check in or out:</strong> to confirm you’re at a place you may check in from.
             </li>
             <li>
-              <strong>Your location every hour while you’re checked in, in the background:</strong> only when {company} switches this on. Trendlix
-              People then collects location data to confirm you’re at the place you checked in, even when the app is closed or not in use. It
-              stops when you check out or sign out. The app explains this and asks for your permission first (“Allow all the time”); without it,
-              nothing is read in the background.
+              <strong>Your location while you’re checked in, in the background:</strong> only when {company} switches this on. Trendlix People
+              then collects location data to confirm you’re at the place you checked in, even when the app is closed or not in use. On Android,
+              it is read every hour. On iPhone and iPad, it is read only when your phone leaves an area of about 300 m around where you checked
+              in, or moves about 500 m. It stops when you check out or sign out. The app explains this and asks for your permission first
+              (“Allow all the time” on Android, “Always” on iPhone and iPad); without it, nothing is read in the background, and HR sees that
+              it isn’t allowed.
             </li>
             <li>
               <strong>Photos and files you add:</strong> for example your profile photo, a document for a leave request or a receipt for an
