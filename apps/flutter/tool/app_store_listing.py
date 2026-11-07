@@ -82,6 +82,14 @@ Available in Egypt only, where Trendlix's employees work. The app works the same
 6. Regulation
 The app is not in a regulated industry and contains no third-party protected material. Trendlix processes its own employees' data as their employer. Privacy policy: https://people.trendlix.com/privacy"""
 assert len(REVIEW_NOTES) <= 4000, len(REVIEW_NOTES)
+# The next version's iPhone location while checked in (owner, 7 November 2026: "yes" to "location when leaving the
+# check-in area"; docs/app-store.md section 10). Not used yet: appended to REVIEW_NOTES once that update ships, when
+# section 4's "only at check-in and check-out, never in the background on iPhone" changes too. The two together just
+# fit Apple's 4,000 characters, so those changes mustn't make REVIEW_NOTES longer.
+NEXT_REVIEW_NOTES_ADDITION = """7. Location while checked in
+The app asks for Always location only for an attendance rule Trendlix can switch on for all its employees. With it on, after check-in, the app first explains why (button Continue), then iOS asks. iOS wakes the app only when the iPhone moves about 300 m from the check-in place, or on a significant location change, and the app sends that location to HR. Never after check-out or with the rule off; refusing changes nothing else. The rule is company-wide, so the demo account doesn't show it; the recording does."""
+assert len(NEXT_REVIEW_NOTES_ADDITION) <= 600, len(NEXT_REVIEW_NOTES_ADDITION)
+assert len(REVIEW_NOTES + '\n\n' + NEXT_REVIEW_NOTES_ADDITION) <= 4000, len(REVIEW_NOTES + '\n\n' + NEXT_REVIEW_NOTES_ADDITION)
 # each folder of tool/frame_screenshots.py's and its set: the 6.7" and 6.9" iPhones' (1320 x 2868 is a 6.9" picture), and
 # the 12.9" and 13" iPads' (2048 x 2732; the app runs on iPads since 7 November 2026, and Apple then asks for them)
 SCREENSHOT_SETS = {'app-store': ('APP_IPHONE_67', 'iPhone 6.9"'), 'app-store-ipad': ('APP_IPAD_PRO_3GEN_129', 'iPad 13"')}
