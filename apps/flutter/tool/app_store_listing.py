@@ -48,7 +48,7 @@ REVIEW_ACCOUNT = 'testing@trendlix.com'
 REVIEW_NOTES = """This app is intended for unlisted distribution. It is an employee resource for Trendlix's own staff, used on their own iPhones. We send Apple's unlisted app distribution request with this submission.
 
 1. Screen recording
-Attached under App Review Information (Attachment). It was recorded on a physical iPhone on the latest iOS, with this build from TestFlight. It starts by launching the app from the Home Screen and shows sign-in, a check-in, attendance and a day's details, a leave request, and signing out.
+Attached under App Review Information (Attachment). It was recorded on a physical iPhone on the latest iOS, with the previous build (0.6.44) from TestFlight. This build differs only in when the location is asked: at the first Check in, instead of right after sign-in. It starts by launching the app from the Home Screen and shows sign-in, a check-in, attendance and a day's details, a leave request, and signing out.
 - Registration and account deletion: the app has no sign-up. Only the company's HR creates accounts, for its employees, and closes them when someone leaves. Nobody can create an account in the app, so it has no account deletion either.
 - Nothing is shared between users (no posts, chat or comments), and nothing is paid (no purchases or subscriptions).
 
@@ -62,7 +62,7 @@ Managers approve their team's requests. HR runs the rest on our website, people.
 
 3. How to try it
 Sign in with the demo account in Sign-In Information. It is an invented test employee (Nour Hassan) with two months of sample attendance and requests, and no real person's data. Nothing else needs setting up, and no files are needed.
-- Home: tap Check in. iOS asks for location while using the app. The test account may check in from anywhere; real employees only from the places HR allows.
+- Home: tap Check in. iOS asks for location while using the app; only check-in and check-out need it, and the rest of the app works without it. The test account may check in from anywhere; real employees only from the places HR allows.
 - Requests: the leave balance and past requests. Request leave sends a new one. One sample request is waiting for HR.
 - Attendance: each day's check-in and check-out.
 - Profile: personal, employment and contract details.

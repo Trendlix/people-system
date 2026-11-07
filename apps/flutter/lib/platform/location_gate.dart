@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,6 +27,14 @@ abstract final class LocationGateWords {
 /// app needs location"): signed in, while the phone's location is off or the app isn't allowed it, a screen to turn it on
 /// or allow it in place of the app (kept as it was underneath), checked again whenever the app comes back. Reading the
 /// position stays at a press and once a minute in use (LocationCache), never in the background.
+///
+/// Android only (owner, 7 November 2026, "go ahead"): Apple's review (Guideline 5.1.1) refuses an app that is locked
+/// until a permission is given that most of it doesn't use, and a screen of the app's own with "Allow" before iOS asks.
+/// On iPhones and iPads the app opens as it is, and iOS asks for the location at the first Check in, where it's used. A
+/// check-in from the app still needs it (People refuses one without a location), and nothing on an iPhone reads it in
+/// the background, so the gate added nothing there.
+bool get locationGatesApp => defaultTargetPlatform != TargetPlatform.iOS;
+
 class LocationGate extends ConsumerStatefulWidget {
   const LocationGate({super.key, required this.child});
 
@@ -59,6 +68,7 @@ class _LocationGateState extends ConsumerState<LocationGate> with WidgetsBinding
   }
 
   Future<void> _check() async {
+    if (!locationGatesApp) return;
     final problem = await ref.read(locatorProvider).readiness();
     if (!mounted) return;
     // only the location's switch and its permission close the app: a slow or failed reading doesn't
@@ -86,7 +96,7 @@ class _LocationGateState extends ConsumerState<LocationGate> with WidgetsBinding
   Widget build(BuildContext context) {
     final signedIn = ref.watch(authProvider).value is SignedIn;
     final problem = _problem;
-    if (!signedIn || problem == null) return widget.child;
+    if (!signedIn || problem == null || !locationGatesApp) return widget.child;
     final p = context.palette;
     final text = Theme.of(context).textTheme;
     final (line, action) = switch (problem) {

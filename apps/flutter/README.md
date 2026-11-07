@@ -92,7 +92,8 @@ phase, and record every decision the owner makes here (with the date and their w
   more of Phase 4 (attendance, the profile, the account's screens).
 - **Phase 6 — iPhone** (7 November 2026: "my apple developer account is ready"; asked, "Unlisted App Store page"): built
   and uploaded to App Store Connect by CI (job "iphone"), signed with `tool/apple_signing.py`'s secret; the owner's
-  icon and the T on black at launch; no location while checked in on iPhone yet. Steps: docs/app-store.md. On iPads
+  icon and the T on black at launch; no location while checked in on iPhone yet, and no location gate on iPhones and
+  iPads: iOS asks at the first Check in (7 November 2026, for Apple's review). Steps: docs/app-store.md. On iPads
   too (7 November 2026: "can the app be optimized for ipad screen?"): a page keeps to a column in the middle
   (`lib/theme/wide.dart`, at most 760 wide), the tab bar to 560, and the tiles go four across from 640; a phone is
   unchanged. Store pictures for the 13" iPad (2048 × 2732) come with the iPhone's.
@@ -190,8 +191,9 @@ phase, and record every decision the owner makes here (with the date and their w
   (0.6.4); Sign out always in reach in the menu (0.6.5); the app locked behind the fingerprint or face whenever it
   opens with a session kept or comes back after a minute away ("ask for the fingerprint or the faceid again, as a
   security step"; `lib/auth/app_lock.dart`; 0.6.6); Profile → Documents with each paper's state and no contract (0.6.7);
-  the whole app only with the location on ("app has to be location enabled to work": `lib/platform/location_gate.dart`)
-  and the phone's last position sent with each request (`x-people-location`, read at most once a minute in use) for
+  the whole app only with the location on ("app has to be location enabled to work": `lib/platform/location_gate.dart`;
+  Android only since 7 November 2026) and the phone's last position sent with each request (`x-people-location`, read at
+  most once a minute in use, once allowed) for
   People's activity log (0.6.8).
 - [x] Phase 3 — Approve in one move (4 November 2026, owner: "For roles who approve requests, why there is no approve button in the app?"; asked, "Now: everyday requests"): To approve at the top of the Requests tab — leave, permission, work from home, official duty, compensatory days, attendance corrections and expense claims waiting for the person's step, oldest first; Approve in one tap, Reject with why, Approve all; the same two buttons on the request's page. A claim is approved for its amount. Raises, pay raises, KPIs and check-in locations are still decided on the website. No undo: People has none for a decision.
 - [x] Timesheets (4 November 2026, owner: "Timesheet in app/website", "Direct manager, weekly", "Only those HR switches on"): My timesheet (Dashboard → Log hours in the shift card's place, and More → My timesheet, only for those on timesheets): the week Sunday–Saturday with the one before and after, each day's lines (a client — theirs first — or a task, the hours in quarter hours, a note) added, changed or removed in a sheet, Save, Send for approval (saving first), where it stands (waiting for whom, approved, rejected with why) and the earlier weeks not sent. Weeks of hours in To approve (Approve, Reject with why, Approve all) and a read-only week page with the same buttons. API: GET/PUT /api/me/timesheet, POST /api/me/timesheet/submit, GET /api/timesheets?status=waiting, GET /api/timesheets/:id, POST /api/timesheets/:id/decide (PeopleClient gained `put`).

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'locator.dart';
 
 /// The phone's last position, sent with each request to People for its activity log (owner, 31 October 2026: "with
@@ -33,14 +35,22 @@ class LocationCache {
   }
 
   /// Reads the position again when the last reading is a minute old or more (in the background of a request, never
-  /// holding it up); a reading that fails keeps the last one.
+  /// holding it up); a reading that fails keeps the last one. Only when the location is allowed already: it never asks
+  /// (7 November 2026: on an iPhone, iOS asks at the first Check in, where the location is used).
   void refreshIfStale() {
     final at = _at;
     if (_reading || (at != null && _now().difference(at) < refreshAfter)) return;
     _reading = true;
-    _locator.read().then((r) {
-      if (r.spot != null) remember(r.spot!);
-    }).whenComplete(() => _reading = false);
+    unawaited(_refresh());
+  }
+
+  Future<void> _refresh() async {
+    try {
+      if (await _locator.readiness() != null) return;
+      if ((await _locator.read()).spot case final spot?) remember(spot);
+    } finally {
+      _reading = false;
+    }
   }
 
   /// A position read elsewhere (a check-in's press): kept as the latest.

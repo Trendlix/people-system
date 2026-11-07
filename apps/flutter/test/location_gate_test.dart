@@ -14,8 +14,9 @@ import 'package:people/providers.dart';
 import 'fakes.dart';
 
 // The app only with the location on (owner, 31 October 2026: "app has to be location enabled to work"; "Whole app needs
-// location"), and the phone's position sent with each request for People's activity log ("Yes, with each sign-in and
-// action").
+// location"), on Android; on iPhones and iPads the location asked at the first Check in (7 November 2026, Apple's
+// review); and the phone's position sent with each request for People's activity log ("Yes, with each sign-in and
+// action"), read only once allowed.
 
 Future<void> open(WidgetTester tester, FakePeople people, FakeLocator locator, {String? token = 'kept'}) async {
   phoneScreen(tester);
@@ -83,6 +84,25 @@ void main() {
     expect(find.text(SignInWords.title), findsOneWidget);
   });
 
+  testWidgets(
+    'on an iPhone or iPad: the app without the location, nothing asked until Check in, then what to do',
+    (tester) async {
+      final locator = FakeLocator((spot: null, problem: LocationProblem.deniedForever))..ready = LocationProblem.denied;
+      await open(tester, people, locator);
+      expect(find.text(LocationGateWords.title), findsNothing);
+      expect(find.text(CheckInWords.checkInForWork), findsOneWidget);
+      expect(locator.asked, 0);
+      await tester.tap(find.text(CheckInWords.checkInForWork));
+      await tester.pumpAndSettle();
+      expect(find.text(CheckInWords.noLocation(LocationProblem.deniedForever)), findsOneWidget);
+      expect(people.sent.where((r) => r.url.path == '/api/me/attendance/punches'), isEmpty);
+      await tester.tap(find.text(CheckInWords.locationAction(LocationProblem.deniedForever)));
+      await tester.pumpAndSettle();
+      expect(locator.openedApp, 1);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
   testWidgets('signed out, the sign-in shows whatever the location', (tester) async {
     await open(tester, people, FakeLocator()..ready = LocationProblem.serviceOff, token: null);
     expect(find.text(SignInWords.title), findsOneWidget);
@@ -118,6 +138,21 @@ void main() {
     now = now.add(const Duration(minutes: 31));
     expect(cache.header(), isNull);
     expect(LocationCache.headerOf((latitude: 30.1, longitude: 31.2, accuracy: 5.6, mock: true)), '30.100000,31.200000,6,mock');
+  });
+
+  test('never reads (so never asks) while the location isn’t allowed', () async {
+    final locator = FakeLocator()..ready = LocationProblem.denied;
+    var reads = 0;
+    final cache = LocationCache(_CountingLocator(locator, () => reads++));
+    cache.refreshIfStale();
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 0);
+    expect(cache.header(), isNull);
+    locator.ready = null;
+    cache.refreshIfStale();
+    await Future<void>.delayed(Duration.zero);
+    expect(reads, 1);
+    expect(cache.header(), '30.059600,31.346200,12');
   });
 }
 

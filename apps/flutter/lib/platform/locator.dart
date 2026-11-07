@@ -17,8 +17,8 @@ abstract interface class Locator {
   Future<LocationRead> read();
 
   /// Whether the app can read the location now, without asking anything: null when it can, else why not (the phone's
-  /// switch off, not allowed, refused for good). For the app's gate (owner, 31 October 2026: "app has to be location
-  /// enabled to work").
+  /// switch off, not allowed, refused for good). For the app's gate on Android (owner, 31 October 2026: "app has to be
+  /// location enabled to work"), and so the activity log's reading never asks.
   Future<LocationProblem?> readiness();
 
   /// Asks the phone to allow the app's location (the permission prompt), then says what is still missing; null: ready.

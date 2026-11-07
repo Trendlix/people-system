@@ -4,6 +4,7 @@ The owner's Apple Developer account was ready on 7 November 2026. They chose:
 
 - **Unlisted App Store page:** a normal App Store app, approved by App Review, that opens only from its link and never shows in search. It is for employees only.
 - **No location while checked in on iPhone (for now):** iPhones read the location at check-in and check-out only. Android also reads it hourly when HR switches that on.
+- **No location gate on iPhones and iPads** (since 7 November 2026, for Apple's review): the app opens without the location, and iOS asks for it at the first **Check in**. Check-in and check-out from the app still need it. Apple (Guideline 5.1.1) refuses an app locked until a permission that most of it doesn't use, and a screen of the app's own with "Allow" before iOS asks. Android keeps the whole-app gate.
 
 Every build of the app (GitHub → Actions → *Flutter app*) also builds the iPhone app on a Mac, with the same version as the Android build. Once the secret below is set, each build from `main` is signed and uploaded to App Store Connect. Sending a version for review stays a manual step.
 
