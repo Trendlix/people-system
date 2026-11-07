@@ -56,6 +56,10 @@ To try it before review:
 1. TestFlight → **Internal Testing** → add yourself.
 2. Install the **TestFlight** app on your iPhone and open the invite.
 
+## 4b. Filling the page by script
+
+`python3 apps/flutter/tool/app_store_listing.py --version <the build's version>` fills sections 5–7 below through the API (with the App Store Connect key in `~/TrendLIX-Apple-Signing`), uploads the screenshots, sets a free price and Egypt, names the version as the build and chooses that build. It can't fill App Privacy (section 6), the App Review contact or the testing account's password: those are typed in App Store Connect once.
+
 ## 5. App Information
 
 | Field | Value |
