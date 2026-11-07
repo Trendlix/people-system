@@ -157,7 +157,7 @@ They also say the app is meant for unlisted distribution, which Apple asks for b
    - check in (allow location);
    - Requests → **Request leave** → send it;
    - Attendance;
-   - Profile → **Sign out**.
+   - More → **Sign out**.
 
 Afterwards, **Make its sample data again** on the test profile clears what the recording added. Upload the video under App Review Information → **Attachment**.
 

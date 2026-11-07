@@ -48,7 +48,7 @@ REVIEW_ACCOUNT = 'testing@trendlix.com'
 REVIEW_NOTES = """This app is intended for unlisted distribution. It is an employee resource for Trendlix's own staff, used on their own iPhones. We send Apple's unlisted app distribution request with this submission.
 
 1. Screen recording
-Attached under App Review Information (Attachment). It was recorded on a physical iPhone on the latest iOS, with this build from TestFlight. It starts by launching the app and shows sign-in, a check-in, a leave request, attendance, the profile and signing out.
+Attached under App Review Information (Attachment). It was recorded on a physical iPhone on the latest iOS, with this build from TestFlight. It starts by launching the app from the Home Screen and shows sign-in, a check-in, attendance and a day's details, a leave request, and signing out.
 - Registration and account deletion: the app has no sign-up. Only the company's HR creates accounts, for its employees, and closes them when someone leaves. Nobody can create an account in the app, so it has no account deletion either.
 - Nothing is shared between users (no posts, chat or comments), and nothing is paid (no purchases or subscriptions).
 
@@ -65,7 +65,8 @@ Sign in with the demo account in Sign-In Information. It is an invented test emp
 - Home: tap Check in. iOS asks for location while using the app. The test account may check in from anywhere; real employees only from the places HR allows.
 - Requests: the leave balance and past requests. Request leave sends a new one. One sample request is waiting for HR.
 - Attendance: each day's check-in and check-out.
-- Profile: personal, employment and contract details, and Sign out.
+- Profile: personal, employment and contract details.
+- More: the account menu, with Sign out.
 If Face ID is set up on the device, the app offers it for the next sign-in and asks for it when reopened after a minute away. The test account has no manager, so nothing it sends reaches a real person.
 
 4. External services
