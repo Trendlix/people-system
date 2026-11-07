@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:people/api/people_client.dart';
 import 'package:people/auth/auth_controller.dart';
 import 'package:people/auth/session_store.dart';
+import 'package:people/platform/away_watch.dart';
 import 'package:people/platform/biometrics.dart';
 import 'package:people/platform/device_name.dart';
 import 'package:people/platform/locator.dart';
@@ -108,13 +109,68 @@ class FakeLocator implements Locator {
   Future<void> openLocationSettings() async => openedLocation++;
 }
 
+/// The iPhone's watch of the check-in's area (7 November 2026), as iOS would answer: what it allows, and what its "Change
+/// to Always Allow" leaves; every call kept.
+class FakeAwayWatch implements AwayWatch {
+  FakeAwayWatch({this.access = LocationAccess.always, this.afterAsking, this.area});
+
+  LocationAccess? access;
+
+  /// What requestAlways() leaves; null: as it was.
+  LocationAccess? afterAsking;
+
+  /// The area watched now; null: none.
+  ({double latitude, double longitude, double radius})? area;
+  final calls = <String>[];
+
+  @override
+  Future<void> start(double latitude, double longitude, {double radius = awayRadiusMetres}) async {
+    calls.add('start');
+    area = (latitude: latitude, longitude: longitude, radius: radius);
+  }
+
+  @override
+  Future<void> stop() async {
+    calls.add('stop');
+    area = null;
+  }
+
+  @override
+  Future<bool> watching() async {
+    calls.add('watching');
+    return area != null;
+  }
+
+  @override
+  Future<LocationAccess?> authorization() async {
+    calls.add('authorization');
+    return access;
+  }
+
+  @override
+  Future<LocationAccess?> requestAlways() async {
+    calls.add('requestAlways');
+    return access = afterAsking ?? access;
+  }
+}
+
 /// The app's providers over the fakes. The client is built as the app builds it, a 401 signing out.
-List<Override> overridesFor(FakePeople people, {required MemorySessionStore store, FakeBiometrics? biometrics, FakeLocator? locator, MemoryLookStore? look}) => [
+List<Override> overridesFor(
+  FakePeople people, {
+  required MemorySessionStore store,
+  FakeBiometrics? biometrics,
+  FakeLocator? locator,
+  MemoryLookStore? look,
+  FakeAwayWatch? awayWatch,
+  MemoryAwaySpotStore? awaySpots,
+}) => [
   sessionStoreProvider.overrideWithValue(store),
   lookStoreProvider.overrideWithValue(look ?? MemoryLookStore()),
   biometricsProvider.overrideWithValue(biometrics ?? FakeBiometrics(has: false)),
   deviceIdentityProvider.overrideWithValue(FakeIdentity()),
   locatorProvider.overrideWithValue(locator ?? FakeLocator()),
+  awayWatchProvider.overrideWithValue(awayWatch ?? FakeAwayWatch()),
+  awaySpotStoreProvider.overrideWithValue(awaySpots ?? MemoryAwaySpotStore()),
   peopleClientProvider.overrideWith(
     (ref) => PeopleClient(
       baseUrl: 'https://people.example.test',
@@ -128,8 +184,18 @@ List<Override> overridesFor(FakePeople people, {required MemorySessionStore stor
 ];
 
 /// A container over the fakes, for tests without widgets.
-ProviderContainer containerFor(FakePeople people, {required MemorySessionStore store, FakeBiometrics? biometrics, FakeLocator? locator}) {
-  final c = ProviderContainer(retry: noRetry, overrides: overridesFor(people, store: store, biometrics: biometrics, locator: locator));
+ProviderContainer containerFor(
+  FakePeople people, {
+  required MemorySessionStore store,
+  FakeBiometrics? biometrics,
+  FakeLocator? locator,
+  FakeAwayWatch? awayWatch,
+  MemoryAwaySpotStore? awaySpots,
+}) {
+  final c = ProviderContainer(
+    retry: noRetry,
+    overrides: overridesFor(people, store: store, biometrics: biometrics, locator: locator, awayWatch: awayWatch, awaySpots: awaySpots),
+  );
   addTearDown(c.dispose);
   return c;
 }

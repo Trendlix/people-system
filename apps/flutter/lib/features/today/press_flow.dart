@@ -39,8 +39,9 @@ mixin CheckInPress<T extends ConsumerStatefulWidget> on ConsumerState<T> {
               : (punch.kind == PunchKind.checkIn ? CheckInWords.checkedIn : CheckInWords.checkedOut)(clockOf(punch.at), CheckInWords.placeOf(punch));
           said = (text: [if (!kept) CheckInWords.sameAgain, ?done, ...messages].join('\n'), ok: true, action: null, onAction: null);
           // checked in with the hourly location on (1 November 2026): what it reads and why, then "Allow all the time"
+          // (on iPhones and iPads "Always", 7 November 2026)
           if (kept && punch?.kind == PunchKind.checkIn && (ref.read(todayProvider).value?.locationPings ?? false) && mounted) {
-            unawaited(askAlwaysLocation(context));
+            unawaited(askAlwaysLocation(context, ref));
           }
         case NoLocation(:final problem):
           final locator = ref.read(locatorProvider);

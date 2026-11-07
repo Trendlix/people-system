@@ -11,6 +11,9 @@ import '../api/secure_http.dart';
 import '../auth/session_store.dart';
 import '../config.dart';
 import '../models/today.dart';
+import '../providers.dart';
+import 'away_watch.dart';
+import 'locator.dart';
 
 // The hourly location while checked in (owner, 1 November 2026: "can the devices ping every 1 hour their location? and
 // flag if someone is not in the checked in location?"; chose "Silent automatic ping"). While the company has it on
@@ -18,7 +21,9 @@ import '../models/today.dart';
 // sends it to People (POST /api/me/attendance/pings), which reads it against the check-in and flags it for HR when away.
 // Without "Allow all the time", or with the phone's location off, the task says so instead ("Location off" for HR). It
 // stops at check-out, when People says they aren't checked in any more, and when signed out. Before asking for "Allow
-// all the time", the app says what it reads and why (Google Play's prominent disclosure).
+// all the time", the app says what it reads and why (Google Play's prominent disclosure). On iPhones and iPads, which
+// can't run an hourly task, the phone leaving the check-in's area sends it instead (away_watch.dart; owner, 7 November
+// 2026: "yes" to "location when leaving the check-in area").
 
 const pingTask = 'people.locationPing';
 
@@ -27,13 +32,17 @@ class PingWords {
   // in the form Google Play asks for a background location's prominent disclosure (6 November 2026)
   static const disclosure =
       'Trendlix People collects location data to confirm you’re at the place you checked in, every hour while you’re checked in, even when the app is closed or not in use. It is sent to HR and stops when you check out.\n\nOn the next screen, choose “Allow all the time”.';
+  // iOS's own, before its "Change to Always Allow" (7 November 2026); Apple's rule: the button before it says Continue
+  static const disclosureIos =
+      'Trendlix People reads your location when you leave the place you checked in at, only while you’re checked in, even when the app is closed or not in use. It is sent to HR, and never read after you check out.\n\nOn the next screen, choose “Change to Always Allow”. If it doesn’t show, choose Always in Settings › Trendlix People › Location.';
   static const notNow = 'Not now';
   static const allow = 'Continue';
 }
 
-/// Starts and stops the hourly task.
+/// Starts and stops the hourly task (on iPhones and iPads, the watch of the check-in's area).
 abstract interface class PingScheduler {
-  Future<void> start();
+  /// [at]: the spot of the check-in just kept, when there is one.
+  Future<void> start({Spot? at});
   Future<void> stop();
 }
 
@@ -44,7 +53,7 @@ class WorkmanagerPingScheduler implements PingScheduler {
   bool get _android => defaultTargetPlatform == TargetPlatform.android && !kIsWeb;
 
   @override
-  Future<void> start() async {
+  Future<void> start({Spot? at}) async {
     if (!_android) return;
     try {
       await Workmanager().registerPeriodicTask(
@@ -71,13 +80,43 @@ class WorkmanagerPingScheduler implements PingScheduler {
   }
 }
 
-final pingSchedulerProvider = Provider<PingScheduler>((ref) => const WorkmanagerPingScheduler());
+/// iPhones and iPads (7 November 2026): the watch of the area around the check-in's spot, started at the check-in and
+/// the spot kept. Today loaded again starts it again at the kept spot, which hands the native side the session the app
+/// has now (a session lasts 8 hours; a new sign-in ends the last one); none kept, nothing starts until the next check-in.
+/// Stopped, the spot is forgotten.
+class AwayPingScheduler implements PingScheduler {
+  const AwayPingScheduler(this.watch, this.spots);
+
+  final AwayWatch watch;
+  final AwaySpotStore spots;
+
+  @override
+  Future<void> start({Spot? at}) async {
+    if (at != null) {
+      await watch.start(at.latitude, at.longitude);
+      await spots.write((latitude: at.latitude, longitude: at.longitude));
+      return;
+    }
+    final kept = await spots.read();
+    if (kept != null) await watch.start(kept.latitude, kept.longitude);
+  }
+
+  @override
+  Future<void> stop() async {
+    await watch.stop();
+    await spots.clear();
+  }
+}
+
+final pingSchedulerProvider = Provider<PingScheduler>(
+  (ref) => awayWatchOn ? AwayPingScheduler(ref.watch(awayWatchProvider), ref.watch(awaySpotStoreProvider)) : const WorkmanagerPingScheduler(),
+);
 
 /// Whether the hourly task should run for today as People sees it: switched on, and checked in now.
 bool pingsWanted(Today t) => t.locationPings && t.next == PunchKind.checkOut;
 
-/// Starts or stops the task for today.
-Future<void> syncPings(Today t, PingScheduler scheduler) => pingsWanted(t) ? scheduler.start() : scheduler.stop();
+/// Starts or stops the task for today; [at]: the spot of the check-in just kept.
+Future<void> syncPings(Today t, PingScheduler scheduler, {Spot? at}) => pingsWanted(t) ? scheduler.start(at: at) : scheduler.stop();
 
 /// Sets the background task up; called once when the app starts (Android only).
 Future<void> initPings() async {
@@ -140,8 +179,10 @@ Future<void> sendPing({SessionStore store = const SecureSessionStore(), PingSche
 }
 
 /// After a check-in, while the company has the hourly location on: says what it reads and why, then asks for "Allow all
-/// the time" (Android takes the person to the app's settings for it). Nothing when allowed already.
-Future<void> askAlwaysLocation(BuildContext context) async {
+/// the time" (Android takes the person to the app's settings for it; iPhones and iPads, _askAlwaysOnIos). Nothing when
+/// allowed already.
+Future<void> askAlwaysLocation(BuildContext context, WidgetRef ref) async {
+  if (awayWatchOn) return _askAlwaysOnIos(context, ref.read(awayWatchProvider), ref.read(peopleClientProvider));
   if (defaultTargetPlatform != TargetPlatform.android || kIsWeb) return;
   try {
     if (await Geolocator.checkPermission() == LocationPermission.always) return;
@@ -149,20 +190,38 @@ Future<void> askAlwaysLocation(BuildContext context) async {
     return;
   }
   if (!context.mounted) return;
-  final go = await showDialog<bool>(
-    context: context,
-    builder: (c) => AlertDialog(
-      title: const Text(PingWords.title),
-      content: const Text(PingWords.disclosure),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text(PingWords.notNow)),
-        FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text(PingWords.allow)),
-      ],
-    ),
-  );
+  final go = await _disclose(context, PingWords.disclosure);
   if (go != true) return;
   try {
     final now = await Geolocator.requestPermission();
     if (now != LocationPermission.always) await Geolocator.openAppSettings();
   } catch (_) {}
 }
+
+/// iPhones and iPads (7 November 2026): the same explanation in iOS's words, then iOS's "Change to Always Allow". Still
+/// not "Always": one ping saying so, right away, for HR's "Location not allowed all the time" (Android's task says it
+/// every hour; iOS can't wake the app to, so it's said at the check-in).
+Future<void> _askAlwaysOnIos(BuildContext context, AwayWatch watch, PeopleClient client) async {
+  var access = await watch.authorization();
+  if (access == null || access == LocationAccess.always) return;
+  if (context.mounted && await _disclose(context, PingWords.disclosureIos) == true) access = await watch.requestAlways() ?? access;
+  if (access == LocationAccess.always) return;
+  try {
+    await client.post('/api/me/attendance/pings', const {'off': 'permission'});
+  } on Exception {
+    // not sent: said again at the next check-in
+  }
+}
+
+/// What the location is read for, before the phone asks: true to go on (Continue).
+Future<bool?> _disclose(BuildContext context, String text) => showDialog<bool>(
+  context: context,
+  builder: (c) => AlertDialog(
+    title: const Text(PingWords.title),
+    content: Text(text),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(c, false), child: const Text(PingWords.notNow)),
+      FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text(PingWords.allow)),
+    ],
+  ),
+);

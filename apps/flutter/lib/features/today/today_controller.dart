@@ -39,7 +39,8 @@ class TodayController extends AsyncNotifier<Today> {
   @override
   Future<Today> build() async {
     final today = Today.fromJson(await ref.read(peopleClientProvider).get('/api/me/attendance/today'));
-    // the hourly location while checked in (1 November 2026): started or stopped as today says
+    // the hourly location while checked in (1 November 2026): started or stopped as today says; on iPhones and iPads
+    // started again at the check-in's kept spot, which hands the native side the session the app has now
     unawaited(syncPings(today, ref.read(pingSchedulerProvider)));
     return today;
   }
@@ -64,7 +65,9 @@ class TodayController extends AsyncNotifier<Today> {
     };
     final result = punchResultOf(await ref.read(peopleClientProvider).post('/api/me/attendance/punches', body));
     state = AsyncData(result.today);
-    unawaited(syncPings(result.today, ref.read(pingSchedulerProvider)));
+    // on iPhones and iPads the watch starts at the spot of a check-in kept (7 November 2026: "location when leaving the
+    // check-in area")
+    unawaited(syncPings(result.today, ref.read(pingSchedulerProvider), at: result.kept ? spot : null));
     return Pressed(result.today.last, result.messages, kept: result.kept);
   }
 }
