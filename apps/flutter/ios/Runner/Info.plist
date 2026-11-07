@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>People</string>
+	<string>Trendlix People</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -74,5 +74,9 @@
 	<string>Face ID signs you in to Trendlix People without your password.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location is read when you check in or out, to tell the office from elsewhere. It is never tracked.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Your location is read when you check in or out, to tell the office from elsewhere. On iPhone it is never read in the background.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

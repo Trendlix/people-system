@@ -1,1 +1,3 @@
 #include "Generated.xcconfig"
+// The App Store signing, written by CI only (.github/workflows/flutter-android.yml, job "iphone"); absent on a Mac
+#include? "Signing.xcconfig"

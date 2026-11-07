@@ -12,7 +12,7 @@ This is what to do in the Play Console, in order. The answers to its forms are b
 ## 0. Before the Console
 
 1. Add the two GitHub secrets from `~/TrendLIX-Play-Upload-Key/README.txt`: `PLAY_UPLOAD_KEYSTORE_BASE64` and `PLAY_UPLOAD_PASSWORD`.
-2. Push any change to `apps/flutter` (or open Actions → *Flutter app (Android)* → *Run workflow*). The run's Artifacts then hold `trendlix-people-<version>.aab`.
+2. Push any change to `apps/flutter` (or open Actions → *Flutter app* → *Run workflow*). The run's Artifacts then hold `trendlix-people-<version>.aab`.
 3. In People, create the reviewers' account (Google signs in to check the app), `testing@trendlix.com`:
    - an employee profile with an employment (Work from home arrangement, no contract);
    - a sign-in with a password, linked to the profile;
@@ -148,7 +148,7 @@ The location paragraph is there because Google's reviewers check that a feature 
 
 1. **Send for review.** Publishing overview → Send changes for review. A first review takes a few days. The background location declaration can take longer.
 2. **Add employees.** When the closed track is available, send employees the opt-in link.
-3. **Switch everyone over.** GitHub → Actions → *Flutter app (Android)* → *Run workflow* → tick **"Google Play is live"** → Run. Phones still on the website's APK then show *Update required*: they remove that version and get the app from Play. people.trendlix.com/download goes to the Play page.
+3. **Switch everyone over.** GitHub → Actions → *Flutter app* → *Run workflow* → tick **"Google Play is live"** → Run. Phones still on the website's APK then show *Update required*: they remove that version and get the app from Play. people.trendlix.com/download goes to the Play page.
 4. **Later versions.** Each push builds a new `.aab`. Upload it as a new release on the closed track, or let the build upload it (below). When Google has made it available, the app updates itself through Play.
 
 ## 9. Uploading by itself (after the first release)

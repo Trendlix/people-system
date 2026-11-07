@@ -90,7 +90,9 @@ phase, and record every decision the owner makes here (with the date and their w
 - **Phase 5 — The owner's design** (Figma), applied in `lib/theme/` and the screens' layout: the desktop version's look
   first (30 October 2026), then the phone version's screens (the same day), which also carry Phase 2's requests and
   more of Phase 4 (attendance, the profile, the account's screens).
-- **Phase 6 — iPhone** (after the owner has an Apple Developer account).
+- **Phase 6 — iPhone** (7 November 2026: "my apple developer account is ready"; asked, "Unlisted App Store page"): built
+  and uploaded to App Store Connect by CI (job "iphone"), signed with `tool/apple_signing.py`'s secret; iPhone-only, the
+  owner's icon and the T on black at launch; no location while checked in on iPhone yet. Steps: docs/app-store.md.
 
 ## 4. Rules for the work
 
