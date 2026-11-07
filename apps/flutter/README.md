@@ -97,6 +97,19 @@ phase, and record every decision the owner makes here (with the date and their w
   too (7 November 2026: "can the app be optimized for ipad screen?"): a page keeps to a column in the middle
   (`lib/theme/wide.dart`, at most 760 wide), the tab bar to 560, and the tiles go four across from 640; a phone is
   unchanged. Store pictures for the 13" iPad (2048 × 2732) come with the iPhone's.
+- **Planned, after Apple approves the unlisted page — iPhone location while checked in** (owner, 7 November 2026:
+  "yes" to "location when leaving the check-in area"). iOS can't wake an app every hour, so it uses iOS's own events:
+  - when People has the hourly location on (today's `locationPings`) and the person checks in: an area around the
+    check-in's place (the office's own radius, else about 200 m), and iOS wakes the app when the phone leaves it; also
+    iOS's "significant change" (about 500 m) as a fallback. Both stop at check-out and at sign-out;
+  - each wake sends a ping to `POST /api/me/attendance/pings`, the same as Android's, so HR sees "away" on the day's
+    records as now (pings closer than 20 minutes apart aren't kept);
+  - native Swift in `ios/Runner` (CLLocationManager region monitoring + significant changes; neither needs the
+    "location" background mode), sending with the session token from the Keychain; no new package;
+  - needs "Always": after the check-in, the same explanation as Android's (button "Continue", Apple's rule), then iOS's
+    prompt; refused, nothing else changes, and the pings say "Location off";
+  - update the location wording in Info.plist ("never read in the background" goes), the privacy policy and App Privacy,
+    and the review notes (why "Always": the attendance rule HR switches on); test on an iPhone through TestFlight.
 
 ## 4. Rules for the work
 
