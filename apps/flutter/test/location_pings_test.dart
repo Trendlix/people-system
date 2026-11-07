@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:people/models/today.dart';
 import 'package:people/platform/location_pings.dart';
+import 'package:people/platform/locator.dart';
 
 // The hourly location while checked in (owner, 1 November 2026: "Silent automatic ping"): started while the company has
 // it on and the person is checked in, stopped otherwise.
@@ -8,7 +9,7 @@ import 'package:people/platform/location_pings.dart';
 class _Scheduler implements PingScheduler {
   final calls = <String>[];
   @override
-  Future<void> start() async => calls.add('start');
+  Future<void> start({Spot? at}) async => calls.add('start');
   @override
   Future<void> stop() async => calls.add('stop');
 }

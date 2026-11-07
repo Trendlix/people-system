@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/people_client.dart';
 import '../models/me.dart';
+import '../platform/away_watch.dart';
 import '../platform/biometrics.dart';
 import '../providers.dart';
 import 'session_store.dart';
@@ -161,6 +164,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     } on ApiException {
       // signed out here all the same
     }
+    _stopAwayWatch();
     await _store.clear();
     state = AsyncData(await _signedOut());
   }
@@ -168,7 +172,14 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// People refused the session (401) while signed in: it ended, or was signed out elsewhere.
   Future<void> sessionEnded() async {
     if (state.value is! SignedIn) return;
+    _stopAwayWatch();
     await _store.clear();
     state = AsyncData(await _signedOut(notice: AuthWords.sessionEnded));
+  }
+
+  /// The location while checked in stops with the session on iPhones and iPads (7 November 2026); Android's hourly task
+  /// stops by itself, finding no session.
+  void _stopAwayWatch() {
+    if (awayWatchOn) unawaited(ref.read(awayWatchProvider).stop());
   }
 }

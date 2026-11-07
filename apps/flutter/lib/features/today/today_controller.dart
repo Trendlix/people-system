@@ -64,7 +64,9 @@ class TodayController extends AsyncNotifier<Today> {
     };
     final result = punchResultOf(await ref.read(peopleClientProvider).post('/api/me/attendance/punches', body));
     state = AsyncData(result.today);
-    unawaited(syncPings(result.today, ref.read(pingSchedulerProvider)));
+    // on iPhones and iPads the watch starts at the spot of a check-in kept (7 November 2026: "location when leaving the
+    // check-in area")
+    unawaited(syncPings(result.today, ref.read(pingSchedulerProvider), at: result.kept ? spot : null));
     return Pressed(result.today.last, result.messages, kept: result.kept);
   }
 }
