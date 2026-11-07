@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/today.dart';
@@ -58,8 +57,10 @@ class TodayController extends AsyncNotifier<Today> {
       'latitude': spot.latitude,
       'longitude': spot.longitude,
       'accuracy': spot.accuracy,
-      // only Android can tell a mock location (apps/api check-in.dto.ts); elsewhere it isn't sent
-      if (defaultTargetPlatform == TargetPlatform.android) 'mock': spot.mock,
+      // fake GPS, kept and flagged by People (apps/api check-in.dto.ts): Android's mock location, and on an iPhone or iPad a
+      // location simulated by software (iOS 15, the app's least, and later; a computer's location tool is how an iPhone's
+      // is faked; owner, 7 November 2026: "why cant we fix it?")
+      'mock': spot.mock,
     };
     final result = punchResultOf(await ref.read(peopleClientProvider).post('/api/me/attendance/punches', body));
     state = AsyncData(result.today);

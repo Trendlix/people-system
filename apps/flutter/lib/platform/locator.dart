@@ -7,7 +7,8 @@ import 'package:geolocator/geolocator.dart';
 enum LocationProblem { serviceOff, denied, deniedForever, timeout, unavailable }
 
 /// Where the phone is, read at the press and never tracked (README Phase 1): the point, its accuracy in metres, and
-/// whether Android said it is a mock one (fake GPS: kept and flagged by People, never refused here).
+/// whether the phone said it is a mock one (fake GPS: kept and flagged by People, never refused here): Android's mock
+/// location, or iOS's location simulated by software.
 typedef Spot = ({double latitude, double longitude, double accuracy, bool mock});
 
 /// A spot, or why there is none.

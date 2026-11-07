@@ -109,6 +109,20 @@ void main() {
     expect(timer.style?.color, Palette.light.bandColour(RateBand.low, onInverse: true));
   });
 
+  testWidgets(
+    'on an iPhone too, a location simulated by software is sent as fake GPS',
+    (tester) async {
+      people.on('POST /api/me/attendance/punches', (req) {
+        return json({...todayJson(next: 'out', punches: [punchJson('in', '2026-10-30T06:58:00.000Z')]), 'messages': <String>[], 'kept': true});
+      });
+      await open(tester, people, locator: FakeLocator((spot: (latitude: 30.0596, longitude: 31.3462, accuracy: 12, mock: true), problem: null)));
+      await tester.tap(find.text(CheckInWords.checkInForWork));
+      await tester.pumpAndSettle();
+      expect(people.bodyOf('POST /api/me/attendance/punches')['mock'], true);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
   testWidgets('says this week’s hours as the attendance rate counts them (owner, 31 October 2026)', (tester) async {
     people.on(
       'GET /api/attendance/me',
