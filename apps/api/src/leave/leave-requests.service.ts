@@ -215,11 +215,14 @@ export class LeaveRequestsService {
     if (!open) throw new ConflictException(`This request is ${before.status === 'approved' ? 'over' : statusWords(before.status)}, so its cover can't change.`);
     const coverId = dto.coverId === undefined ? before.coverId : dto.coverId;
     const handoverNote = dto.handoverNote === undefined ? before.handoverNote : dto.handoverNote;
+    // none: only when nobody may cover its days now (owner, 8 November 2026: their department, their people, their manager)
     if (!coverId && !before.recordedByHr && coverRequired(before.type.kind, before.days.toNumber())) {
-      throw new BadRequestException([`${before.type.nameEn} of more than 2 working days needs a colleague who covers: choose another one rather than none.`]);
+      if ((await this.coverage.coverProblemsFor(before.employeeId, null, startDate, endDate)).someoneFree) {
+        throw new BadRequestException([`${before.type.nameEn} of more than 2 working days needs a colleague who covers: choose another one rather than none.`]);
+      }
     }
     if (coverId && coverId !== before.coverId) {
-      const { problems } = await this.coverage.coverProblemsFor(before.employeeId, coverId, startDate, endDate, id);
+      const { problems } = await this.coverage.coverProblemsFor(before.employeeId, coverId, startDate, endDate);
       if (problems.length) throw new BadRequestException(problems);
     }
     if (coverId === before.coverId && handoverNote === before.handoverNote) return this.one(id, user);
@@ -482,7 +485,7 @@ export class LeaveRequestsService {
     let coverName = coverChanged ? null : factsBefore.coverName;
     const problems: string[] = [];
     if (coverId && (coverChanged || datesChanged)) {
-      const checked = await this.coverage.coverProblemsFor(before.employeeId, coverId, startDate, endDate, id);
+      const checked = await this.coverage.coverProblemsFor(before.employeeId, coverId, startDate, endDate);
       problems.push(...checked.problems);
       if (coverChanged) coverName = checked.name;
     }

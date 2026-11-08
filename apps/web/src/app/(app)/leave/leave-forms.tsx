@@ -29,7 +29,7 @@ import { shrinkPhoto } from '../employees/shrink-photo';
 import { sizeText } from '../reimbursements/claim';
 import { leaveCoverage, leaveYearData } from './actions';
 import { CoverageFields, type CoverageChoice } from './coverage-fields';
-import { placeText } from './coverage';
+import { coverGroups, coverListNote, placeText } from './coverage';
 import { EDIT_NOTE_MAX, editChanged, editPreview, editPreviewText, editStart, type TypedEdit } from './edit';
 import { daysNumber, leaveDecisionButton } from './list';
 import { correctionDecisionButton } from '../attendance/corrections/corrections';
@@ -956,8 +956,8 @@ export function ChangeCoverForm({
     );
   }
   const list = candidates ?? [];
-  const team = list.filter((c) => c.sameTeam);
-  const others = list.filter((c) => !c.sameTeam);
+  const groups = coverGroups(list, groupName);
+  const listNote = candidates ? coverListNote({ candidates }) : null;
   // the one covering now, even if the list no longer has them (off on some of the days since)
   const kept = cover && !list.some((c) => c.id === cover.id) ? cover : null;
   const option = (c: CoverCandidate) => (
@@ -977,9 +977,13 @@ export function ChangeCoverForm({
         <Select id={fid('coverId')} name="coverId" required={required} value={coverId} onChange={(e) => setCoverId(e.target.value)} aria-describedby={candidates ? undefined : fid('coverId-hint')} className="input">
           <option value="">{required ? 'Choose a colleague' : 'Nobody'}</option>
           {kept && <option value={kept.id}>{kept.fullNameEn} (off on some of these days now)</option>}
-          {team.length > 0 && <optgroup label={groupName ?? 'Your team'}>{team.map(option)}</optgroup>}
-          {others.length > 0 && <optgroup label={team.length ? 'Everyone else' : 'Colleagues'}>{others.map(option)}</optgroup>}
+          {groups.map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.list.map(option)}
+            </optgroup>
+          ))}
         </Select>
+        {listNote && <p className="hint">{listNote}</p>}
         {!candidates && (
           <p id={fid('coverId-hint')} className="hint">
             The colleagues couldn’t be loaded: try again in a moment.

@@ -3,7 +3,7 @@
 import { HANDOVER_NOTE_MAX, staffingLimitText, type CoverageDay, type CoverageViewer, type LeaveCoverageView, type LeaveFormCoverage } from '@trendlix/shared';
 import { Select } from '@/components/select';
 import { titleCase } from '@/lib/format';
-import { atWorkText, busyDays, clashText, coverGroups, coveringText, coversText, elsewhereLines, offLines, overLimitText, placeText, shortDay } from './coverage';
+import { atWorkText, busyDays, clashText, coverGroups, coveringText, coverListNote, coversText, elsewhereLines, offLines, overLimitText, placeText, shortDay } from './coverage';
 
 // Leave coverage on the leave pages (owner, 25 October 2026: "if there are leaves applied by an employee and another
 // employee in the same department is on a leave, how can we manage it without affecting the workflow?"; asked, "Names,
@@ -137,7 +137,8 @@ export function CoverageFields({
     );
   }
   const over = overLimitText(coverage.group, coverage.days, toCeo);
-  const { team, others } = coverGroups(coverage.cover.candidates);
+  const groups = coverGroups(coverage.cover.candidates, coverage.group?.nameEn ?? null);
+  const listNote = coverListNote(coverage.cover);
   const required = coverage.cover.required;
   const standIn = coverage.standIn;
   const defaultPerson = standIn.default?.employee ?? null;
@@ -181,9 +182,13 @@ export function CoverageFields({
             className="input"
           >
             <option value="">{required ? 'Choose a colleague' : 'Nobody'}</option>
-            {team.length > 0 && <optgroup label={coverage.group ? `${coverage.group.nameEn}` : 'Your team'}>{team.map(option)}</optgroup>}
-            {others.length > 0 && <optgroup label={team.length ? 'Everyone else' : 'Colleagues'}>{others.map(option)}</optgroup>}
+            {groups.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.list.map(option)}
+              </optgroup>
+            ))}
           </Select>
+          {listNote && <p className="hint">{listNote}</p>}
         </div>
         <div>
           <label htmlFor={fid('handoverNote')} className="label">

@@ -267,7 +267,8 @@ export async function LeaveRequestDetail({
                 cover={r.cover ?? null}
                 note={r.handoverNote ?? null}
                 candidates={own?.kind === 'ok' ? own.value.cover.candidates : null}
-                required={!r.recordedByHr && coverRequired(r.type.key, r.days)}
+                // none needed when nobody may cover its days now (owner, 8 November 2026)
+                required={!r.recordedByHr && coverRequired(r.type.key, r.days) && !(own?.kind === 'ok' && own.value.cover.noneFree)}
                 groupName={own?.kind === 'ok' ? (own.value.group?.nameEn ?? null) : null}
               />
             </Section>

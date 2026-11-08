@@ -4,6 +4,8 @@ import {
   COVER_REQUIRED_OVER_DAYS,
   coverageDayList,
   coverageDays,
+  coverNeeded,
+  coverPool,
   coverProblems,
   coverRequired,
   DEFAULT_WORKING_DAYS,
@@ -11,11 +13,13 @@ import {
   hasStaffingLimit,
   isStaffingLimited,
   leaveDaysBetween,
+  mayCover,
   sortedCandidates,
   staffingLimitProblems,
   standInProblems,
   type CoverAssignment,
   type CoverCandidate,
+  type CoverPoolInput,
   type CoverageElsewhere,
   type CoverageLeave,
   type CoverageMember,
@@ -131,8 +135,8 @@ export class LeaveCoverageService {
       request: { startDate: query.from, endDate: to, limited },
       limit: group?.limit ?? null,
     });
-    const [candidates, standIn, covering] = await Promise.all([
-      this.coverCandidates(caller.employeeId, query.from, to, group?.unitIds ?? [], hidden),
+    const [pool, standIn, covering] = await Promise.all([
+      this.coverPoolOf(employment, query.from, to, hidden, group?.unitIds ?? []),
       this.standInChoice(employment, query.from, to, caller.confidential!),
       this.coveringOn(caller.employeeId, query.from, to, hidden),
     ]);
@@ -145,7 +149,12 @@ export class LeaveCoverageService {
       overLimit: limited && breaksStaffingLimit(coverage),
       covering,
       leaveDays,
-      cover: { required: !!type && coverRequired(type.kind, leaveDays), overDays: COVER_REQUIRED_OVER_DAYS, candidates },
+      cover: {
+        required: !!type && coverNeeded(type.kind, leaveDays, pool.candidates),
+        overDays: COVER_REQUIRED_OVER_DAYS,
+        candidates: pool.candidates,
+        noneFree: !!type && coverRequired(type.kind, leaveDays) && !pool.candidates.length,
+      },
       standIn: standIn.view,
     };
   }
@@ -229,16 +238,15 @@ export class LeaveCoverageService {
     const cLevel = await this.confidential.ids();
     const hidden = new Set([...cLevel].filter((p) => p !== employeeId));
     const hasDates = startDate <= endDate;
-    // the colleague who covers
+    // the colleague who covers: from their department, those reporting to them, else their manager (owner, 8 November 2026)
     const coverId = args.coverId ?? null;
     if (coverId && hasDates) {
-      const cover = hidden.has(coverId)
-        ? null
-        : await this.prisma.employee.findUnique({ where: { id: coverId }, select: { fullNameEn: true, employments: { where: { endDate: null }, select: { id: true }, take: 1 } } });
-      const off = cover ? await this.prisma.leaveRequest.count({ where: { employeeId: coverId, status: { in: [...TAKING] }, ...overlapping(startDate, endDate) } }) : 0;
-      problems.push(...coverProblems({ requesterId: employeeId, coverId, cover: cover && { fullNameEn: cover.fullNameEn, current: cover.employments.length > 0 }, offOnDays: off > 0 }));
-    } else if (!coverId && !args.byHr && coverRequired(type.kind, args.days)) {
-      problems.push(`Name the colleague who covers your work: ${type.nameEn.toLowerCase()} of more than ${COVER_REQUIRED_OVER_DAYS} working days needs one, someone not off on these days.`);
+      problems.push(...this.coverProblemsIn(await this.coverPoolOf(employment, startDate, endDate, hidden, []), employeeId, coverId));
+    } else if (!coverId && !args.byHr && hasDates && coverRequired(type.kind, args.days)) {
+      // nobody free to cover (their department, their people and their manager all off, or none): it goes without one
+      if ((await this.coverPoolOf(employment, startDate, endDate, hidden, [])).candidates.length) {
+        problems.push(`Name the colleague who covers your work: ${type.nameEn.toLowerCase()} of more than ${COVER_REQUIRED_OVER_DAYS} working days needs one, someone not off on these days.`);
+      }
     }
     // the stand-in, for someone who approves for others
     let standIn: StandInPick | null = null;
@@ -280,16 +288,16 @@ export class LeaveCoverageService {
     };
   }
 
-  /** Whether a colleague may cover a request's days now (the cover changed): the same as when it is sent. */
-  async coverProblemsFor(employeeId: string, coverId: string, startDate: string, endDate: string, requestId: string): Promise<{ problems: string[]; name: string | null }> {
+  /**
+   * Whether a colleague may cover a request's days now (the cover changed): the same as when it is sent. Null: whether the
+   * request may go without a cover now (nobody free to cover its days).
+   */
+  async coverProblemsFor(employeeId: string, coverId: string | null, startDate: string, endDate: string): Promise<{ problems: string[]; name: string | null; someoneFree: boolean }> {
+    const employment = await this.balances.employmentOf(employeeId);
     const hidden = new Set([...(await this.confidential.ids())].filter((p) => p !== employeeId));
-    const cover = hidden.has(coverId)
-      ? null
-      : await this.prisma.employee.findUnique({ where: { id: coverId }, select: { fullNameEn: true, employments: { where: { endDate: null }, select: { id: true }, take: 1 } } });
-    const off = cover
-      ? await this.prisma.leaveRequest.count({ where: { employeeId: coverId, id: { not: requestId }, status: { in: [...TAKING] }, ...overlapping(startDate, endDate) } })
-      : 0;
-    return { problems: coverProblems({ requesterId: employeeId, coverId, cover: cover && { fullNameEn: cover.fullNameEn, current: cover.employments.length > 0 }, offOnDays: off > 0 }), name: cover?.fullNameEn ?? null };
+    const pool = await this.coverPoolOf({ employeeId, departmentId: employment?.departmentId ?? null, managerId: employment?.managerId ?? null }, startDate, endDate, hidden, []);
+    const name = coverId ? (pool.people.get(coverId)?.fullNameEn ?? null) : null;
+    return { problems: coverId ? this.coverProblemsIn(pool, employeeId, coverId) : [], name, someoneFree: pool.candidates.length > 0 };
   }
 
   // ---------- what the caller covers ----------
@@ -465,22 +473,74 @@ export class LeaveCoverageService {
   }
 
   /**
-   * The colleagues who may cover the days: employed now, not the requester, not off on any of them, never one hidden
-   * from the requester; the requester's team first.
+   * Who may cover the requester's days (owner, 8 November 2026: "should be from the same department only"; "their manager
+   * can cover"; "managers can be covered by the people below them"), employed now and never the requester:
+   * - their department's people, its teams with it (never one hidden from the requester, a C-level person for most);
+   * - for a manager, everyone reporting to them, directly or not, whatever their department;
+   * - when none of these is free on the days, their direct manager.
+   * Candidates: those free, their team (`teamUnitIds`) first. `people` has everyone who may cover, off or not.
    */
-  private async coverCandidates(requesterId: string, from: string, to: string, unitIds: readonly string[], hidden: ReadonlySet<string>): Promise<CoverCandidate[]> {
+  private async coverPoolOf(
+    requester: { employeeId: string; departmentId: string | null; managerId: string | null },
+    from: string,
+    to: string,
+    hidden: ReadonlySet<string>,
+    teamUnitIds: readonly string[],
+  ): Promise<{ candidates: CoverCandidate[]; input: CoverPoolInput<CoverCandidate>; people: Map<string, CoverCandidate> }> {
+    const { employeeId, departmentId, managerId } = requester;
+    // the department (a team's: its department), its teams with it
+    const unit = departmentId ? await this.prisma.department.findUnique({ where: { id: departmentId }, select: { id: true, parentId: true } }) : null;
+    const rootId = unit ? (unit.parentId ?? unit.id) : null;
+    const unitIds = rootId ? [rootId, ...(await this.prisma.department.findMany({ where: { parentId: rootId }, select: { id: true } })).map((u) => u.id)] : [];
+    // those reporting to the requester, directly or not
+    const current = await this.prisma.employment.findMany({ where: { endDate: null, managerId: { not: null } }, select: { employeeId: true, managerId: true } });
+    const reportsOf = new Map<string, string[]>();
+    for (const e of current) reportsOf.set(e.managerId!, [...(reportsOf.get(e.managerId!) ?? []), e.employeeId]);
+    const reports = new Set<string>();
+    for (let next = reportsOf.get(employeeId) ?? []; next.length; ) {
+      const fresh = next.filter((id) => id !== employeeId && !reports.has(id));
+      fresh.forEach((id) => reports.add(id));
+      next = fresh.flatMap((id) => reportsOf.get(id) ?? []);
+    }
     const [people, off] = await Promise.all([
       this.prisma.employee.findMany({
-        where: { id: { notIn: [requesterId, ...hidden] }, employments: { some: { endDate: null } } },
+        where: {
+          id: { not: employeeId },
+          employments: { some: { endDate: null } },
+          OR: [
+            { id: { notIn: [...hidden] }, employments: { some: { endDate: null, departmentId: { in: unitIds } } } },
+            { id: { in: [...reports] } },
+            ...(managerId ? [{ id: managerId }] : []),
+          ],
+        },
         select: { id: true, fullNameEn: true, employments: { where: { endDate: null }, orderBy: { joinDate: 'desc' }, take: 1, select: { departmentId: true, ...PLACE } } },
       }),
-      this.offOn(from, to, hidden),
+      // everyone off, hidden or not: a C-level manager off on the days can't cover them either
+      this.offOn(from, to, new Set()),
     ]);
-    return sortedCandidates(
-      people
-        .filter((p) => !off.has(p.id))
-        .map((p) => ({ id: p.id, fullNameEn: p.fullNameEn, ...placeOf(p.employments[0]?.department ?? null), sameTeam: unitIds.includes(p.employments[0]?.departmentId ?? '') })),
-    );
+    const all = new Map<string, CoverCandidate>();
+    for (const p of people) {
+      const at = p.employments[0]?.departmentId ?? null;
+      const inDepartment = !!at && unitIds.includes(at) && !hidden.has(p.id);
+      const relation = inDepartment ? (teamUnitIds.includes(at) ? 'team' : 'department') : reports.has(p.id) ? 'report' : p.id === managerId ? 'manager' : null;
+      if (relation) all.set(p.id, { id: p.id, fullNameEn: p.fullNameEn, ...placeOf(p.employments[0]?.department ?? null), sameTeam: relation === 'team', relation });
+    }
+    const manager = managerId ? (all.get(managerId) ?? null) : null;
+    const colleagues = [...all.values()].filter((c) => c.relation !== 'manager');
+    const input = { colleagues, manager: manager && manager.relation === 'manager' ? manager : null, off };
+    return { candidates: sortedCandidates(coverPool(input)), input, people: all };
+  }
+
+  /** Why `coverId` can't cover the requester's days (none: they can), from the pool of who may. */
+  private coverProblemsIn(pool: { input: CoverPoolInput<CoverCandidate>; people: Map<string, CoverCandidate> }, requesterId: string, coverId: string): string[] {
+    const cover = pool.people.get(coverId) ?? null;
+    return coverProblems({
+      requesterId,
+      coverId,
+      cover: cover && { fullNameEn: cover.fullNameEn, current: true },
+      mayCover: mayCover(coverId, pool.input),
+      offOnDays: pool.input.off.has(coverId),
+    });
   }
 
   /**

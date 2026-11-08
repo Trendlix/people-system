@@ -44,6 +44,8 @@ describe('Leave coverage (e2e)', () => {
   let prisma: PrismaService;
   let deptId: string;
   let teamId: string;
+  /** Departments of one person each: Eve (reporting to Mona), Solo (reporting to Dan), Alone (no manager). */
+  const elsewhere: string[] = [];
   let holidays: Set<string>;
   const people: string[] = [];
   const users: string[] = [];
@@ -162,6 +164,16 @@ describe('Leave coverage (e2e)', () => {
     const g9 = await prisma.grade.findFirstOrThrow({ where: { confidential: true }, select: { id: true } });
     await prisma.employment.updateMany({ where: { employeeId: ids.cleo }, data: { gradeId: g9.id } });
     await person('rana', 'Rana Report', deptId, ids.cleo, null);
+    // elsewhere: Eve in a department of her own reporting to Mona; Solo alone in his, reporting to Dan; Alone, no manager
+    for (const [key, name, managerId] of [
+      ['eve', 'Eve Elsewhere', ids.mona],
+      ['solo', 'Solo Single', ids.dan],
+      ['alone', 'Alone Nobody', null],
+    ] as const) {
+      const unit = (await api().post('/api/departments').set('Cookie', sessions.hr).send({ nameEn: `${name} ${RUN}` }).expect(201)).body.id as string;
+      elsewhere.push(unit);
+      await person(key, name, unit, managerId, ['employee']);
+    }
 
     for (const t of (await api().get('/api/leave/types').set('Cookie', sessions.hr).expect(200)).body as { id: string; key: string }[]) types[t.key] = t.id;
   });
@@ -177,6 +189,7 @@ describe('Leave coverage (e2e)', () => {
     await prisma.employee.deleteMany({ where: { id: { in: people } } });
     await prisma.department.deleteMany({ where: { id: teamId } });
     await prisma.department.deleteMany({ where: { id: deptId } });
+    await prisma.department.deleteMany({ where: { id: { in: elsewhere } } });
     await app.close();
   });
 
@@ -407,6 +420,46 @@ describe('Leave coverage (e2e)', () => {
       const text = JSON.stringify([view, coverage]);
       for (const name of Object.values(names)) expect(text).not.toContain(name);
       expect(text).not.toContain(NOTE);
+    });
+  });
+  // owner, 8 November 2026: "choosing colleague who cover, should be from the same department only, not showing all the
+  // colleages"; "the employee who hasn't has a collegue, their manager can cover"; "managers can be covered by the people
+  // below them"
+  describe('who may cover: the department, a manager’s people, else the manager', () => {
+    let days: string[];
+    beforeAll(() => {
+      days = workingDays(35, 3);
+    });
+
+    it('lists the department (its teams with it) and never someone elsewhere, who is refused', async () => {
+      const form = await formCoverage('ali', { from: days[0], to: days[2], type: 'annual' });
+      const relation = Object.fromEntries(form.cover.candidates.map((c) => [c.id, c.relation]));
+      expect(relation).toMatchObject({ [ids.kim]: 'team', [ids.mona]: 'team', [ids.dan]: 'department', [ids.rana]: 'department' });
+      for (const key of ['eve', 'solo', 'alone', 'cleo', 'ali']) expect(relation[ids[key]]).toBeUndefined();
+      expect(form.cover).toMatchObject({ required: true, noneFree: false });
+      expect(said(await ask('ali', { type: 'annual', startDate: days[0], endDate: days[2], coverId: ids.eve }).expect(400))).toEqual(['Choose the colleague who covers from the list.']);
+    });
+
+    it('a manager also has the people reporting to them, wherever they work', async () => {
+      const form = await formCoverage('mona', { from: days[0], to: days[2], type: 'annual' });
+      const relation = Object.fromEntries(form.cover.candidates.map((c) => [c.id, c.relation]));
+      expect(relation).toMatchObject({ [ids.eve]: 'report', [ids.kim]: 'team', [ids.dan]: 'department' });
+    });
+
+    it('alone in their department: their manager covers, and is needed', async () => {
+      const form = await formCoverage('solo', { from: days[0], to: days[2], type: 'annual' });
+      expect(form.cover.candidates.map((c) => [c.id, c.relation])).toEqual([[ids.dan, 'manager']]);
+      expect(form.cover).toMatchObject({ required: true, noneFree: false });
+      expect(said(await ask('solo', { type: 'annual', startDate: days[0], endDate: days[2] }).expect(400))[0]).toMatch(/^Name the colleague who covers your work/);
+      const sent = (await ask('solo', { type: 'annual', startDate: days[0], endDate: days[2], coverId: ids.dan }).expect(201)).body as View;
+      expect(sent.cover).toEqual({ id: ids.dan, fullNameEn: names.dan });
+    });
+
+    it('nobody to cover (alone, no manager): the leave goes without a cover', async () => {
+      const form = await formCoverage('alone', { from: days[0], to: days[2], type: 'annual' });
+      expect(form.cover).toMatchObject({ required: false, noneFree: true, candidates: [] });
+      const sent = (await ask('alone', { type: 'annual', startDate: days[0], endDate: days[2] }).expect(201)).body as View;
+      expect(sent.cover).toBeNull();
     });
   });
 });

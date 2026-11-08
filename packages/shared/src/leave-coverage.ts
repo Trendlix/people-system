@@ -10,6 +10,11 @@
 //   approver's stand-in is the CEO or a Super Admin;
 // - "Names, no leave types": the requester and their colleagues see who else is off by name ("Omar and Sara are off on
 //   12 Nov"); the kind of leave stays HR's and the CEO's.
+// Who may cover (owner, 8 November 2026: "when applying for a leave, choosing colleague who cover, should be from the same
+// department only, not showing all the colleages"; "the employee who hasn't has a collegue, their manager can cover";
+// "managers can be covered by the people below them"): the requester's department (its teams with it, their own team
+// first) and, for a manager, everyone reporting to them, directly or not; when none of them is free on the days, their
+// direct manager; when nobody is, the leave goes without a cover (coverPool).
 // The law: sick leave and casual leave (عارضة) can't be refused (Arts. 128, 131), so the limit and its HR step are annual
 // leave's only, and unpaid leave's, which the employer agrees to as it does annual leave's dates. Pure code: the API
 // works out and enforces these, the web shows the same. Dates are YYYY-MM-DD.
@@ -255,32 +260,73 @@ export interface CoverFacts {
   coverId: string;
   /** Null: no such employee, or one the caller may not see (a C-level person, for most). */
   cover: { fullNameEn: string; current: boolean } | null;
+  /** They may cover this requester's leave on its days, off or not (mayCover). */
+  mayCover: boolean;
   /** They are off (approved or being decided) on some of the leave's days. */
   offOnDays: boolean;
 }
 
 /**
- * Why a colleague can't cover the leave (none: they can): someone employed now, not the requester, not off on any of its
- * days (any department, the requester's team first in the list).
+ * Why a colleague can't cover the leave (none: they can): someone employed now, not the requester, who may cover it
+ * (their department, those reporting to a manager, else the manager: coverPool), not off on any of its days.
  */
 export function coverProblems(f: CoverFacts): string[] {
   if (f.coverId === f.requesterId) return ['You can’t cover your own leave: choose a colleague.'];
-  if (!f.cover || !f.cover.current) return ['Choose the colleague who covers from the list.'];
+  if (!f.cover || !f.cover.current || !f.mayCover) return ['Choose the colleague who covers from the list.'];
   if (f.offOnDays) return [`${f.cover.fullNameEn} is off on some of these days, so they can’t cover them: choose another colleague.`];
   return [];
 }
 
-/** A colleague who may cover, as the form lists them: where they work, and whether they are in the requester's team. */
+/**
+ * Why someone is on the list: in the requester's team; elsewhere in their department; reporting to them (a manager's
+ * people, directly or not); or their direct manager, listed only when none of the others is free.
+ */
+export type CoverRelation = 'team' | 'department' | 'report' | 'manager';
+export const COVER_RELATIONS: readonly CoverRelation[] = ['team', 'department', 'report', 'manager'];
+
+/** A colleague who may cover, as the form lists them: where they work, and why they are on the list. */
 export interface CoverCandidate extends CoveragePerson {
   department: string | null;
   team: string | null;
+  /** In the requester's team (relation 'team'): kept for the app's builds before 8 November 2026. */
   sameTeam: boolean;
+  relation: CoverRelation;
 }
 
-/** The colleagues in the requester's team first, then everyone else, each by name. */
-export function sortedCandidates<T extends { fullNameEn: string; sameTeam: boolean }>(list: readonly T[]): T[] {
-  return [...list].sort((a, b) => Number(b.sameTeam) - Number(a.sameTeam) || a.fullNameEn.localeCompare(b.fullNameEn));
+/** The requester's team first, then the rest of their department, those reporting to them, the manager; each by name. */
+export function sortedCandidates<T extends { fullNameEn: string; relation: CoverRelation }>(list: readonly T[]): T[] {
+  const rank = (r: CoverRelation) => COVER_RELATIONS.indexOf(r);
+  return [...list].sort((a, b) => rank(a.relation) - rank(b.relation) || a.fullNameEn.localeCompare(b.fullNameEn));
 }
+
+/** The people who may cover a requester's leave, off or not, as the API finds them. */
+export interface CoverPoolInput<T extends { id: string }> {
+  /** Their department's people (its teams with it) and, for a manager, those reporting to them: employed now, not the requester. */
+  colleagues: readonly T[];
+  /** Their direct manager, employed now (null: none). */
+  manager: T | null;
+  /** Who is off (approved or being decided) on some of the leave's days. */
+  off: ReadonlySet<string>;
+}
+
+/**
+ * Who may cover the days (owner, 8 November 2026): the colleagues not off on any of them; when none is free, the direct
+ * manager if free; else nobody, and the leave goes without a cover however long (coverNeeded).
+ */
+export function coverPool<T extends { id: string }>(p: CoverPoolInput<T>): T[] {
+  const free = p.colleagues.filter((c) => !p.off.has(c.id));
+  if (free.length) return free;
+  return p.manager && !p.off.has(p.manager.id) ? [p.manager] : [];
+}
+
+/** Whether someone may cover, off on the days or not (being off is said apart): a colleague; the manager when no colleague is free. */
+export function mayCover<T extends { id: string }>(id: string, p: CoverPoolInput<T>): boolean {
+  if (p.colleagues.some((c) => c.id === id)) return true;
+  return p.manager?.id === id && !p.colleagues.some((c) => !p.off.has(c.id));
+}
+
+/** A leave needs a cover: annual or unpaid leave of more than 2 working days, when someone is free to cover it. */
+export const coverNeeded = (kind: string | null | undefined, days: number, pool: readonly unknown[]): boolean => coverRequired(kind, days) && pool.length > 0;
 
 // ---------- the stand-in ----------
 
@@ -430,7 +476,8 @@ export interface StandInChoiceView {
 export interface LeaveFormCoverage extends LeaveCoverageView {
   /** The days it takes, as the law counts them. */
   leaveDays: number;
-  cover: { required: boolean; overDays: number; candidates: CoverCandidate[] };
+  /** noneFree: the leave would need a cover but nobody may cover its days (owner, 8 November 2026): it goes without one. */
+  cover: { required: boolean; overDays: number; candidates: CoverCandidate[]; noneFree: boolean };
   standIn: StandInChoiceView;
 }
 

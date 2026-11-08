@@ -3,11 +3,14 @@ import {
   COVER_REQUIRED_OVER_DAYS,
   coverageDayList,
   coverageDays,
+  coverNeeded,
+  coverPool,
   coverProblems,
   coverRequired,
   defaultStandIn,
   fewestAtWork,
   isStaffingLimited,
+  mayCover,
   movesToStandIn,
   sortedCandidates,
   staffingLimitProblems,
@@ -158,24 +161,48 @@ describe('the staffing limit', () => {
 });
 
 describe('who may cover', () => {
-  const ok = { requesterId: 'me', coverId: 'sara', cover: { fullNameEn: 'Sara', current: true }, offOnDays: false };
+  const ok = { requesterId: 'me', coverId: 'sara', cover: { fullNameEn: 'Sara', current: true }, mayCover: true, offOnDays: false };
 
-  it('a colleague employed now, not the requester, not off on those days', () => {
+  it('a colleague employed now, not the requester, who may cover, not off on those days', () => {
     expect(coverProblems(ok)).toEqual([]);
     expect(coverProblems({ ...ok, coverId: 'me' })).toEqual(['You can’t cover your own leave: choose a colleague.']);
     expect(coverProblems({ ...ok, cover: null })).toEqual(['Choose the colleague who covers from the list.']);
     expect(coverProblems({ ...ok, cover: { fullNameEn: 'Sara', current: false } })).toEqual(['Choose the colleague who covers from the list.']);
+    expect(coverProblems({ ...ok, mayCover: false })).toEqual(['Choose the colleague who covers from the list.']);
     expect(coverProblems({ ...ok, offOnDays: true })).toEqual(['Sara is off on some of these days, so they can’t cover them: choose another colleague.']);
   });
 
-  it('the requester’s team first, then by name', () => {
+  it('the requester’s team first, then their department, those reporting to them, the manager; each by name', () => {
     const list = sortedCandidates([
-      { id: 'a', fullNameEn: 'Zeina', sameTeam: false },
-      { id: 'b', fullNameEn: 'Yara', sameTeam: true },
-      { id: 'c', fullNameEn: 'Adam', sameTeam: false },
-      { id: 'd', fullNameEn: 'Basma', sameTeam: true },
+      { id: 'a', fullNameEn: 'Zeina', relation: 'department' as const },
+      { id: 'b', fullNameEn: 'Yara', relation: 'team' as const },
+      { id: 'm', fullNameEn: 'Mona', relation: 'manager' as const },
+      { id: 'r', fullNameEn: 'Rana', relation: 'report' as const },
+      { id: 'c', fullNameEn: 'Adam', relation: 'department' as const },
+      { id: 'd', fullNameEn: 'Basma', relation: 'team' as const },
     ]);
-    expect(list.map((c) => c.fullNameEn)).toEqual(['Basma', 'Yara', 'Adam', 'Zeina']);
+    expect(list.map((c) => c.fullNameEn)).toEqual(['Basma', 'Yara', 'Adam', 'Zeina', 'Rana', 'Mona']);
+  });
+
+  // owner, 8 November 2026: "should be from the same department only"; "the employee who hasn't has a collegue, their
+  // manager can cover"; "managers can be covered by the people below them"
+  it('the colleagues free on the days; when none is, the manager; when nobody is, no cover needed', () => {
+    const colleagues = [{ id: 'sara' }, { id: 'kim' }];
+    const manager = { id: 'mona' };
+    expect(coverPool({ colleagues, manager, off: new Set(['kim']) })).toEqual([{ id: 'sara' }]);
+    expect(coverPool({ colleagues, manager, off: new Set(['kim', 'sara']) })).toEqual([manager]);
+    expect(coverPool({ colleagues: [], manager, off: new Set() })).toEqual([manager]);
+    expect(coverPool({ colleagues: [], manager, off: new Set(['mona']) })).toEqual([]);
+    expect(coverPool({ colleagues: [], manager: null, off: new Set() })).toEqual([]);
+    // the manager may cover only while no colleague is free; a colleague off may be named (and is told they're off)
+    expect(mayCover('mona', { colleagues, manager, off: new Set(['kim']) })).toBe(false);
+    expect(mayCover('mona', { colleagues, manager, off: new Set(['kim', 'sara']) })).toBe(true);
+    expect(mayCover('kim', { colleagues, manager, off: new Set(['kim']) })).toBe(true);
+    expect(mayCover('omar', { colleagues, manager, off: new Set() })).toBe(false);
+    // annual leave of 3 days needs a cover only while someone is free to give it
+    expect(coverNeeded('annual', 3, [manager])).toBe(true);
+    expect(coverNeeded('annual', 3, [])).toBe(false);
+    expect(coverNeeded('sick', 3, [manager])).toBe(false);
   });
 });
 

@@ -133,9 +133,26 @@ export const coveringText = (c: Pick<CoveringClash, 'employee' | 'startDate' | '
 export const coversText = (name: string, c: Pick<CoveringClash, 'employee' | 'startDate' | 'endDate' | 'waiting'>): string =>
   `${name} is covering ${c.employee.fullNameEn} on ${dayRange(c.startDate, c.endDate)}${c.waiting ? ' (waiting)' : ''}`;
 
-/** The colleagues who may cover, the requester's team first (owner's brief: "preferably from the same team"). */
-export function coverGroups(candidates: readonly CoverCandidate[]): { team: CoverCandidate[]; others: CoverCandidate[] } {
-  return { team: candidates.filter((c) => c.sameTeam), others: candidates.filter((c) => !c.sameTeam) };
+/**
+ * The colleagues who may cover, in groups (owner, 8 November 2026: "from the same department only"; "their manager can
+ * cover"; "managers can be covered by the people below them"): the requester's team first (`teamName`), the rest of
+ * their department, those reporting to them, and their manager (listed only when none of the others is free).
+ */
+export function coverGroups(candidates: readonly CoverCandidate[], teamName: string | null): { label: string; list: CoverCandidate[] }[] {
+  const of = (relation: CoverCandidate['relation']) => candidates.filter((c) => (c.relation ?? (c.sameTeam ? 'team' : 'department')) === relation);
+  return [
+    { label: teamName ?? 'Your team', list: of('team') },
+    { label: 'Your department', list: of('department') },
+    { label: 'Reporting to you', list: of('report') },
+    { label: 'Your manager', list: of('manager') },
+  ].filter((g) => g.list.length > 0);
+}
+
+/** Why the list is short, when it is: nobody free to cover the days, or only the manager. */
+export function coverListNote(cover: { candidates: readonly CoverCandidate[]; noneFree?: boolean }): string | null {
+  if (cover.noneFree) return 'Nobody in your department, nor your manager, is free on these days, so this leave can go without a cover.';
+  if (cover.candidates.length > 0 && cover.candidates.every((c) => c.relation === 'manager')) return 'Nobody in your department is free on these days, so your manager can cover.';
+  return null;
 }
 
 /** Where a colleague works, beside their name in the lists: "Video · Production", "Finance". */

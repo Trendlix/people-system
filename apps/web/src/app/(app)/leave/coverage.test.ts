@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { CoverageDay, CoverageOff } from '@trendlix/shared';
+import type { CoverageDay, CoverageOff, CoverCandidate } from '@trendlix/shared';
 import {
   atWorkText,
   busyDays,
   clashText,
   coverGroups,
   coveringText,
+  coverListNote,
   coversText,
   dayRange,
   elsewhereLines,
@@ -100,9 +101,18 @@ describe('the coverage in words', () => {
     expect(coversText('Sara', clash)).toBe('Sara is covering Omar on 12–14 Nov');
   });
 
-  it('lists the team first among those who may cover, and names the stand-in', () => {
-    const c = (id: string, sameTeam: boolean) => ({ id, fullNameEn: id, department: 'Production', team: sameTeam ? 'Video' : null, sameTeam });
-    expect(coverGroups([c('a', false), c('b', true), c('c', true)])).toEqual({ team: [c('b', true), c('c', true)], others: [c('a', false)] });
+  it('lists the team first among those who may cover, then the department, those reporting, the manager; and names the stand-in', () => {
+    const c = (id: string, relation: CoverCandidate['relation']) => ({ id, fullNameEn: id, department: 'Production', team: relation === 'team' ? 'Video' : null, sameTeam: relation === 'team', relation });
+    expect(coverGroups([c('a', 'department'), c('b', 'team'), c('r', 'report'), c('c', 'team')], 'Video')).toEqual([
+      { label: 'Video', list: [c('b', 'team'), c('c', 'team')] },
+      { label: 'Your department', list: [c('a', 'department')] },
+      { label: 'Reporting to you', list: [c('r', 'report')] },
+    ]);
+    // nobody else free: the manager, said so; nobody at all: no cover needed
+    expect(coverGroups([c('m', 'manager')], null)).toEqual([{ label: 'Your manager', list: [c('m', 'manager')] }]);
+    expect(coverListNote({ candidates: [c('m', 'manager')] })).toBe('Nobody in your department is free on these days, so your manager can cover.');
+    expect(coverListNote({ candidates: [], noneFree: true })).toMatch(/^Nobody in your department, nor your manager, is free/);
+    expect(coverListNote({ candidates: [c('a', 'department')] })).toBeNull();
     expect(placeText({ department: 'Production', team: 'Video' })).toBe('Video · Production');
     expect(placeText({ department: null, team: null })).toBeNull();
     expect(standInText({ employee: { fullNameEn: 'Dana' }, hr: false })).toBe('Dana');
