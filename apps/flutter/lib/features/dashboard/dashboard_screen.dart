@@ -142,7 +142,7 @@ class DashboardScreen extends ConsumerWidget {
         right: [
           SectionHead(eyebrow: DashboardWords.selfService, title: DashboardWords.quickActions),
           const SizedBox(height: 16),
-          _QuickActions(today: today, tileHeight: 156),
+          _QuickActions(today: today),
         ],
       ),
       const SizedBox(height: 36),
@@ -177,12 +177,9 @@ class _Columns extends StatelessWidget {
 // ---------- quick actions ----------
 
 class _QuickActions extends ConsumerWidget {
-  const _QuickActions({required this.today, this.tileHeight});
+  const _QuickActions({required this.today});
 
   final String today;
-
-  /// Two across, each this tall (an iPad's column, 8 November 2026); else as a phone has them, about square.
-  final double? tileHeight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -213,26 +210,30 @@ class _QuickActions extends ConsumerWidget {
       for (final (icon, title, sub, path) in tiles)
         _QuickTile(icon: icon, title: title, subtitle: sub, onTap: () => path == null ? showOdSheet(context) : context.go(path)),
     ];
-    // two across in an iPad's column, as tall as asked (8 November 2026)
-    if (tileHeight case final height?) {
-      return GridView(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, mainAxisExtent: height),
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        children: children,
-      );
-    }
     // four across on an iPad (7 November 2026), two on a phone
     return LayoutBuilder(
-      builder: (context, c) => GridView.count(
-        crossAxisCount: isWide(c.maxWidth) ? 4 : 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.02,
-        children: children,
-      ),
+      builder: (context, c) {
+        final across = isWideIn(context, c.maxWidth) ? 4 : 2;
+        // beside the rail or the sidebar (8 November 2026) each as tall as Tokens.quickTileHeight, however wide: four
+        // across in one column (an iPad mini upright), two in a column of two
+        if (!hasTabBar(context)) {
+          return GridView(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: across, mainAxisSpacing: 12, crossAxisSpacing: 12, mainAxisExtent: Tokens.quickTileHeight),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: children,
+          );
+        }
+        return GridView.count(
+          crossAxisCount: across,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 1.02,
+          children: children,
+        );
+      },
     );
   }
 }
@@ -340,11 +341,12 @@ class _Glance extends ConsumerWidget {
         note: next?.nameEn,
       ),
     ];
-    // on an iPad (7 November 2026) all four side by side, as wide as the page; on a phone they scroll sideways
+    // on an iPad (7 November 2026; beside the rail too, 8 November) all four side by side, as wide as the page; on a
+    // phone they scroll sideways
     return SizedBox(
       height: 150,
       child: LayoutBuilder(
-        builder: (context, c) => isWide(c.maxWidth)
+        builder: (context, c) => isWideIn(context, c.maxWidth)
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

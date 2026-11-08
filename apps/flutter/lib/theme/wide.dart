@@ -61,6 +61,11 @@ bool hasTabBar(BuildContext context) => NavScope.of(context) == NavLayout.phone;
 /// phone on its side keeps its one column.
 bool roomForTwo(BuildContext context, double width, {double from = Tokens.twoPanesFrom}) => !hasTabBar(context) && width >= from;
 
+/// [isWide], and beside the rail or the sidebar also from [Tokens.wideBesideNavFrom]: an iPad mini upright, its page
+/// 616 inside its margins beside the rail, keeps its tiles four across as on 7 November (the phone's layout, a phone on
+/// its side among them, keeps [isWide] alone).
+bool isWideIn(BuildContext context, double width) => isWide(width) || (!hasTabBar(context) && width >= Tokens.wideBesideNavFrom);
+
 /// The list's width beside what is open in it, of a page this wide.
 double listPaneWidth(double width) => (width * 0.42).clamp(Tokens.listPaneMin, Tokens.listPaneMax);
 

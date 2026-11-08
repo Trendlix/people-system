@@ -341,7 +341,7 @@ class _Tiles extends StatelessWidget {
     );
     // two rows of two on a phone, one row of four on an iPad (7 November 2026)
     return LayoutBuilder(
-      builder: (context, c) => isWide(c.maxWidth)
+      builder: (context, c) => isWideIn(context, c.maxWidth)
           ? row(tiles)
           : Column(children: [row(tiles.sublist(0, 2)), const SizedBox(height: 10), row(tiles.sublist(2))]),
     );
@@ -436,7 +436,7 @@ class _SectionSwitch extends StatelessWidget {
         ),
         // two rows of two on a phone, one row of four on an iPad (7 November 2026)
         child: LayoutBuilder(
-          builder: (context, c) => c.maxWidth >= fourFrom
+          builder: (context, c) => c.maxWidth >= fourFrom || isWideIn(context, c.maxWidth)
               ? Row(
                   children: [
                     for (final (i, s) in ProfileSection.values.indexed) ...[if (i > 0) const SizedBox(width: 4), item(s)],

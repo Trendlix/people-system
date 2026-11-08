@@ -299,7 +299,7 @@ class _AnnualCard extends ConsumerWidget {
               children: [
                 for (final (label, value) in figures)
                   SizedBox(
-                    width: c.maxWidth / (isWide(c.maxWidth) ? 4 : 2),
+                    width: c.maxWidth / (isWideIn(context, c.maxWidth) ? 4 : 2),
                     child: MergeSemantics(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -478,7 +478,7 @@ class _YearAndPermission extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, c) => permission && isWide(c.maxWidth)
+      builder: (context, c) => permission && isWideIn(context, c.maxWidth)
           ? IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -59,6 +59,14 @@ abstract final class Tokens {
   static const twoPanesFrom = 840.0;
   static const twoColumnsFrom = 700.0;
 
+  /// Beside the rail, a page in one column four tiles across from this (the narrowest rail window, 720, leaves 592
+  /// inside its margins; an iPad mini upright 616), as [wideFrom] does for the phone's layout.
+  static const wideBesideNavFrom = 580.0;
+
+  /// The Dashboard's quick actions beside the rail or the sidebar: as tall as this, however wide (about square on a
+  /// phone; on an iPad's narrower tiles four across, or wider ones in a column, room for two lines of words).
+  static const quickTileHeight = 168.0;
+
   /// The list's pane beside what is open in it: about two fifths of the page, a phone's width or a bit more.
   static const listPaneMin = 360.0;
   static const listPaneMax = 460.0;

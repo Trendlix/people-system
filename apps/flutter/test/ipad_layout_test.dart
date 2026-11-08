@@ -216,6 +216,22 @@ void main() {
       expect(find.text('October 2026'), findsWidgets);
     });
 
+    testWidgets('an iPad mini upright (the rail, one column): the quick actions and the figures four across, as on 7 November', (tester) async {
+      await boot(tester, people, const Size(744, 1133));
+      expect(find.byType(SideNav), findsOneWidget);
+      Rect tile(String title) => tester.getRect(find.ancestor(of: find.text(title), matching: find.byType(InkWell)).first);
+      final first = tile(DashboardWords.requestLeave);
+      final last = tile(DashboardWords.myPerformance);
+      expect(last.top, first.top);
+      expect(last.left, greaterThan(tile(DashboardWords.viewRequests).right));
+      expect(first.height, Tokens.quickTileHeight);
+      // At a glance: the four side by side, not a row to scroll
+      final page = find.descendant(of: find.byType(DashboardScreen), matching: find.byType(Scrollable)).first;
+      await tester.scrollUntilVisible(find.text(DashboardWords.nextHoliday), 300, scrollable: page);
+      expect(tester.getRect(find.text(DashboardWords.nextHoliday)).top, tester.getRect(find.text(DashboardWords.hoursThisWeek)).top);
+      expect(tester.getRect(find.text(DashboardWords.nextHoliday)).right, lessThan(744));
+    });
+
     testWidgets('a narrow window (half a Split View) and a phone on its side keep the tab bar and the More menu', (tester) async {
       // half a Split View on an 11" iPad on its side (the 13"'s half, 678 wide, the breakpoints' test above)
       await boot(tester, people, const Size(590, 820));
