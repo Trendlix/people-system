@@ -163,6 +163,15 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "Version $name (code $code)"
 
+      # Push notifications (owner, 8 November 2026: "gives a push notification once requested"): the Firebase project's
+      # settings for com.trendlix.people from the secret GOOGLE_SERVICES_JSON (the old app's, 20 October 2026), written as
+      # the app's resources (git ignores them) so Android starts Firebase itself, and PEOPLE_PUSH=on for the app.
+      # Without the secret: built without push (a notice), the bell and the popups as ever.
+      - name: Firebase for push notifications
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: python3 tool/firebase_config.py android
+
       # Where the app finds People (lib/config.dart): the live address, and the root of the server's private authority
       # (and its build stamp: version, code, commit and time, shown in the app's About this app)
       # (deploy/ca-cert.sh) from the repository variable API_CA_CERT (the one backend.yml checks). Without it the app can't
@@ -180,6 +189,7 @@ jobs:
           if [ "$PLAY" = "true" ]; then kind=appbundle; store=play; else kind=apk; store=; fi
           flutter build "$kind" --release \
             --dart-define=PEOPLE_STORE="$store" \
+            --dart-define=PEOPLE_PUSH="${PEOPLE_PUSH:-}" \
             --build-name="$APP_VERSION_NAME" \
             --build-number="$APP_VERSION_CODE" \
             --dart-define=PEOPLE_API_URL=https://srv2055591.hstgr.cloud:8443 \
@@ -393,6 +403,11 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
 
+          # the profile as Apple has it now (tool/apple_profile.py: made again with Push Notifications on 8 November 2026),
+          # else the one in the secret
+          if ! python3 tool/apple_profile.py fetch --key-id "$key_id" --issuer-id "$(value ISSUER_ID)" --key "$dir/AuthKey.p8" --out "$dir/profile.mobileprovision"; then
+            echo "::warning title=Profile from the secret::Apple's current profile couldn't be read: the one in APPLE_SIGNING_BASE64 is used."
+          fi
           uuid="$(security cms -D -i "$dir/profile.mobileprovision" | plutil -extract UUID raw -)"
           for d in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
             mkdir -p "$d"
@@ -406,6 +421,14 @@ jobs:
           CODE_SIGN_IDENTITY = Apple Distribution
           CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
           EOF
+          # push notifications (8 November 2026): the app asks for them only once the profile has Push Notifications
+          # (tool/apple_profile.py push); else it signs as before
+          if security cms -D -i "$dir/profile.mobileprovision" | plutil -extract Entitlements.aps-environment raw - >/dev/null 2>&1; then
+            echo "CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements" >> ios/Flutter/Signing.xcconfig
+            echo "- Push Notifications: in the profile" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice title=No push on iPhone yet::The App Store profile has no Push Notifications: run apps/flutter/tool/apple_profile.py push (docs/app-store.md)."
+          fi
 
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -432,6 +455,13 @@ jobs:
           echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           echo "- Signed for the App Store: team $team, profile \"$profile_name\" (certificate until $(value CERT_EXPIRES))" >> "$GITHUB_STEP_SUMMARY"
 
+      # Push notifications (8 November 2026): the Firebase project's settings for the Apple app com.trendlix.people from
+      # the secret GOOGLE_SERVICE_INFO_PLIST (docs/app-store.md), given to the app; without it, no push on iPhone.
+      - name: Firebase for push notifications
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+        run: python3 tool/firebase_config.py ios
+
       # The same settings as the Android build (lib/config.dart). Signed: the .ipa for App Store Connect; else an unsigned
       # build, only to check it compiles.
       - name: Build
@@ -452,6 +482,10 @@ jobs:
             --dart-define=PEOPLE_APP_BUILD="$APP_VERSION_CODE"
             --dart-define=PEOPLE_APP_COMMIT="${GITHUB_SHA:0:7}"
             --dart-define=PEOPLE_APP_BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            --dart-define=FIREBASE_IOS_API_KEY="${FIREBASE_IOS_API_KEY:-}"
+            --dart-define=FIREBASE_IOS_APP_ID="${FIREBASE_IOS_APP_ID:-}"
+            --dart-define=FIREBASE_IOS_SENDER_ID="${FIREBASE_IOS_SENDER_ID:-}"
+            --dart-define=FIREBASE_IOS_PROJECT_ID="${FIREBASE_IOS_PROJECT_ID:-}"
           )
           if [ "$SIGNED" = "true" ]; then
             flutter build ipa "${args[@]}" --export-options-plist="$RUNNER_TEMP/ExportOptions.plist"

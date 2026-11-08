@@ -7,6 +7,7 @@ import '../providers.dart';
 import 'session_store.dart';
 import 'app_lock.dart';
 import 'unlock_words.dart';
+import '../notifications/push_center.dart';
 
 // Signing in (README Phase 1; owner, 30 October 2026: "The 3 easy wins first"): the password once, then the fingerprint
 // (People's device credentials, apps/api auth.controller.ts). The session is an app session (the user agent's mark) of
@@ -154,8 +155,10 @@ class AuthController extends AsyncNotifier<AuthState> {
     FingerprintOutcome.unavailable => throw FingerprintProblem(words.unavailable),
   };
 
-  /// Ends the session on People too (whatever it answers, the phone is signed out); the fingerprint stays on.
+  /// Ends the session on People too (whatever it answers, the phone is signed out); the fingerprint stays on. The phone's
+  /// notifications stop first, while the session can still tell People (8 November 2026).
   Future<void> signOut() async {
+    await ref.read(pushCenterProvider).signingOut();
     try {
       await _client.post('/api/auth/logout');
     } on ApiException {
@@ -169,6 +172,8 @@ class AuthController extends AsyncNotifier<AuthState> {
   Future<void> sessionEnded() async {
     if (state.value is! SignedIn) return;
     await _store.clear();
+    // nothing more pushed to this phone for them (People can't be told without a session)
+    await ref.read(pushCenterProvider).dropped();
     state = AsyncData(await _signedOut(notice: AuthWords.sessionEnded));
   }
 }

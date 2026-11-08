@@ -14,7 +14,7 @@ import 'package:people/providers.dart';
 import 'package:people/shell/shell_words.dart';
 
 import 'fakes.dart';
-import 'requests_fixtures.dart' show requestsPeople;
+import 'requests_fixtures.dart' show putOffWaiting, requestsPeople;
 
 // Timesheets in the app (owner, 4 November 2026: "Timesheet in app/website", "Direct manager, weekly", "Only those HR
 // switches on"): the week's rules, My timesheet (a line added in its sheet, saved, sent), Log hours on the Dashboard and
@@ -261,6 +261,7 @@ void main() {
 /// The app opened on its Requests tab.
 Future<void> openRequestsTabHere(WidgetTester tester, FakePeople people) async {
   await openApp(tester, people);
+  await putOffWaiting(tester);
   await tester.tap(find.text(ShellWords.requests));
   await tester.pumpAndSettle();
 }

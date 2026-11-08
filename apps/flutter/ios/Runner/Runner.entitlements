@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Push notifications (8 November 2026, lib/platform/push.dart): App Store builds only, and only once their profile has
+     Push Notifications (tool/apple_profile.py push): CI then names this file in ios/Flutter/Signing.xcconfig
+     (CODE_SIGN_ENTITLEMENTS). A build without it signs as before, with no push. -->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>

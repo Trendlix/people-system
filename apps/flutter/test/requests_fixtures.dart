@@ -10,6 +10,7 @@ import 'package:people/auth/session_store.dart';
 import 'package:people/features/requests/requests_data.dart';
 import 'package:people/providers.dart';
 import 'package:people/theme/app_theme.dart';
+import 'package:people/features/requests/waiting_popup.dart';
 import 'package:people/shell/shell_words.dart';
 
 import 'fakes.dart';
@@ -507,7 +508,15 @@ Future<void> openRequestsTab(WidgetTester tester, FakePeople people, {PhotoSourc
     ),
   );
   await tester.pumpAndSettle();
+  await putOffWaiting(tester);
   await tester.tap(find.text(ShellWords.requests));
+  await tester.pumpAndSettle();
+}
+
+/// What waits for them pops up as the app opens (8 November 2026): put off, as most would here.
+Future<void> putOffWaiting(WidgetTester tester) async {
+  if (find.text(WaitingWords.later).evaluate().isEmpty) return;
+  await tester.tap(find.text(WaitingWords.later));
   await tester.pumpAndSettle();
 }
 

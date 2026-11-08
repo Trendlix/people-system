@@ -126,6 +126,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await putOffWaiting(tester);
       await tester.tap(find.text(ShellWords.requests));
       await tester.pumpAndSettle();
       final look = dark ? Palette.dark : Palette.light;

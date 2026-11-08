@@ -17,6 +17,8 @@ abstract final class ShellWords {
   static const hiring = 'Hiring availability';
   static const signOut = 'Sign out';
   static const markAllRead = 'Mark all as read';
+  // a notification that came while the app is open (8 November 2026)
+  static const open = 'Open';
   static const noNotifications = 'Nothing new.';
   static const notificationsFailed = 'Couldn’t load your notifications.';
   static const offerNo = 'Not now';

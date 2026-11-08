@@ -23,6 +23,11 @@ dependencies:
   workmanager: 0.10.10
   # Google Play's own update check, for a Play build (owner, 6 November 2026: "now i have google play console")
   in_app_update: 4.2.5
+  # push notifications (owner, 8 November 2026: "notifications are not working correctly, and when there is a pending
+  # request make it to popup in the mobile app and gives a push notification once requested"): Firebase Cloud Messaging,
+  # the project the API sends through (lib/platform/push.dart)
+  firebase_core: 5.1.0
+  firebase_messaging: 17.0.1
 
 dev_dependencies:
   flutter_test:

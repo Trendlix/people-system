@@ -13,6 +13,7 @@ import '../../theme/tokens.dart';
 import '../profile/account_screens.dart';
 import '../profile/profile_parts.dart';
 import 'diagnostics.dart';
+import '../../notifications/push_center.dart';
 
 /// About this app (owner, 31 October 2026: "display the running app version in the more menu. displaying the details that
 /// might help in any problem diognostic"), from the More menu: the app's version and build, how far the phone's clock is
@@ -101,6 +102,14 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
         },
         lastPosition: last == null ? null : positionText(accuracy: last.spot.accuracy, mock: last.spot.mock, age: DateTime.now().difference(last.at)),
         fingerprintLabel: unlock.aboutRow,
+        notifications: switch (ref.read(pushStateProvider)) {
+          PushState.on => AboutWords.pushOn,
+          PushState.starting => AboutWords.pushStarting,
+          PushState.notAllowed => AboutWords.pushNotAllowed,
+          PushState.noToken => AboutWords.pushNoToken,
+          PushState.notRegistered => AboutWords.pushNotRegistered,
+          PushState.unavailable => AboutWords.pushUnavailable,
+        },
         fingerprint: !hasBiometrics
             ? unlock.noneSetUp
             : (credential != null && me != null && credential.userId == me.id ? AboutWords.fingerprintOn : AboutWords.fingerprintOff),

@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../notifications/open.dart';
+import '../notifications/places.dart';
 import '../providers.dart';
 import '../theme/parts.dart';
 import '../theme/tokens.dart';
@@ -20,7 +24,7 @@ final unreadProvider = FutureProvider.autoDispose<int?>((ref) async {
   }
 });
 
-typedef InboxItem = ({String id, String title, String body, bool read, DateTime? at});
+typedef InboxItem = ({String id, String kind, String title, String body, String link, bool read, DateTime? at});
 
 final inboxProvider = FutureProvider.autoDispose<List<InboxItem>>((ref) async {
   final json = await ref.read(peopleClientProvider).get('/api/me/notifications?page=1');
@@ -30,15 +34,19 @@ final inboxProvider = FutureProvider.autoDispose<List<InboxItem>>((ref) async {
       if (i is Map)
         (
           id: '${i['id']}',
+          kind: '${i['kind'] ?? ''}',
           title: '${i['title'] ?? ''}',
           body: '${i['body'] ?? ''}',
+          link: '${i['link'] ?? ''}',
           read: i['readAt'] != null,
           at: DateTime.tryParse('${i['createdAt']}'),
         ),
   ];
 });
 
-/// The inbox in the design's sheet: the newest first, the unread ones marked; Mark all as read.
+/// The inbox in the design's sheet: the newest first, the unread ones marked; Mark all as read. Each one opens its
+/// screen, marked read (owner, 8 November 2026: "opened notifications should be marked read"); one the app has no
+/// screen for (a payslip, a raise) is marked read where it is, as the website does.
 Future<void> showNotifications(BuildContext context) => showDesignSheet<void>(
   context,
   eyebrow: ShellWords.account,
@@ -67,32 +75,40 @@ class _Inbox extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (final i in items)
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: p.line)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 7, right: 10),
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: i.read ? Colors.transparent : p.ink),
+              InkWell(
+                onTap: () => _open(context, i),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    border: Border(bottom: BorderSide(color: p.line)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 7, right: 10),
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: i.read ? Colors.transparent : p.ink),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(i.title, style: text.bodyLarge),
-                          if (i.body.isNotEmpty) Text(i.body, style: text.bodySmall),
-                        ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(i.title, style: text.bodyLarge?.copyWith(fontWeight: i.read ? null : FontWeight.w600)),
+                            if (i.body.isNotEmpty) Text(i.body, style: text.bodySmall),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                      if (placeOf(i.link, i.kind) != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8, top: 2),
+                          child: Icon(CupertinoIcons.chevron_right, size: 16, color: p.muted),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             const SizedBox(height: 16),
@@ -114,6 +130,20 @@ class _Inbox extends ConsumerWidget {
       },
     );
   }
+}
+
+/// A notification pressed: with a screen, the sheet closes and it opens there, marked read; without one, marked read
+/// in the list.
+void _open(BuildContext context, InboxItem i) {
+  if (placeOf(i.link, i.kind) == null) {
+    if (!i.read) unawaited(markNotificationRead(ProviderScope.containerOf(context, listen: false), i.id));
+    return;
+  }
+  final sheet = Navigator.of(context);
+  // the app's navigator and router, read before the sheet closes
+  final app = Navigator.of(context, rootNavigator: true).context;
+  sheet.pop();
+  openNotification(app, id: i.read ? '' : i.id, link: i.link, kind: i.kind);
 }
 
 /// The header's bell: a round button with the unread count in its black badge (none at 0, 99+ above 99).

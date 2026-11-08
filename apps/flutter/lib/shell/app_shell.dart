@@ -11,6 +11,7 @@ import '../auth/unlock_words.dart';
 import '../features/about/diagnostics.dart' show versionLineOf;
 import '../features/kpis/kpi_reminder.dart';
 import '../features/manual_changes/manual_changes.dart';
+import '../features/requests/waiting_popup.dart';
 import '../features/timesheet/timesheet_data.dart';
 import '../features/review/review_gate.dart';
 import '../format.dart';
@@ -21,6 +22,7 @@ import '../theme/parts.dart';
 import '../theme/tokens.dart';
 import '../theme/wide.dart';
 import 'notifications.dart';
+import 'push_listener.dart';
 import 'shell_words.dart';
 import 'side_nav.dart';
 
@@ -54,10 +56,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _offerFingerprint();
+      // notifications on this phone, asked once, and the push that opened the app (8 November 2026): its page first
+      final pushed = mounted && await startPush(context, ref);
       // KPI scorecards waiting: once a sign-in, unless postponed (1 November 2026)
       if (mounted) await remindKpis(context, ref);
       // changes made by hand by someone they manage, until marked seen (4 November 2026)
       if (mounted) await showManualChanges(context, ref);
+      // requests waiting for their approval (8 November 2026), unless a push already opened one
+      if (mounted && !pushed) await showWaitingPopup(context, ref, userId: widget.me.id);
     });
   }
 
@@ -94,8 +100,12 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   void _go(int index) => widget.shell.goBranch(index, initialLocation: index == widget.shell.currentIndex);
 
+  /// The frame, under what listens for notifications while signed in (push_listener.dart), the same on a phone and on an
+  /// iPad whichever way it turns.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PushListener(userId: widget.me.id, child: Builder(builder: _frame));
+
+  Widget _frame(BuildContext context) {
     final layout = navLayoutOf(MediaQuery.sizeOf(context));
     if (layout != NavLayout.phone) return _wide(context, layout);
     final bottom = MediaQuery.paddingOf(context).bottom;

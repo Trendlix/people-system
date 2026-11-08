@@ -35,6 +35,7 @@ abstract final class AboutWords {
   static const location = 'Location';
   static const lastPosition = 'Last position';
   static const fingerprint = 'Fingerprint sign-in';
+  static const notifications = 'Notifications';
 
   static const account = 'Signed in';
   static const email = 'Email';
@@ -50,6 +51,14 @@ abstract final class AboutWords {
   static const fingerprintOn = 'On';
   static const fingerprintOff = 'Off';
   static const unreachable = 'Couldn’t reach People';
+
+  // the phone's notifications (8 November 2026: push_center.dart PushState)
+  static const pushOn = 'On';
+  static const pushStarting = 'Starting';
+  static const pushNotAllowed = 'Not allowed: allow them in the phone’s settings';
+  static const pushNoToken = 'No connection to the notification service yet';
+  static const pushNotRegistered = 'People couldn’t be told';
+  static const pushUnavailable = 'Not in this build';
 }
 
 /// The More menu's foot (owner, 31 October 2026: "display the running app version in the more menu"): "Trendlix People
@@ -80,6 +89,7 @@ class Diagnostics {
     this.lastPosition,
     this.fingerprint,
     this.fingerprintLabel = AboutWords.fingerprint,
+    this.notifications,
     this.email,
     this.userId,
     this.roles = const [],
@@ -106,6 +116,9 @@ class Diagnostics {
 
   /// The fingerprint row's name in the phone's own words: "Face ID sign-in" on an iPhone (unlock_words.dart).
   final String fingerprintLabel;
+
+  /// Whether People pushes to this phone (push_center.dart), in words; null: not known.
+  final String? notifications;
   final String? email, userId;
   final List<String> roles;
 
@@ -173,6 +186,7 @@ List<DiagnosticSection> diagnosticSections(Diagnostics d) {
         (AboutWords.location, known(d.location)),
         (AboutWords.lastPosition, d.lastPosition ?? AboutWords.noPosition),
         (d.fingerprintLabel, known(d.fingerprint)),
+        (AboutWords.notifications, known(d.notifications)),
       ],
     ),
     if (d.email != null)

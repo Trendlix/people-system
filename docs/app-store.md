@@ -184,3 +184,24 @@ Each push to `main` uploads a new build. To ship one:
 3. Release it.
 
 iPhones update from the App Store by themselves. The app's own "Update required" screen is Android-only for now.
+
+## 10. Push notifications on iPhone (since 8 November 2026)
+
+The app is ready for push on iPhone: a request sent pushes to its approver, a decision to its employee. Android has it already. Three things only the owner can do turn it on for iPhones. The next build after the last of them has push.
+
+1. **Push in the App Store profile.** Turn on Push Notifications for `com.trendlix.people` and make the profile again, with the same certificate:
+
+   ```sh
+   python3 apps/flutter/tool/apple_profile.py push --folder ~/TrendLIX-Apple-Signing
+   ```
+
+   CI reads the profile from Apple at each build, so the GitHub secret needn't change. Until this is done, iPhone builds sign as before, without push. The build's summary says "No push on iPhone yet".
+2. **An APNs key, given to Firebase.**
+   - developer.apple.com → Certificates, Identifiers & Profiles → **Keys** → **+**. Name it `Trendlix People Push`, tick **Apple Push Notifications service (APNs)**, then **Continue** and **Register**.
+   - **Download** the `.p8` file. Apple allows this only once, so keep it with the signing folder. Note its **Key ID** and your **Team ID** (top right).
+   - Firebase console → the project People sends through (the one with the Android app `com.trendlix.people`) → **Project settings** → **Cloud Messaging** → **Apple app configuration** → **APNs Authentication Key** → **Upload**. Give it the `.p8`, the Key ID and the Team ID.
+3. **The Apple app in Firebase, and its file in GitHub.**
+   - Firebase → **Project settings** → **General** → **Your apps** → **Add app** → **Apple**. The bundle ID is `com.trendlix.people` and the nickname is Trendlix People. **Register**, then download **GoogleService-Info.plist**. Skip the remaining steps (the SDK and the code are already in the app).
+   - GitHub → Trendlix/people-system → Settings → Secrets and variables → Actions → **New repository secret**. Name it **GOOGLE_SERVICE_INFO_PLIST**, and paste the whole text of `GoogleService-Info.plist` as the value.
+
+Before the version with push goes for review, update **App Privacy** (section 6). Add **Identifiers → Device ID**, used for **App Functionality**, linked to the user, and not used for tracking: the phone's push token is kept with the account.

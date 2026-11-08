@@ -9,6 +9,7 @@ import 'package:http/testing.dart';
 import 'package:people/api/people_client.dart';
 import 'package:people/auth/auth_controller.dart';
 import 'package:people/auth/session_store.dart';
+import 'package:people/notifications/popup_memory.dart';
 import 'package:people/platform/biometrics.dart';
 import 'package:people/platform/device_name.dart';
 import 'package:people/platform/locator.dart';
@@ -113,12 +114,13 @@ class FakeLocator implements Locator {
 }
 
 /// The app's providers over the fakes. The client is built as the app builds it, a 401 signing out.
-List<Override> overridesFor(FakePeople people, {required MemorySessionStore store, FakeBiometrics? biometrics, FakeLocator? locator, MemoryLookStore? look}) => [
+List<Override> overridesFor(FakePeople people, {required MemorySessionStore store, FakeBiometrics? biometrics, FakeLocator? locator, MemoryLookStore? look, MemoryPopupMemory? popup}) => [
   sessionStoreProvider.overrideWithValue(store),
   lookStoreProvider.overrideWithValue(look ?? MemoryLookStore()),
   biometricsProvider.overrideWithValue(biometrics ?? FakeBiometrics(has: false)),
   deviceIdentityProvider.overrideWithValue(FakeIdentity()),
   locatorProvider.overrideWithValue(locator ?? FakeLocator()),
+  popupMemoryProvider.overrideWithValue(popup ?? MemoryPopupMemory()),
   peopleClientProvider.overrideWith(
     (ref) => PeopleClient(
       baseUrl: 'https://people.example.test',

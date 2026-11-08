@@ -1,7 +1,11 @@
 package com.trendlix.people
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.os.Build
+import android.os.Bundle
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -15,7 +19,24 @@ import java.io.File
 // (lib/platform/file_opener.dart, channel "people/files"): the bytes the app read with its session are kept in the app's
 // cache, the last one only, and the viewer reads that one file through the app's content link (FileProvider,
 // res/xml/shared_files.xml). Answers false when no app on the phone opens it.
+//
+// Push notifications (owner, 8 November 2026: "when there is a pending request make it to popup in the mobile app and
+// gives a push notification once requested"): People sends them on the channel "general" (packages/shared PUSH_CHANNEL),
+// made here at high importance, so Android shows each one on the screen with a sound, not only in the list.
 class MainActivity : FlutterFragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        notificationChannel()
+    }
+
+    private fun notificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        val channel = NotificationChannel("general", "General", NotificationManager.IMPORTANCE_HIGH)
+        channel.description = "Requests, decisions, payslips and reminders"
+        manager.createNotificationChannel(channel)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "people/files").setMethodCallHandler { call, result ->

@@ -106,6 +106,22 @@ class Apple:
             sys.exit(f'Apple refused {method} {path.split("?")[0]} ({e.code}): {detail}')
 
 
+def enable_push(apple: Apple, bundle_id: str) -> None:
+    """Push Notifications for the identifier (8 November 2026), once: a profile made after it has them."""
+    have = apple.call('GET', f'/v1/bundleIds/{bundle_id}/bundleIdCapabilities')['data']
+    if any(c['attributes'].get('capabilityType') == 'PUSH_NOTIFICATIONS' for c in have):
+        print(f'Push Notifications were already on for {BUNDLE_ID}.')
+        return
+    apple.call('POST', '/v1/bundleIdCapabilities', {
+        'data': {
+            'type': 'bundleIdCapabilities',
+            'attributes': {'capabilityType': 'PUSH_NOTIFICATIONS'},
+            'relationships': {'bundleId': {'data': {'type': 'bundleIds', 'id': bundle_id}}},
+        },
+    })
+    print(f'Turned on Push Notifications for {BUNDLE_ID}.')
+
+
 def run(*args: str, stdin: bytes | None = None) -> bytes:
     return subprocess.run(list(args), input=stdin, capture_output=True, check=True).stdout
 
@@ -130,6 +146,8 @@ def main() -> None:
         print(f'Registered the identifier {BUNDLE_ID}.')
     else:
         print(f'The identifier {BUNDLE_ID} was already registered.')
+    # push notifications (8 November 2026), before the profile is made
+    enable_push(apple, bundle['id'])
 
     # 2. an Apple Distribution certificate, its private key made here
     with tempfile.TemporaryDirectory() as tmp:

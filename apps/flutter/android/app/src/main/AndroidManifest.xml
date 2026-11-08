@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- the hourly location while checked in, read in the background (owner, 1 November 2026: "Silent automatic ping") -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- push notifications (8 November 2026): asked once after sign-in on Android 13 and later -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="Trendlix People"
         android:name="${applicationName}"
@@ -50,6 +52,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/shared_files" />
         </provider>
+        <!-- Push notifications (8 November 2026, lib/platform/push.dart): People sends them on the channel "general"
+             (MainActivity.kt makes it, high importance, so they show on the screen), with the bell as their small icon. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="general" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
