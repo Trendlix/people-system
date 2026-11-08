@@ -91,12 +91,22 @@ class LeaveType {
 
 List<LeaveType> leaveTypesOf(Object? json) => json is List ? [for (final t in json) LeaveType.fromJson(t)] : const [];
 
-/// A colleague who may cover the leave, or stand in for its employee.
-typedef Colleague = ({String id, String name, String? department, String? team, bool sameTeam});
+/// A colleague who may cover the leave, or stand in for its employee. [relation]: why they may cover (owner, 8 November
+/// 2026, packages/shared leave-coverage.ts): 'team', 'department', 'report' (reporting to the requester) or 'manager'
+/// (the requester's manager, listed only when none of the others is free).
+typedef Colleague = ({String id, String name, String? department, String? team, bool sameTeam, String relation});
 
 Colleague _colleague(Object? json) {
   final j = JsonMap(json);
-  return (id: j.str('id'), name: j.str('fullNameEn'), department: j.text('department'), team: j.text('team'), sameTeam: j.flag('sameTeam'));
+  final sameTeam = j.flag('sameTeam');
+  return (
+    id: j.str('id'),
+    name: j.str('fullNameEn'),
+    department: j.text('department'),
+    team: j.text('team'),
+    sameTeam: sameTeam,
+    relation: j.text('relation') ?? (sameTeam ? 'team' : 'department'),
+  );
 }
 
 /// Who is off when, who must cover and who may stand in, for the days a new leave would take
@@ -115,6 +125,7 @@ class LeaveFormCoverage {
     required this.group,
     required this.overLimit,
     required this.covering,
+    this.coverNoneFree = false,
   });
 
   factory LeaveFormCoverage.fromJson(Object? json) {
@@ -124,6 +135,7 @@ class LeaveFormCoverage {
       leaveDays: j.numberOrNull('leaveDays'),
       coverRequired: j.obj('cover').flag('required'),
       candidates: j.obj('cover').list('candidates', _colleague),
+      coverNoneFree: j.obj('cover').flag('noneFree'),
       standInNeeded: standIn.flag('needed'),
       standInDefault: standIn.obj('default').obj('employee').text('fullNameEn'),
       standInDefaultHr: standIn.obj('default').flag('hr'),
@@ -145,6 +157,10 @@ class LeaveFormCoverage {
   /// Annual or unpaid leave of more than 2 working days names a colleague who covers.
   final bool coverRequired;
   final List<Colleague> candidates;
+
+  /// The leave would need a cover, but nobody may cover its days (their department, their people and their manager all
+  /// off, or none): it goes without one (owner, 8 November 2026).
+  final bool coverNoneFree;
 
   /// Whether they decide others' requests, so someone stands in while they are away.
   final bool standInNeeded;

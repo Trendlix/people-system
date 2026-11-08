@@ -46,6 +46,12 @@ abstract final class LeaveWords {
   static const cover = 'Colleague who covers';
   static const chooseColleague = 'Choose a colleague';
   static const nobody = 'Nobody';
+  // who may cover (owner, 8 November 2026: "from the same department only"; "their manager can cover"; "managers can be
+  // covered by the people below them")
+  static const reportsToYou = 'reports to you';
+  static const yourManager = 'your manager';
+  static const onlyManagerFree = 'Nobody in your department is free on these days, so your manager can cover.';
+  static const noneFree = 'Nobody in your department, nor your manager, is free on these days, so this leave can go without a cover.';
   static const handover = 'Handover note';
   static const standIn = 'Stand-in while you are away';
   static String standInDefault(String name) => '$name (the default)';
@@ -110,6 +116,17 @@ double leaveDaysBetween(String start, String end, {required List<int> workingDay
 /// Whether a colleague must cover it (packages/shared leave-coverage.ts coverRequired): annual or unpaid leave of more
 /// than 2 counted days.
 bool coverRequiredFor(LeaveType t, double days) => (t.kind == 'annual' || t.kind == 'unpaid') && days > 2;
+
+/// How a colleague who may cover reads in the list: where they work, or why they're on it (reporting to the requester,
+/// or their manager).
+String coverLabel(Colleague c) => [
+  c.name,
+  ...switch (c.relation) {
+    'report' => [LeaveWords.reportsToYou],
+    'manager' => [LeaveWords.yourManager],
+    _ => [?c.team, ?c.department],
+  },
+].join(' · ');
 
 /// The types offered to someone: those on, for everyone or their gender, in Leave Setup's order.
 List<LeaveType> offeredLeaveTypes(List<LeaveType> types, String? gender) =>
@@ -347,6 +364,16 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(LeaveWords.overLimit(coverage.group ?? LeaveWords.yourTeam), style: text.bodySmall?.copyWith(color: p.ink)),
             ),
+          if (coverage.coverNoneFree)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(LeaveWords.noneFree, style: text.bodySmall?.copyWith(color: p.ink)),
+            ),
+          if (candidates.isNotEmpty && candidates.every((c) => c.relation == 'manager'))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(LeaveWords.onlyManagerFree, style: text.bodySmall?.copyWith(color: p.ink)),
+            ),
           if (coverNeeded || candidates.isNotEmpty)
             SheetField(
               label: LeaveWords.cover,
@@ -358,7 +385,7 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
                 placeholder: coverNeeded ? LeaveWords.chooseColleague : LeaveWords.nobody,
                 items: [
                   if (!coverNeeded) ('', LeaveWords.nobody),
-                  for (final c in candidates) (c.id, [c.name, ?c.team, ?c.department].join(' · ')),
+                  for (final c in candidates) (c.id, coverLabel(c)),
                 ],
                 onChanged: (id) => setState(() => _coverId = id == null || id.isEmpty ? null : id),
               ),

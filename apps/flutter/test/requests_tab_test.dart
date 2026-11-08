@@ -4,6 +4,7 @@ import 'package:people/features/requests/history.dart';
 import 'package:people/features/requests/kinds/leave.dart';
 import 'package:people/features/requests/request_text.dart';
 import 'package:people/features/requests/requests_words.dart';
+import 'package:people/models/request_forms.dart' show Colleague;
 import 'package:people/theme/parts.dart';
 
 import 'fakes.dart';
@@ -165,6 +166,51 @@ void main() {
     final fields = formFields(lastSent(people, 'POST /api/me/leave/requests'));
     expect(fields['coverId'], 'c-omar');
     expect(fields['handoverNote'], 'The edit is in the shared drive.');
+  });
+
+  // owner, 8 November 2026: "from the same department only"; "the employee who hasn't has a collegue, their manager can
+  // cover"; "managers can be covered by the people below them"
+  testWidgets('nobody in the department free: the manager covers, said so', (tester) async {
+    people.on(
+      'GET /api/me/leave/coverage',
+      (req) => json(
+        coverageJson(
+          required: true,
+          candidates: [
+            {'id': 'c-mona', 'fullNameEn': 'Mona Manager', 'department': 'Marketing', 'team': null, 'sameTeam': false, 'relation': 'manager'},
+          ],
+        ),
+      ),
+    );
+    await openRequestsTab(tester, people);
+    await tester.tap(find.text(RequestsWords.createRequest));
+    await tester.pumpAndSettle();
+    expect(find.text(LeaveWords.onlyManagerFree), findsOneWidget);
+    await tester.ensureVisible(find.text(LeaveWords.chooseColleague));
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    expect(find.text('Mona Manager · your manager'), findsWidgets);
+  });
+
+  testWidgets('nobody free to cover at all: the leave goes without one, said so', (tester) async {
+    people
+      ..on('GET /api/me/leave/coverage', (req) => json(coverageJson(candidates: [], noneFree: true)))
+      ..on('POST /api/me/leave/requests', (req) => json(leaveJson(id: 'new4'), 201));
+    await openRequestsTab(tester, people);
+    await tester.tap(find.text(RequestsWords.createRequest));
+    await tester.pumpAndSettle();
+    expect(find.text(LeaveWords.noneFree), findsOneWidget);
+    expect(find.text(LeaveWords.needsCover), findsNothing);
+    expect(find.text(LeaveWords.chooseColleague), findsNothing);
+    await sendLeave(tester);
+    expect(formFields(lastSent(people, 'POST /api/me/leave/requests')).containsKey('coverId'), isFalse);
+  });
+
+  test('a colleague who reports to the requester, or their manager, reads as such', () {
+    Colleague c(String relation) => (id: 'x', name: 'Rana Report', department: 'Sales', team: 'Field', sameTeam: false, relation: relation);
+    expect(coverLabel(c('team')), 'Rana Report · Field · Sales');
+    expect(coverLabel(c('report')), 'Rana Report · reports to you');
+    expect(coverLabel(c('manager')), 'Rana Report · your manager');
   });
 
   testWidgets('shows People’s refusal in its words, its dates as the website shows them', (tester) async {

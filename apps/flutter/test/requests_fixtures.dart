@@ -345,7 +345,7 @@ List<Map<String, Object?>> leaveTypesJson() => [
   leaveTypeJson('unpaid', 'Unpaid leave', halfDays: true, sort: 4),
 ];
 
-Map<String, Object?> coverageJson({bool required = false}) => {
+Map<String, Object?> coverageJson({bool required = false, List<Map<String, Object?>>? candidates, bool noneFree = false}) => {
   'group': {'id': 'g1', 'nameEn': 'Video', 'team': true},
   'limit': null,
   'limited': false,
@@ -357,10 +357,13 @@ Map<String, Object?> coverageJson({bool required = false}) => {
   'cover': {
     'required': required,
     'overDays': 2,
-    'candidates': [
-      {'id': 'c-omar', 'fullNameEn': 'Omar Adel', 'department': 'Production', 'team': 'Video', 'sameTeam': true},
-      {'id': 'c-nour', 'fullNameEn': 'Nour Samir', 'department': 'Production', 'team': 'Photo', 'sameTeam': false},
-    ],
+    'candidates':
+        candidates ??
+        [
+          {'id': 'c-omar', 'fullNameEn': 'Omar Adel', 'department': 'Production', 'team': 'Video', 'sameTeam': true, 'relation': 'team'},
+          {'id': 'c-nour', 'fullNameEn': 'Nour Samir', 'department': 'Production', 'team': 'Photo', 'sameTeam': false, 'relation': 'department'},
+        ],
+    'noneFree': noneFree,
   },
   'standIn': {'needed': false, 'default': null, 'options': <Object>[], 'hr': true, 'cLevel': false},
 };
