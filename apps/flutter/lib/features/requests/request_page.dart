@@ -9,6 +9,7 @@ import '../../providers.dart';
 import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import '../../theme/wide.dart';
 import 'approvals.dart';
 import 'kinds/claim.dart';
 import 'kinds/compensatory.dart';
@@ -169,9 +170,35 @@ RequestDetail detailOf(PeopleRequest r) => switch (r) {
   _ => basicDetail(r, title: r.kind.name, facts: const []),
 };
 
+/// Where a request opens beside its list on an iPad (owner, 8 November 2026: "i think the Ipad needs a better layout with
+/// some more features available due to the larger screen"): the Requests tab in two panes says which is open and opens
+/// another there ([open] false when the panes are gone, e.g. the iPad turned upright: then it is pushed as on a phone).
+class RequestPane extends InheritedWidget {
+  const RequestPane({super.key, required this.selected, required this.open, required super.child});
+
+  /// The open request's key ("leave:l1", as HistoryRow.key).
+  final String? selected;
+  final bool Function(PeopleRequest r, {String? notice}) open;
+
+  static RequestPane? of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<RequestPane>();
+
+  @override
+  bool updateShouldNotify(RequestPane old) => old.selected != selected;
+}
+
+/// A request's key, as its row in Recent requests has it.
+String requestKeyOf(PeopleRequest r) => '${r.kind.name}:${r.id}';
+
+/// Opens a request's page: beside the list when the Requests tab shows two panes, else pushed in the tab, as on a phone.
+void openRequest(BuildContext context, PeopleRequest r, {String? notice}) {
+  final pane = context.getInheritedWidgetOfExactType<RequestPane>();
+  if (pane != null && pane.open(r, notice: notice)) return;
+  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => RequestPage(kind: r.kind, id: r.id, initial: r, notice: notice)));
+}
+
 /// The page: read again from People when opened without the request in hand, or pulled down.
 class RequestPage extends ConsumerStatefulWidget {
-  const RequestPage({super.key, required this.kind, required this.id, this.initial, this.notice});
+  const RequestPage({super.key, required this.kind, required this.id, this.initial, this.notice, this.inPane = false});
 
   final RequestKind kind;
   final String id;
@@ -179,6 +206,9 @@ class RequestPage extends ConsumerStatefulWidget {
 
   /// What was just done (sent, cancelled), said at the top.
   final String? notice;
+
+  /// Beside the list on an iPad (8 November 2026): no way back, the pane's own margins.
+  final bool inPane;
 
   @override
   ConsumerState<RequestPage> createState() => _RequestPageState();
@@ -311,13 +341,12 @@ class _RequestPageState extends ConsumerState<RequestPage> {
     final text = Theme.of(context).textTheme;
     final r = _request;
     final d = r == null ? null : detailOf(r);
-    return Scaffold(
-      backgroundColor: p.canvas,
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          padding: tabPagePadding(context).copyWith(top: 4),
-          children: [
+    final page = RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: widget.inPane ? panePadding(context) : tabPagePadding(context).copyWith(top: 4),
+        children: [
+          if (!widget.inPane) ...[
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
@@ -328,172 +357,173 @@ class _RequestPageState extends ConsumerState<RequestPage> {
               ),
             ),
             const SizedBox(height: 6),
-            if (d == null) ...[
-              if (_failed == null)
-                const Padding(
-                  padding: EdgeInsets.all(40),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else
-                Notice(text: _failed!, ok: false, action: RequestsWords.tryAgain, onAction: _load),
-            ] else ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: PageHead(eyebrow: RequestsWords.theRequest, title: d.title),
-                  ),
-                  const SizedBox(width: 12),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 22),
-                    child: IconTile(kindIcons[widget.kind] ?? CupertinoIcons.doc_text, onCard: false),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  StatusBadge(label: d.status, state: d.state),
-                  Text(d.subline, style: text.bodySmall),
-                ],
-              ),
-              if (d.banner != null) ...[const SizedBox(height: 14), Notice(text: d.banner!, ok: true)],
-              if (_notice != null) ...[
-                const SizedBox(height: 14),
-                Semantics(
-                  liveRegion: true,
-                  child: Notice(text: _notice!, ok: _noticeOk),
+          ],
+          if (d == null) ...[
+            if (_failed == null)
+              const Padding(
+                padding: EdgeInsets.all(40),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              Notice(text: _failed!, ok: false, action: RequestsWords.tryAgain, onAction: _load),
+          ] else ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: PageHead(eyebrow: RequestsWords.theRequest, title: d.title),
+                ),
+                const SizedBox(width: 12),
+                Padding(
+                  padding: const EdgeInsets.only(top: 22),
+                  child: IconTile(kindIcons[widget.kind] ?? CupertinoIcons.doc_text, onCard: false),
                 ),
               ],
-              const SizedBox(height: 20),
-              SurfaceCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final (i, f) in d.facts.indexed) ...[
-                      if (i > 0) Divider(height: 26, color: p.line),
-                      Text(f.label, style: text.bodySmall),
-                      const SizedBox(height: 3),
-                      Text(f.value, style: text.bodyLarge),
-                      if (f.note != null) ...[const SizedBox(height: 2), Text(f.note!, style: text.bodySmall)],
-                    ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                StatusBadge(label: d.status, state: d.state),
+                Text(d.subline, style: text.bodySmall),
+              ],
+            ),
+            if (d.banner != null) ...[const SizedBox(height: 14), Notice(text: d.banner!, ok: true)],
+            if (_notice != null) ...[
+              const SizedBox(height: 14),
+              Semantics(
+                liveRegion: true,
+                child: Notice(text: _notice!, ok: _noticeOk),
+              ),
+            ],
+            const SizedBox(height: 20),
+            SurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (i, f) in d.facts.indexed) ...[
+                    if (i > 0) Divider(height: 26, color: p.line),
+                    Text(f.label, style: text.bodySmall),
+                    const SizedBox(height: 3),
+                    Text(f.value, style: text.bodyLarge),
+                    if (f.note != null) ...[const SizedBox(height: 2), Text(f.note!, style: text.bodySmall)],
                   ],
-                ),
+                ],
               ),
-              if (d.opens case final o?) ...[
-                const SizedBox(height: 16),
-                SurfaceCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(o.title, style: text.titleLarge),
-                      for (final n in o.notes) ...[const SizedBox(height: 10), Text(n, style: text.bodyMedium)],
-                      for (final f in o.files) ...[
-                        const SizedBox(height: 14),
-                        OutlinedButton.icon(
-                          onPressed: _opening != null ? null : () => _open(f, o.noViewer),
-                          icon: _opening == f.path
-                              ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : Icon(CupertinoIcons.doc_text, size: 18, color: p.ink),
-                          label: Text(f.button),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-              if (d.files != null) ...[
-                const SizedBox(height: 16),
-                SurfaceCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(d.filesTitle ?? '', style: text.titleLarge),
-                      const SizedBox(height: 12),
-                      if (d.files!.isEmpty) Text(d.filesEmpty ?? '', style: text.bodyMedium?.copyWith(color: p.muted)),
-                      for (final f in d.files!)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Row(
-                            children: [
-                              Icon(CupertinoIcons.paperclip, size: 16, color: p.ink),
-                              const SizedBox(width: 8),
-                              Expanded(child: Text(f, style: text.bodyMedium)),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-              // its step waits for the one reading it (4 November 2026): Reject and Approve
-              if (r != null && r.waitingForYou && approvableKinds.contains(r.kind)) ...[
-                const SizedBox(height: 16),
-                SurfaceCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(ApproveWords.decideTitle, style: text.titleLarge),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _busy ? null : () => _decide(r, approve: false),
-                              style: OutlinedButton.styleFrom(foregroundColor: p.danger, side: BorderSide(color: p.danger.withValues(alpha: 0.5))),
-                              child: const Text(ApproveWords.reject),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: _busy ? null : () => _decide(r, approve: true),
-                              child: Text(_busy ? ApproveWords.sending : ApproveWords.approve),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              for (final a in d.actions) ...[
-                const SizedBox(height: 16),
-                SurfaceCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(a.title, style: text.titleLarge),
-                      const SizedBox(height: 14),
-                      OutlinedButton(
-                        onPressed: _busy ? null : () => _act(a),
-                        style: OutlinedButton.styleFrom(foregroundColor: p.danger, side: BorderSide(color: p.danger.withValues(alpha: 0.5))),
-                        child: Text(_busy ? RequestsWords.sending : a.button),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            ),
+            if (d.opens case final o?) ...[
               const SizedBox(height: 16),
               SurfaceCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(RequestsWords.everyStep, style: text.titleLarge),
-                    const SizedBox(height: 14),
-                    if (d.steps.isEmpty) Text(RequestsWords.noSteps, style: text.bodyMedium?.copyWith(color: p.muted)),
-                    for (final (i, s) in d.steps.indexed) _StepRow(step: s, last: i == d.steps.length - 1),
+                    Text(o.title, style: text.titleLarge),
+                    for (final n in o.notes) ...[const SizedBox(height: 10), Text(n, style: text.bodyMedium)],
+                    for (final f in o.files) ...[
+                      const SizedBox(height: 14),
+                      OutlinedButton.icon(
+                        onPressed: _opening != null ? null : () => _open(f, o.noViewer),
+                        icon: _opening == f.path
+                            ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : Icon(CupertinoIcons.doc_text, size: 18, color: p.ink),
+                        label: Text(f.button),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ],
+            if (d.files != null) ...[
+              const SizedBox(height: 16),
+              SurfaceCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(d.filesTitle ?? '', style: text.titleLarge),
+                    const SizedBox(height: 12),
+                    if (d.files!.isEmpty) Text(d.filesEmpty ?? '', style: text.bodyMedium?.copyWith(color: p.muted)),
+                    for (final f in d.files!)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Icon(CupertinoIcons.paperclip, size: 16, color: p.ink),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(f, style: text.bodyMedium)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            // its step waits for the one reading it (4 November 2026): Reject and Approve
+            if (r != null && r.waitingForYou && approvableKinds.contains(r.kind)) ...[
+              const SizedBox(height: 16),
+              SurfaceCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(ApproveWords.decideTitle, style: text.titleLarge),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _busy ? null : () => _decide(r, approve: false),
+                            style: OutlinedButton.styleFrom(foregroundColor: p.danger, side: BorderSide(color: p.danger.withValues(alpha: 0.5))),
+                            child: const Text(ApproveWords.reject),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _busy ? null : () => _decide(r, approve: true),
+                            child: Text(_busy ? ApproveWords.sending : ApproveWords.approve),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            for (final a in d.actions) ...[
+              const SizedBox(height: 16),
+              SurfaceCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(a.title, style: text.titleLarge),
+                    const SizedBox(height: 14),
+                    OutlinedButton(
+                      onPressed: _busy ? null : () => _act(a),
+                      style: OutlinedButton.styleFrom(foregroundColor: p.danger, side: BorderSide(color: p.danger.withValues(alpha: 0.5))),
+                      child: Text(_busy ? RequestsWords.sending : a.button),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            SurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(RequestsWords.everyStep, style: text.titleLarge),
+                  const SizedBox(height: 14),
+                  if (d.steps.isEmpty) Text(RequestsWords.noSteps, style: text.bodyMedium?.copyWith(color: p.muted)),
+                  for (final (i, s) in d.steps.indexed) _StepRow(step: s, last: i == d.steps.length - 1),
+                ],
+              ),
+            ),
           ],
-        ),
+        ],
       ),
     );
+    return widget.inPane ? Material(type: MaterialType.transparency, child: page) : Scaffold(backgroundColor: p.canvas, body: page);
   }
 }
 

@@ -59,7 +59,7 @@ class _PeopleAppState extends ConsumerState<PeopleApp> {
       GoRoute(path: '/sign-in', builder: (context, state) => const AuthGate()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => _SignedIn(
-          builder: (me) => AppShell(shell: shell, me: me),
+          builder: (me) => AppShell(shell: shell, me: me, location: state.uri.path),
         ),
         branches: [
           StatefulShellBranch(

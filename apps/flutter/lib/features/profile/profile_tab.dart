@@ -68,6 +68,8 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
       );
     }
     final profile = ref.watch(ownProfileProvider);
+    // the page's own width beside the rail or the sidebar (app_shell.dart tells it): room for two columns
+    final columns = roomForTwo(context, MediaQuery.sizeOf(context).width, from: Tokens.twoColumnsFrom);
     return RefreshIndicator(
       onRefresh: () async {
         ref
@@ -77,9 +79,9 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
         await ref.read(ownProfileProvider.future).catchError((_) => null);
       },
       child: ListView(
-        padding: tabPagePadding(context),
+        padding: columns ? tabPagePadding(context, max: Tokens.wideMaxWidth) : tabPagePadding(context),
         children: switch (profile) {
-          AsyncValue(value: final OwnProfile p) => _page(p),
+          AsyncValue(value: final OwnProfile p) => columns ? _inColumns(p) : _page(p),
           AsyncError(:final error) => [
             LoadFailed(error: error, what: ProfileWords.notLoaded, onRetry: () => ref.invalidate(ownProfileProvider)),
             const SizedBox(height: 12),
@@ -111,6 +113,43 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
       _DocumentsCard(profile: p),
       const SizedBox(height: 12),
       const _AccountCard(employee: true),
+    ];
+  }
+
+  /// On an iPad (owner, 8 November 2026: "i think the Ipad needs a better layout with some more features available due
+  /// to the larger screen"): the same cards in two columns, who they are, the four tiles, the papers and the account on
+  /// the left, the Personal · Contact · Employment · KPIs switch and its card on the right, in sight together.
+  List<Widget> _inColumns(OwnProfile p) {
+    final details = EmployeeDetails.of(p);
+    Widget column(List<Widget> children) => Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+    );
+    return [
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          column([
+            _HeadCard(profile: p, job: details.job),
+            const SizedBox(height: 12),
+            _Tiles(job: details.job),
+            const SizedBox(height: 12),
+            _DocumentsCard(profile: p),
+            const SizedBox(height: 12),
+            const _AccountCard(employee: true),
+          ]),
+          const SizedBox(width: 16),
+          column([
+            _SectionSwitch(selected: _section, onChanged: (s) => setState(() => _section = s), fourFrom: 400),
+            const SizedBox(height: 12),
+            switch (_section) {
+              ProfileSection.personal => _DetailsCard.personal(profile: p, details: details),
+              ProfileSection.contact => _DetailsCard.contact(profile: p, details: details),
+              ProfileSection.employment => _EmploymentCard(job: details.job),
+              ProfileSection.kpis => const _KpisCard(),
+            },
+          ]),
+        ],
+      ),
     ];
   }
 }
@@ -347,10 +386,13 @@ class _Tile extends StatelessWidget {
 // ---------- the switch ----------
 
 class _SectionSwitch extends StatelessWidget {
-  const _SectionSwitch({required this.selected, required this.onChanged});
+  const _SectionSwitch({required this.selected, required this.onChanged, this.fourFrom = Tokens.wideFrom});
 
   final ProfileSection selected;
   final ValueChanged<ProfileSection> onChanged;
+
+  /// From this width one row of four (an iPad's column, 8 November 2026, is room enough from 400).
+  final double fourFrom;
 
   @override
   Widget build(BuildContext context) {
@@ -394,7 +436,7 @@ class _SectionSwitch extends StatelessWidget {
         ),
         // two rows of two on a phone, one row of four on an iPad (7 November 2026)
         child: LayoutBuilder(
-          builder: (context, c) => isWide(c.maxWidth)
+          builder: (context, c) => c.maxWidth >= fourFrom
               ? Row(
                   children: [
                     for (final (i, s) in ProfileSection.values.indexed) ...[if (i > 0) const SizedBox(width: 4), item(s)],

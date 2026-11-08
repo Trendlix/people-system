@@ -13,7 +13,7 @@ import 'attendance_words.dart';
 /// and absent, leave in Zoho only, no check-in when there are any), today ringed, and the legend. From the month's own
 /// days, nothing else; a day on record opens its details.
 class CalendarCard extends StatefulWidget {
-  const CalendarCard({super.key, required this.month, required this.data, required this.today, required this.onOpenDay});
+  const CalendarCard({super.key, required this.month, required this.data, required this.today, required this.onOpenDay, this.selected});
 
   /// YYYY-MM.
   final String month;
@@ -24,6 +24,9 @@ class CalendarCard extends StatefulWidget {
   /// YYYY-MM-DD.
   final String today;
   final ValueChanged<String> onOpenDay;
+
+  /// The day shown beside the calendar on an iPad (8 November 2026): a bar under it.
+  final String? selected;
 
   @override
   State<CalendarCard> createState() => _CalendarCardState();
@@ -90,6 +93,7 @@ class _CalendarCardState extends State<CalendarCard> {
                               date: date,
                               day: data.dayOn(date),
                               today: date == widget.today,
+                              selected: date == widget.selected,
                               onTap: data.dayOn(date) == null ? null : () => widget.onOpenDay(date),
                             )
                           : const SizedBox(height: 58),
@@ -220,12 +224,15 @@ class _Arrow extends StatelessWidget {
 
 /// A day: its number and a dot by what it was; today ringed. Days with nothing on record dashed.
 class _DayCell extends StatelessWidget {
-  const _DayCell({required this.date, required this.day, required this.today, required this.onTap});
+  const _DayCell({required this.date, required this.day, required this.today, required this.onTap, this.selected = false});
 
   final String date;
   final DayRecord? day;
   final bool today;
   final VoidCallback? onTap;
+
+  /// Shown beside the calendar (an iPad, 8 November 2026): a short bar under it, in the weeks' gap.
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -280,9 +287,28 @@ class _DayCell extends StatelessWidget {
         ],
       );
     }
+    if (selected) {
+      cell = Stack(
+        clipBehavior: Clip.none,
+        fit: StackFit.passthrough,
+        children: [
+          cell,
+          Positioned(
+            left: 12,
+            right: 12,
+            bottom: -6,
+            height: 3,
+            child: IgnorePointer(
+              child: DecoratedBox(decoration: BoxDecoration(color: p.ink, borderRadius: BorderRadius.circular(Tokens.radiusPill))),
+            ),
+          ),
+        ],
+      );
+    }
     final what = day == null ? AttendanceWords.nothingOnRecord : AttendanceWords.statusOf(day!.status);
     return Semantics(
       button: onTap != null,
+      selected: selected,
       label: AttendanceWords.cellLabel(AttendanceWords.dayLong(date), what, today: today),
       excludeSemantics: true,
       child: GestureDetector(

@@ -31,6 +31,7 @@ Future<void> openRequestSheet(
 }) {
   final tab = Navigator.of(context);
   final root = Navigator.of(context, rootNavigator: true);
+  final pane = context.getInheritedWidgetOfExactType<RequestPane>();
   return showDesignSheet<void>(
     root.context,
     eyebrow: eyebrow,
@@ -38,6 +39,8 @@ Future<void> openRequestSheet(
     icon: icon,
     builder: (sheetContext) => builder(sheetContext, (made, notice) {
       Navigator.of(sheetContext).pop();
+      // beside the list on an iPad in two panes (8 November 2026), else pushed in the tab
+      if (pane != null && pane.open(made, notice: notice)) return;
       tab.push(MaterialPageRoute<void>(builder: (_) => RequestPage(kind: made.kind, id: made.id, initial: made, notice: notice)));
     }),
   );

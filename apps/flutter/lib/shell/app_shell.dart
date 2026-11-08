@@ -7,12 +7,10 @@ import 'package:go_router/go_router.dart';
 
 import '../api/people_client.dart';
 import '../auth/auth_controller.dart';
-import '../features/about/diagnostics.dart' show AboutWords, versionLineOf;
+import '../features/about/diagnostics.dart' show versionLineOf;
 import '../features/kpis/kpi_reminder.dart';
-import '../features/kpis/kpi_words.dart' show KpiWords;
 import '../features/manual_changes/manual_changes.dart';
 import '../features/timesheet/timesheet_data.dart';
-import '../features/timesheet/timesheet_words.dart';
 import '../features/review/review_gate.dart';
 import '../format.dart';
 import '../models/me.dart';
@@ -23,20 +21,27 @@ import '../theme/tokens.dart';
 import '../theme/wide.dart';
 import 'notifications.dart';
 import 'shell_words.dart';
+import 'side_nav.dart';
 
 // The app's frame, from the phone design (Figma "Mobile Flutter App", 30 October 2026): the header (the wordmark's
 // tile, the sun/moon, the bell, the avatar that opens the account's menu), the tab's page, and the floating, frosted tab
 // bar at the bottom: Dashboard, Requests, Attendance, Profile, and More, which opens the menu. On an iPad (7 November 2026)
-// the header and the page keep to a column in the middle and the tab bar to its own width (wide.dart).
+// the header and the page keep to a column in the middle and the tab bar to its own width (wide.dart). Since 8 November
+// 2026 (owner: "i think the Ipad needs a better layout with some more features available due to the larger screen") a
+// wide window has the rail or the sidebar on the left instead (side_nav.dart: the tabs and the More menu's places), the
+// sun/moon and the bell over the page; a phone, or a narrow window on an iPad, keeps the tab bar.
 
 /// The four tabs with pages, in the bar's order (More is the menu, not a page).
 const shellTabs = ['/dashboard', '/requests', '/attendance', '/profile'];
 
 class AppShell extends ConsumerStatefulWidget {
-  const AppShell({super.key, required this.shell, required this.me});
+  const AppShell({super.key, required this.shell, required this.me, this.location = ''});
 
   final StatefulNavigationShell shell;
   final Me me;
+
+  /// The page's address, for the place the iPad's rail or sidebar marks.
+  final String location;
 
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
@@ -87,6 +92,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final layout = navLayoutOf(MediaQuery.sizeOf(context));
+    if (layout != NavLayout.phone) return _wide(context, layout);
     final bottom = MediaQuery.paddingOf(context).bottom;
     final theme = Theme.of(context);
     // a message (a SnackBar) shows above the floating tab bar, never over it
@@ -121,6 +128,83 @@ class _AppShellState extends ConsumerState<AppShell> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// An iPad's frame (8 November 2026): the rail or the sidebar, and beside it the sun/moon and the bell over the tab's
+  /// page. The page is told its own width (what it centres in) and that no tab bar covers its foot (wide.dart); a message
+  /// shows at the foot of the page, in its middle.
+  Widget _wide(BuildContext context, NavLayout layout) {
+    final window = MediaQuery.of(context);
+    final aside = layout == NavLayout.rail ? Tokens.railWidth : Tokens.sidebarWidth;
+    final page = window.copyWith(
+      size: Size(window.size.width - aside, window.size.height),
+      padding: window.padding.copyWith(left: 0),
+      viewPadding: window.viewPadding.copyWith(left: 0),
+    );
+    return ReviewGate(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SideNav(layout: layout, me: widget.me, location: widget.location, onTab: _go),
+          Expanded(
+            child: MediaQuery(
+              data: page,
+              child: NavScope(
+                layout: layout,
+                child: Builder(
+                  builder: (context) {
+                    final theme = Theme.of(context);
+                    final inset = centredPadding(context, EdgeInsets.fromLTRB(16, 0, 16, 16 + page.padding.bottom), max: Tokens.noticeMaxWidth);
+                    return Theme(
+                      data: theme.copyWith(snackBarTheme: theme.snackBarTheme.copyWith(insetPadding: inset)),
+                      child: Scaffold(
+                        body: SafeArea(
+                          bottom: false,
+                          left: false,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const _WideBar(),
+                              Expanded(child: widget.shell),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Over an iPad's page: the sun/moon and the bell, on the right, as the website's header has them.
+class _WideBar extends ConsumerWidget {
+  const _WideBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = context.palette;
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: p.line))),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          IconButton(
+            tooltip: p.isDark ? ShellWords.toLight : ShellWords.toDark,
+            onPressed: () => ref.read(lookProvider.notifier).toggle(p.brightness),
+            icon: Icon(p.isDark ? CupertinoIcons.sun_max : CupertinoIcons.moon, size: 21, color: p.ink),
+          ),
+          const Bell(),
+        ],
       ),
     );
   }
@@ -347,24 +431,9 @@ Future<void> showMoreMenu(BuildContext context, Me me) {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                    if (me.employeeId != null) ...[
-                      _MenuRow(icon: CupertinoIcons.person, label: ShellWords.viewProfile, onTap: () => go('/profile')),
-                      _MenuRow(icon: CupertinoIcons.person_crop_square, label: ShellWords.changePhoto, onTap: () => go('/profile/photo')),
-                      // what the company handed them (owner, 31 October 2026: "every employee sees his assets")
-                      _MenuRow(icon: CupertinoIcons.cube_box, label: ShellWords.assets, onTap: () => go('/profile/assets')),
-                    ],
-                    _MenuRow(icon: CupertinoIcons.lock, label: ShellWords.password, onTap: () => go('/profile/password')),
-                    _MenuRow(icon: CupertinoIcons.device_phone_portrait, label: ShellWords.devices, onTap: () => go('/profile/sessions')),
-                    if (me.employeeId != null) _MenuRow(icon: CupertinoIcons.clock, label: ShellWords.hiring, onTap: () => go('/profile/interview-hours')),
-                    // their people's KPI scorecards to score and sign (owner, 31 October 2026), as the website offers Team KPIs
-                    // their own KPIs, easy to find (owner, 2 November 2026: "the employees cant find the KPIs in the app")
-                    if (me.employeeId != null) _MenuRow(icon: CupertinoIcons.graph_square, label: KpiWords.myTitle, onTap: () => go('/dashboard/performance')),
-                    if (me.scoresTeam) _MenuRow(icon: CupertinoIcons.person_2, label: KpiWords.teamTitle, onTap: () => go('/dashboard/performance/team')),
-                    // their hours, for those on timesheets only (owner, 4 November 2026)
-                    if (me.employeeId != null && ref.watch(logsHoursProvider).value == true)
-                      _MenuRow(icon: CupertinoIcons.timer, label: TimesheetWords.menu, onTap: () => go('/dashboard/timesheet')),
-                    // the app's version and what helps find a problem (owner, 31 October 2026)
-                    _MenuRow(icon: CupertinoIcons.info, label: AboutWords.menu, onTap: () => go('/profile/about')),
+                    // the places as the iPad's rail and sidebar list them too (side_nav.dart morePlaces, 8 November 2026)
+                    for (final place in morePlaces(me, logsHours: me.employeeId != null && ref.watch(logsHoursProvider).value == true))
+                      _MenuRow(icon: place.icon, label: place.label, onTap: () => go(place.path)),
                     ],
                   ),
                 ),
@@ -429,6 +498,10 @@ class _MenuRow extends StatelessWidget {
   }
 }
 
-/// The room a tab's page leaves at its foot for the tab bar; on an iPad, its column in the middle.
-EdgeInsets tabPagePadding(BuildContext context) =>
-    centredPadding(context, Tokens.pagePadding.copyWith(bottom: Tokens.underTabBar + MediaQuery.paddingOf(context).bottom));
+/// The room a tab's page leaves at its foot for the tab bar; on an iPad, its column in the middle, at most [max] wide
+/// (beside the rail or the sidebar, no tab bar to leave room for: 8 November 2026).
+EdgeInsets tabPagePadding(BuildContext context, {double max = Tokens.pageMaxWidth}) => centredPadding(
+  context,
+  Tokens.pagePadding.copyWith(bottom: (hasTabBar(context) ? Tokens.underTabBar : Tokens.pagePadding.bottom) + MediaQuery.paddingOf(context).bottom),
+  max: max,
+);
