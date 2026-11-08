@@ -142,6 +142,30 @@ List<FigureTile> figureTiles(MyMonth m) {
   return null;
 }
 
+/// A day's attendance percentage on its row (owner, 8 November 2026: "show the checking time and the checkout time with
+/// the attendance percentage without expandding the field"): People's attendance rate (packages/shared
+/// attendance-history.ts attendanceRates, the payroll's measure, as the rate card shows the month and its weeks) over the
+/// one day: its hours counted and its permission ÷ the shift's hours that day (`expectedHours`), so 100% exactly when the
+/// day isn't short; above 1 with extra time; null on a day not worked or without a shift.
+double? dayRateOf(DayRecord d) {
+  final due = d.expectedHours;
+  if (!d.worked || due == null || due <= 0) return null;
+  return (d.hoursCounted + (d.permissionHours > 0 ? d.permissionHours : 0)) / due;
+}
+
+/// A worked day's times on its row (owner, 8 November 2026), as its details show them: the first check-in and the last
+/// check-out (People's, packages/shared check-in.ts dayFromPunches), each on the phone's clock, and whether People finds
+/// one missing (`missingCheckIn`, `missingCheckOut`); null on a day not worked or without either time.
+({String? checkIn, String? checkOut, bool noCheckIn, bool noCheckOut})? rowTimesOf(DayRecord d) {
+  if (!d.worked || (d.checkIn == null && d.checkOut == null)) return null;
+  return (
+    checkIn: d.checkIn == null ? null : clockOf(d.checkIn!),
+    checkOut: d.checkOut == null ? null : clockOf(d.checkOut!),
+    noCheckIn: d.checkIn == null && d.missingCheckIn,
+    noCheckOut: d.checkOut == null && d.missingCheckOut,
+  );
+}
+
 /// A day's pairs, its break and an open last check-in, when it has several pairs or an open one after them; else null.
 ({String pairs, String? breakText, String? open})? pairsOf(DayRecord d) {
   final pairs = d.pairs ?? const <PressPair>[];

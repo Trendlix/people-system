@@ -133,6 +133,25 @@ abstract final class AttendanceWords {
   static String correctionOf(String status) => 'Correction ${status[0].toLowerCase()}${status.substring(1)}';
   static String openDay(String day) => 'Open $day';
 
+  // a day's row shows its check-in, its check-out and its attendance percentage without opening it (owner, 8 November
+  // 2026: "show the checking time and the checkout time with the attendance percentage without expandding the field")
+  static const noCheckIn = 'no check-in';
+  static const noCheckOut = 'no check-out';
+
+  /// "08:57 – 17:57" (as [times] says a day on record); one alone on a day that needs no other: "In at 08:57".
+  static String rowTimes(String? came, String? left) =>
+      came != null && left != null ? '$came – $left' : (came != null ? inAt(came) : outAt(left ?? ''));
+
+  /// The times for a screen reader: "Check-in 08:57, check-out 17:57", "Check-in 08:57, no check-out".
+  static String rowTimesLabel(String? came, String? left) =>
+      '${came == null ? 'No check-in' : '$checkIn $came'}, ${left == null ? noCheckOut : '${checkOut.toLowerCase()} $left'}';
+
+  /// The day's percentage for a screen reader: "Attendance 100%".
+  static String dayRateLabel(String percent) => 'Attendance $percent';
+
+  /// The day's hours for a screen reader: "Hours 9:00".
+  static String hoursLabel(String h) => '$hours $h';
+
   static const statuses = {
     'worked': 'Worked',
     'absent': 'Absent',
@@ -303,7 +322,7 @@ abstract final class AttendanceWords {
   static const noCheckInOrOut = 'No check-in or check-out';
   static const absent = 'Absent';
   static const leaveLike = {'rest': 'Rest day', 'holiday': 'Official holiday', 'leave': 'On leave', 'zoho_leave': 'Leave in Zoho only', 'no_check_in': 'No check-in', 'no_record': 'No record'};
-  static String times(String? checkIn, String? checkOut) => '${checkIn ?? 'no check-in'} – ${checkOut ?? 'no check-out'}';
+  static String times(String? checkIn, String? checkOut) => '${checkIn ?? noCheckIn} – ${checkOut ?? noCheckOut}';
   static const whereItStands = 'Where it stands';
   static const rejectedBecause = 'Why it was rejected';
   static String appliedOn(String when) => 'The day was corrected $when';
@@ -367,8 +386,9 @@ abstract final class AttendanceWords {
   /// Tuesday 27/10/2026.
   static String dayTitle(String iso) => '${_weekdays[_date(iso).weekday - 1]} ${dmy(iso)}';
 
-  /// "Thu 01" over "/10/2026", as a day's row starts.
-  static ({String day, String rest}) dayLabel(String iso) => (day: '${_weekdaysShort[_date(iso).weekday - 1]} ${iso.substring(8, 10)}', rest: '/${iso.substring(5, 7)}/${iso.substring(0, 4)}');
+  /// "Thu 01 Oct", as a day's row starts: on one line, the year the card's (8 November 2026: "Thu 01" over "/10/2026"
+  /// read as broken on the phone).
+  static String dayLabel(String iso) => '${_weekdaysShort[_date(iso).weekday - 1]} ${iso.substring(8, 10)} ${monthsShort[int.parse(iso.substring(5, 7)) - 1]}';
 
   /// Sun, Mon … Sat, the calendar's columns.
   static const weekdayColumns = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

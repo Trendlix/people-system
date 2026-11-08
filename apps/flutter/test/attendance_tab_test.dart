@@ -123,7 +123,7 @@ void main() {
     expect(find.text('8:52 daily average'), findsNothing);
     expect(find.bySemanticsLabel(RegExp('8:52 daily average')), findsOneWidget);
 
-    await reach(tester, find.text('Thu 01'));
+    await reach(tester, find.text('Thu 01 Oct'));
     expect(find.text(AttendanceWords.yourDays), findsOneWidget);
     expect(find.text(AttendanceWords.myCorrections), findsOneWidget);
     expect(find.text(AttendanceWords.askCorrection), findsOneWidget);
@@ -152,8 +152,8 @@ void main() {
 
   testWidgets('opens a day’s details: its pairs, break, balance and where it came from', (tester) async {
     await openAttendance(tester, people);
-    await reach(tester, find.text('Mon 12'));
-    await tester.tap(find.text('Mon 12'));
+    await reach(tester, find.text('Mon 12 Oct'));
+    await tester.tap(find.text('Mon 12 Oct'));
     await tester.pumpAndSettle();
     expect(find.text('Monday 12/10/2026'), findsOneWidget);
     expect(find.text('Break 50 min'), findsOneWidget);
@@ -165,15 +165,15 @@ void main() {
 
   testWidgets('a day with a correction being decided says so, and a corrected day what it was', (tester) async {
     await openAttendance(tester, people);
-    await reach(tester, find.text('Mon 26'));
-    await tester.tap(find.text('Mon 26'));
+    await reach(tester, find.text('Mon 26 Oct'));
+    await tester.tap(find.text('Mon 26 Oct'));
     await tester.pumpAndSettle();
     expect(find.text('Correction with the manager'), findsWidgets);
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
 
-    await reach(tester, find.text('Tue 13'));
-    await tester.tap(find.text('Tue 13'));
+    await reach(tester, find.text('Tue 13 Oct'));
+    await tester.tap(find.text('Tue 13 Oct'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Corrected from '), findsOneWidget);
   });
@@ -181,8 +181,8 @@ void main() {
   testWidgets('asks for a correction from a day, sending the body People takes', (tester) async {
     people.on('POST /api/me/attendance/corrections', (req) => json({...correctionJson(id: 'c9'), 'date': '2026-10-27', 'correctionKind': 'wrong_time'}, 201));
     await openAttendance(tester, people);
-    await reach(tester, find.text('Tue 27'));
-    await tester.tap(find.text('Tue 27'));
+    await reach(tester, find.text('Tue 27 Oct'));
+    await tester.tap(find.text('Tue 27 Oct'));
     await tester.pumpAndSettle();
     // the day's sheet's own (the card's is under it)
     await tester.tap(find.widgetWithText(FilledButton, AttendanceWords.askCorrection).last);
