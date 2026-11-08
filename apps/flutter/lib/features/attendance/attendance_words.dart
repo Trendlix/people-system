@@ -177,6 +177,10 @@ abstract final class AttendanceWords {
 
   // ---------- a day ----------
   static const yourDay = 'Your day';
+
+  /// On an iPad, the pane beside the calendar while the month has no day on record (8 November 2026).
+  static const noDayTitle = 'No day to show yet';
+  static const pickADay = 'Once the month has days on record, pick one on the calendar to see its check-in and check-out, its hours and where they came from.';
   static const whatItWas = 'What it was';
   static const checkIn = 'Check-in';
   static const checkOut = 'Check-out';

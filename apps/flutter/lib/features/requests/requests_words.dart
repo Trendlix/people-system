@@ -10,6 +10,10 @@ abstract final class RequestsWords {
   static const notLoaded = 'Couldn’t load this. Pull down to try again.';
   static const balanceNotLoaded = 'Your leave balance couldn’t be loaded. Pull down to try again.';
 
+  /// On an iPad, the pane beside the list before a request is open there (8 November 2026).
+  static const nothingOpenTitle = 'Nothing open yet';
+  static const nothingOpen = 'Pick a request on the left to see where it stands, who decides it and every step.';
+
   // ---------- the annual leave ----------
   static String annualOf(int year) => 'Annual leave · $year';
   static const available = 'Available';

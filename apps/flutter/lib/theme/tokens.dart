@@ -38,6 +38,41 @@ abstract final class Tokens {
   /// From this width a page's tiles go four across instead of two: an iPad's page (708 inside its margins on the
   /// smallest, the iPad mini), not a phone's (under 450 upright, about 600 on its side).
   static const wideFrom = 640.0;
+
+  /// iPads with their own layout (owner, 8 November 2026: "i think the Ipad needs a better layout with some more features
+  /// available due to the larger screen"), by the window's size, never the device's (Split View, Slide Over, Stage
+  /// Manager), wide.dart says which is which:
+  /// - from [railFrom] wide (and [wideMinHeight] tall): the rail on the left instead of the tab bar: every iPad upright
+  ///   (744 the iPad mini, 820 to 834 the 11", 1024 to 1032 the 13") and the larger Split View on its side;
+  /// - from [sidebarFrom]: the sidebar with the words in full: every iPad on its side (1133 to 1376);
+  /// - under either, or a phone on its side (under 480 tall), the phone's tab bar: half a Split View or less, Slide
+  ///   Over, a phone.
+  static const railFrom = 720.0;
+  static const sidebarFrom = 1100.0;
+  static const wideMinHeight = 600.0;
+  static const railWidth = 92.0;
+  static const sidebarWidth = 264.0;
+
+  /// Beside the rail or the sidebar, the page's own width from which a list and what is open in it sit side by side
+  /// (Requests, Attendance): the 13" upright (about 930), any iPad on its side (870 to 1110); and the Dashboard's and
+  /// the Profile's cards in two columns, from the 11" upright (about 730).
+  static const twoPanesFrom = 840.0;
+  static const twoColumnsFrom = 700.0;
+
+  /// Beside the rail, a page in one column four tiles across from this (the narrowest rail window, 720, leaves 592
+  /// inside its margins; an iPad mini upright 616), as [wideFrom] does for the phone's layout.
+  static const wideBesideNavFrom = 580.0;
+
+  /// The Dashboard's quick actions beside the rail or the sidebar: as tall as this, however wide (about square on a
+  /// phone; on an iPad's narrower tiles four across, or wider ones in a column, room for two lines of words).
+  static const quickTileHeight = 168.0;
+
+  /// The list's pane beside what is open in it: about two fifths of the page, a phone's width or a bit more.
+  static const listPaneMin = 360.0;
+  static const listPaneMax = 460.0;
+
+  /// The widest a page in two columns grows, its margins included (a large Android tablet, a window on a computer).
+  static const wideMaxWidth = 1240.0;
   static const cardPadding = EdgeInsets.all(20);
 
   /// The smallest a thing to tap may be (accessibility: 48 on Android).
@@ -255,6 +290,20 @@ class Palette extends ThemeExtension<Palette> {
       tabInactive: mix(tabInactive, other.tabInactive),
     );
   }
+}
+
+/// The sidebar and the rail on an iPad (8 November 2026), as the website's side menu (apps/web globals.css
+/// `--color-sidebar…`, the owner's design of 30 October 2026): near-black on the light look and the dark one alike, its
+/// items grey with a line icon, the page's item a light pill.
+abstract final class SidebarLook {
+  static const background = Color(0xFF111110);
+  static const line = Color(0xFF292927);
+  static const active = Color(0xFFF2F2ED);
+  static const onActive = Color(0xFF111110);
+  static const text = Color(0xFF92928C);
+  static const ink = Color(0xFFF7F7F3);
+  static const quiet = Color(0xFF696965);
+  static const hover = Color(0x0DFFFFFF);
 }
 
 /// A share achieved, in the owner's three bands (31 October 2026), by the whole percent shown: under 80 low (red), 80 to 90

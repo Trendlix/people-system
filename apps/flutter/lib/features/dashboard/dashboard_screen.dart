@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../format.dart';
 import '../../models/attendance_month.dart';
 import '../../models/holiday.dart';
+import '../../models/kpi.dart';
 import '../../models/leave.dart';
 import '../../models/me.dart';
 import '../../models/my_attendance.dart' show MonthRates;
@@ -13,9 +14,15 @@ import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
 import '../../theme/wide.dart';
+import '../kpis/kpi_parts.dart';
+import '../kpis/kpi_words.dart';
+import '../kpis/scorecard_screen.dart';
 import '../today/today_controller.dart';
+import '../timesheet/timesheet_data.dart' show waitingTimesheetsProvider;
 import 'dashboard_data.dart';
+import '../requests/approvals.dart' show ToApproveCard;
 import '../requests/kinds/od.dart' show showOdSheet;
+import '../requests/requests_data.dart' show waitingRequestsProvider;
 import '../review/review_screen.dart' show openReview;
 import 'shift_card.dart';
 
@@ -51,6 +58,9 @@ abstract final class DashboardWords {
   static const reviewDetails = 'Review my details';
   static const noHolidays = 'No more official holidays on file yet.';
   static const notLoaded = 'Couldn’t load this. Pull down to try again.';
+
+  /// The iPad's KPIs card (8 November 2026).
+  static const performance = 'Performance';
   static String daysAvailableOf(String n) => '$n days available';
   static String openOf(int n) => n == 1 ? '1 open request' : '$n open requests';
   static String ofThisYear(String n) => 'of $n this year';
@@ -67,6 +77,8 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final now = DateTime.now();
     final today = isoDayOf(now);
+    // the page's own width beside the rail or the sidebar (app_shell.dart tells it): room for two columns
+    final columns = roomForTwo(context, MediaQuery.sizeOf(context).width, from: Tokens.twoColumnsFrom);
     return RefreshIndicator(
       onRefresh: () async {
         ref
@@ -77,11 +89,16 @@ class DashboardScreen extends ConsumerWidget {
           ..invalidate(ownProfileProvider)
           ..invalidate(openRequestsProvider)
           ..invalidate(myKpisProvider);
+        if (columns) {
+          ref
+            ..invalidate(waitingRequestsProvider)
+            ..invalidate(waitingTimesheetsProvider);
+        }
         await ref.read(todayProvider.future);
       },
       child: ListView(
-        padding: tabPagePadding(context),
-        children: [
+        padding: columns ? tabPagePadding(context, max: Tokens.wideMaxWidth) : tabPagePadding(context),
+        children: columns ? _inColumns(now, today) : [
           PageHead(eyebrow: eyebrowDateOf(now), title: '${greetingAt(now)}, ${me.firstName}'),
           if (me.hold) ...[const SizedBox(height: Tokens.gap), const Notice(text: DashboardWords.hold, ok: false)],
           const SizedBox(height: 24),
@@ -107,6 +124,53 @@ class DashboardScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// On an iPad (owner, 8 November 2026: "i think the Ipad needs a better layout with some more features available due to
+  /// the larger screen"): the same cards in two columns, so more shows at once: today's shift beside the quick actions,
+  /// the four figures across, then what waits for their approval, the holidays and the papers HR needs on the left, the
+  /// leave balance, the week's hours and their latest KPI scorecards on the right.
+  List<Widget> _inColumns(DateTime now, String today) => [
+    PageHead(eyebrow: eyebrowDateOf(now), title: '${greetingAt(now)}, ${me.firstName}'),
+    if (me.hold) ...[const SizedBox(height: Tokens.gap), const Notice(text: DashboardWords.hold, ok: false)],
+    const SizedBox(height: 24),
+    if (me.hold || me.employeeId == null)
+      const ShiftCard()
+    else ...[
+      _Columns(
+        left: const [ShiftCard()],
+        right: [
+          SectionHead(eyebrow: DashboardWords.selfService, title: DashboardWords.quickActions),
+          const SizedBox(height: 16),
+          _QuickActions(today: today),
+        ],
+      ),
+      const SizedBox(height: 36),
+      const SectionHead(eyebrow: DashboardWords.overview, title: DashboardWords.atAGlance),
+      const SizedBox(height: 16),
+      _Glance(today: today),
+      const SizedBox(height: 16),
+      _Columns(
+        left: [const ToApproveCard(), _ComingUp(today: today), const SizedBox(height: 16), const _Documents()],
+        right: [_LeaveCard(today: today), const SizedBox(height: 16), _WeeklyHours(today: today), const SizedBox(height: 16), const _Kpis()],
+      ),
+    ],
+  ];
+}
+
+/// Two columns of cards side by side, each as tall as its own cards.
+class _Columns extends StatelessWidget {
+  const _Columns({required this.left, required this.right});
+
+  final List<Widget> left;
+  final List<Widget> right;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget column(List<Widget> children) => Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+    );
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [column(left), const SizedBox(width: 16), column(right)]);
   }
 }
 
@@ -142,20 +206,34 @@ class _QuickActions extends ConsumerWidget {
         '/dashboard/performance',
       ),
     ];
+    final children = [
+      for (final (icon, title, sub, path) in tiles)
+        _QuickTile(icon: icon, title: title, subtitle: sub, onTap: () => path == null ? showOdSheet(context) : context.go(path)),
+    ];
     // four across on an iPad (7 November 2026), two on a phone
     return LayoutBuilder(
-      builder: (context, c) => GridView.count(
-        crossAxisCount: isWide(c.maxWidth) ? 4 : 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 1.02,
-        children: [
-          for (final (icon, title, sub, path) in tiles)
-            _QuickTile(icon: icon, title: title, subtitle: sub, onTap: () => path == null ? showOdSheet(context) : context.go(path)),
-        ],
-      ),
+      builder: (context, c) {
+        final across = isWideIn(context, c.maxWidth) ? 4 : 2;
+        // beside the rail or the sidebar (8 November 2026) each as tall as Tokens.quickTileHeight, however wide: four
+        // across in one column (an iPad mini upright), two in a column of two
+        if (!hasTabBar(context)) {
+          return GridView(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: across, mainAxisSpacing: 12, crossAxisSpacing: 12, mainAxisExtent: Tokens.quickTileHeight),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: children,
+          );
+        }
+        return GridView.count(
+          crossAxisCount: across,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 1.02,
+          children: children,
+        );
+      },
     );
   }
 }
@@ -263,11 +341,12 @@ class _Glance extends ConsumerWidget {
         note: next?.nameEn,
       ),
     ];
-    // on an iPad (7 November 2026) all four side by side, as wide as the page; on a phone they scroll sideways
+    // on an iPad (7 November 2026; beside the rail too, 8 November) all four side by side, as wide as the page; on a
+    // phone they scroll sideways
     return SizedBox(
       height: 150,
       child: LayoutBuilder(
-        builder: (context, c) => isWide(c.maxWidth)
+        builder: (context, c) => isWideIn(context, c.maxWidth)
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -670,6 +749,65 @@ class _Documents extends ConsumerWidget {
                 ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------- their KPIs (an iPad's Dashboard, 8 November 2026) ----------
+
+/// Their latest scorecards, as My KPIs lists them (the final % once shown, else the step, or what waits for them), each
+/// opening its page; the card's arrow opens My KPIs. The scorecards the Dashboard already reads.
+class _Kpis extends ConsumerWidget {
+  const _Kpis();
+
+  /// How many of the latest it shows.
+  static const _shown = 3;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = context.palette;
+    final text = Theme.of(context).textTheme;
+    final cards = ref.watch(myKpisProvider);
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CardHead(
+            eyebrow: DashboardWords.performance,
+            title: KpiWords.myTitle,
+            trailing: IconButton(
+              tooltip: KpiWords.myTitle,
+              onPressed: () => context.go('/dashboard/performance'),
+              style: IconButton.styleFrom(side: BorderSide(color: p.line)),
+              icon: Icon(CupertinoIcons.arrow_up_right, size: 16, color: p.ink),
+            ),
+          ),
+          const SizedBox(height: 8),
+          switch (cards) {
+            AsyncValue(value: final List<KpiScorecard> list) when list.isEmpty => Text(KpiWords.noneTitle, style: text.bodyMedium?.copyWith(color: p.muted)),
+            AsyncValue(value: final List<KpiScorecard> list) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, k) in list.take(_shown).indexed) ...[
+                  if (i > 0) Divider(height: 1, color: p.line),
+                  KpiScorecardRow(
+                    card: k,
+                    title: monthTitle(k),
+                    subtitle: historyLine(k),
+                    button: k.action == null ? null : actionButton(k),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ScorecardScreen(id: k.id))),
+                  ),
+                ],
+              ],
+            ),
+            AsyncError() => Text(DashboardWords.notLoaded, style: text.bodyMedium?.copyWith(color: p.muted)),
+            _ => const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          },
         ],
       ),
     );

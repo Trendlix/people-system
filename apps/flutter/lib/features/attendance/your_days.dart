@@ -12,13 +12,16 @@ import 'attendance_words.dart';
 /// was (worked and leave as badges; working from home, official duty, exempt, a correction under it) and its hours with
 /// its balance; a day opens its details.
 class YourDaysCard extends StatelessWidget {
-  const YourDaysCard({super.key, required this.month, required this.today, required this.onOpenDay, required this.onMyCorrections, required this.onAsk});
+  const YourDaysCard({super.key, required this.month, required this.today, required this.onOpenDay, required this.onMyCorrections, required this.onAsk, this.selected});
 
   final MyMonth month;
   final String today;
   final ValueChanged<String> onOpenDay;
   final VoidCallback onMyCorrections;
   final VoidCallback onAsk;
+
+  /// The day shown beside the calendar on an iPad (8 November 2026): its row marked.
+  final String? selected;
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +80,8 @@ class YourDaysCard extends StatelessWidget {
               decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: p.line)),
               child: Column(
                 children: [
-                  for (final (i, d) in m.days.indexed) _DayRow(day: d, month: m, last: i == m.days.length - 1, onTap: () => onOpenDay(d.date)),
+                  for (final (i, d) in m.days.indexed)
+                    _DayRow(day: d, month: m, last: i == m.days.length - 1, selected: d.date == selected, onTap: () => onOpenDay(d.date)),
                 ],
               ),
             ),
@@ -88,12 +92,13 @@ class YourDaysCard extends StatelessWidget {
 }
 
 class _DayRow extends StatelessWidget {
-  const _DayRow({required this.day, required this.month, required this.last, required this.onTap});
+  const _DayRow({required this.day, required this.month, required this.last, required this.onTap, this.selected = false});
 
   final DayRecord day;
   final MyMonth month;
   final bool last;
   final VoidCallback onTap;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -112,9 +117,10 @@ class _DayRow extends StatelessWidget {
         child: Container(
           constraints: const BoxConstraints(minHeight: 82),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          decoration: BoxDecoration(border: last ? null : Border(bottom: BorderSide(color: p.line))),
+          decoration: BoxDecoration(color: selected ? p.track : null, border: last ? null : Border(bottom: BorderSide(color: p.line))),
           child: Semantics(
             button: true,
+            selected: selected,
             child: Row(
               children: [
                 SizedBox(

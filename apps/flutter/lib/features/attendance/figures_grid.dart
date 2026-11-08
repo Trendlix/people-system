@@ -18,7 +18,7 @@ class FiguresGrid extends StatelessWidget {
     final tiles = figureTiles(month);
     return LayoutBuilder(
       builder: (context, c) {
-        final across = isWide(c.maxWidth) ? 4 : 2;
+        final across = isWideIn(context, c.maxWidth) ? 4 : 2;
         return Column(
           children: [
             for (var i = 0; i < tiles.length; i += across) ...[

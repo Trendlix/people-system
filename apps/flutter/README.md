@@ -97,6 +97,16 @@ phase, and record every decision the owner makes here (with the date and their w
   too (7 November 2026: "can the app be optimized for ipad screen?"): a page keeps to a column in the middle
   (`lib/theme/wide.dart`, at most 760 wide), the tab bar to 560, and the tiles go four across from 640; a phone is
   unchanged. Store pictures for the 13" iPad (2048 × 2732) come with the iPhone's.
+- **iPad layout** (owner, 8 November 2026: "i think the Ipad needs a better layout with some more features available
+  due to the larger screen"): by the window's size, not the device (so Split View and Slide Over fall back to the
+  phone's layout), the breakpoints in `lib/theme/wide.dart`: from 720 wide (and 600 tall) a rail on the left instead of
+  the tab bar, from 1100 (an iPad on its side) the sidebar, near-black as the website's (`lib/shell/side_nav.dart`):
+  the four tabs and the More menu's places (KPIs, Team KPIs, the timesheet, assets, photo, password, devices, hiring
+  hours, About; one list with the More menu, `morePlaces`), who is signed in and Sign out. Beside it, with 840 of its
+  own: Requests in two panes (the list, and the request open beside it, the newest first), Attendance in two (the
+  month and its calendar; Today and the day picked); from 700, the Dashboard in two columns (with To approve and the
+  latest KPI scorecards) and the Profile in two. Preview pictures: `flutter test screenshots/ipad_preview_test.dart`
+  (to `build/ipad-preview/`).
 - **Planned, after Apple approves the unlisted page — iPhone location while checked in** (owner, 7 November 2026:
   "yes" to "location when leaving the check-in area"). iOS can't wake an app every hour, so it uses iOS's own events:
   - when People has the hourly location on (today's `locationPings`) and the person checks in: an area around the

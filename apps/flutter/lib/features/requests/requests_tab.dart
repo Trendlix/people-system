@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/auth_controller.dart';
 import '../../format.dart';
 import '../../models/leave.dart';
+import '../../models/me.dart';
 import '../../models/requests.dart';
 import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
@@ -64,20 +65,74 @@ class RequestsTab extends ConsumerStatefulWidget {
 class _RequestsTabState extends ConsumerState<RequestsTab> {
   final _startKey = GlobalKey();
 
+  /// On an iPad with room for two panes (owner, 8 November 2026: "i think the Ipad needs a better layout with some more
+  /// features available due to the larger screen"): the request open beside the list, with what was just done to it;
+  /// null: the newest of Recent requests.
+  ({PeopleRequest request, String? notice})? _open;
+
+  /// Whether the tab shows the two panes now (as last built).
+  var _beside = false;
+
   Future<void> _refresh() async {
     requestsChanged(ref);
     ref.invalidate(leaveTypesProvider);
     await Future.wait([for (final k in _listed) ref.read(myRequestsProvider(k).future).then<void>((_) {}, onError: (_) {})]);
   }
 
+  /// Opens [r] beside the list; false when there are no two panes (it is pushed instead).
+  bool _openBeside(PeopleRequest r, {String? notice}) {
+    if (!mounted || !_beside) return false;
+    setState(() => _open = (request: r, notice: notice));
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider).value;
     final me = auth is SignedIn ? auth.me : null;
+    final employee = me != null && me.employeeId != null && !me.hold;
+    final year = DateTime.now().year;
+    final profile = employee ? ref.watch(ownProfileProvider).value : null;
+    final employment = profile?.raw['employment'];
+    final employmentType = employment is Map ? employment['employmentType'] as String? : null;
+    final leaveOffered = employee && employment is Map && underLabourLaw(employmentType) && !isUnavailable(ref.watch(myRequestsProvider(RequestKind.leave)).error);
+    Widget list(EdgeInsets padding) => _list(me, padding, year: year, employment: employment, employmentType: employmentType, leaveOffered: leaveOffered);
+    // the page's own width beside the rail or the sidebar (app_shell.dart tells it)
+    _beside = me != null && !me.hold && roomForTwo(context, MediaQuery.sizeOf(context).width);
+    if (!_beside) return list(tabPagePadding(context));
+    // on an iPad: the list on the left, the request open on the right (the newest until another is picked)
+    final rows = employee ? historyRows(_everything(ref).all) : const <HistoryRow>[];
+    final open = _open?.request ?? rows.firstOrNull?.request;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          width: listPaneWidth(MediaQuery.sizeOf(context).width),
+          child: RequestPane(selected: open == null ? null : requestKeyOf(open), open: _openBeside, child: list(panePadding(context))),
+        ),
+        VerticalDivider(width: 1, thickness: 1, color: context.palette.line),
+        Expanded(
+          child: open == null
+              ? const _NothingOpen()
+              : RequestPage(
+                  key: ValueKey(requestKeyOf(open)),
+                  kind: open.kind,
+                  id: open.id,
+                  initial: open,
+                  notice: identical(open, _open?.request) ? _open?.notice : null,
+                  inPane: true,
+                ),
+        ),
+      ],
+    );
+  }
+
+  /// The tab's list: on a phone the whole page, on an iPad its left pane.
+  Widget _list(Me? me, EdgeInsets padding, {required int year, required Object? employment, required String? employmentType, required bool leaveOffered}) {
     const head = PageHead(eyebrow: RequestsWords.eyebrow, title: RequestsWords.title);
     if (me == null || me.employeeId == null || me.hold) {
       return ListView(
-        padding: tabPagePadding(context),
+        padding: padding,
         children: [
           head,
           const SizedBox(height: 20),
@@ -87,28 +142,26 @@ class _RequestsTabState extends ConsumerState<RequestsTab> {
         ],
       );
     }
-    final year = DateTime.now().year;
-    final profile = ref.watch(ownProfileProvider).value;
-    final employment = profile?.raw['employment'];
-    final employmentType = employment is Map ? employment['employmentType'] as String? : null;
-    final leaveOffered = employment is Map && underLabourLaw(employmentType) && !isUnavailable(ref.watch(myRequestsProvider(RequestKind.leave)).error);
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView(
-        padding: tabPagePadding(context),
+        padding: padding,
         children: [
           head,
           const SizedBox(height: 24),
           // what waits for their step, approved in one tap (owner, 4 November 2026: "why there is no approve button in the app?")
           const ToApproveCard(),
-          _CreateButton(
-            onPressed: () {
-              if (leaveOffered) {
-                showLeaveSheet(context);
-              } else if (_startKey.currentContext != null) {
-                Scrollable.ensureVisible(_startKey.currentContext!, duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
-              }
-            },
+          // its own context, under the iPad's two panes, so a request sent opens beside the list
+          Builder(
+            builder: (context) => _CreateButton(
+              onPressed: () {
+                if (leaveOffered) {
+                  showLeaveSheet(context);
+                } else if (_startKey.currentContext != null) {
+                  Scrollable.ensureVisible(_startKey.currentContext!, duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
+                }
+              },
+            ),
           ),
           const SizedBox(height: 24),
           if (employment is Map && underLabourLaw(employmentType)) ...[_AnnualCard(year: year), const SizedBox(height: 12)],
@@ -120,6 +173,33 @@ class _RequestsTabState extends ConsumerState<RequestsTab> {
           _StartAnother(key: _startKey, hasEmployment: employment is Map, employmentType: employmentType),
         ],
       ),
+    );
+  }
+}
+
+/// The right pane with no request to show yet (none sent, or an approver's with nothing picked).
+class _NothingOpen extends StatelessWidget {
+  const _NothingOpen();
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return ListView(
+      padding: panePadding(context),
+      children: [
+        SurfaceCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const IconTile(CupertinoIcons.doc_text),
+              const SizedBox(height: 18),
+              Text(RequestsWords.nothingOpenTitle, style: text.titleLarge),
+              const SizedBox(height: 8),
+              Text(RequestsWords.nothingOpen, style: text.bodyMedium?.copyWith(color: context.palette.muted)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -219,7 +299,7 @@ class _AnnualCard extends ConsumerWidget {
               children: [
                 for (final (label, value) in figures)
                   SizedBox(
-                    width: c.maxWidth / (isWide(c.maxWidth) ? 4 : 2),
+                    width: c.maxWidth / (isWideIn(context, c.maxWidth) ? 4 : 2),
                     child: MergeSemantics(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -398,7 +478,7 @@ class _YearAndPermission extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      builder: (context, c) => permission && isWide(c.maxWidth)
+      builder: (context, c) => permission && isWideIn(context, c.maxWidth)
           ? IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -513,45 +593,51 @@ class _HistoryRowTile extends StatelessWidget {
     final p = context.palette;
     final text = Theme.of(context).textTheme;
     final r = row.request;
+    // open beside the list on an iPad in two panes (8 November 2026): its row marked
+    final selected = RequestPane.of(context)?.selected == row.key;
     return Semantics(
       button: true,
+      selected: selected,
       label: RequestsWords.rowLabel(row.title, row.when, row.status),
       excludeSemantics: true,
       child: InkWell(
-        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => RequestPage(kind: r.kind, id: r.id, initial: r))),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(color: p.raised, borderRadius: BorderRadius.circular(10), border: Border.all(color: p.line)),
-                child: Icon(kindIcons[r.kind], size: 16, color: p.ink),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(row.title, style: text.labelMedium?.copyWith(height: 1.5)),
-                    if (row.when.isNotEmpty) Text(row.when, style: text.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        StatusBadge(label: row.status, state: row.state, small: true),
-                        Text(row.sent, style: text.bodySmall?.copyWith(fontSize: 12)),
-                      ],
-                    ),
-                  ],
+        onTap: () => openRequest(context, r),
+        child: Ink(
+          color: selected ? p.track : null,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(color: p.raised, borderRadius: BorderRadius.circular(10), border: Border.all(color: p.line)),
+                  child: Icon(kindIcons[r.kind], size: 16, color: p.ink),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Icon(CupertinoIcons.arrow_right, size: 16, color: p.ink),
-            ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(row.title, style: text.labelMedium?.copyWith(height: 1.5)),
+                      if (row.when.isNotEmpty) Text(row.when, style: text.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          StatusBadge(label: row.status, state: row.state, small: true),
+                          Text(row.sent, style: text.bodySmall?.copyWith(fontSize: 12)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Icon(CupertinoIcons.arrow_right, size: 16, color: p.ink),
+              ],
+            ),
           ),
         ),
       ),

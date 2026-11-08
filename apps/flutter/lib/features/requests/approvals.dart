@@ -176,7 +176,9 @@ class _ToApproveCardState extends ConsumerState<ToApproveCard> {
                   final row = historyRowOf(r);
                   return [row.title, if (row.when.isNotEmpty) row.when].join(' · ');
                 }(),
-                onOpen: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => RequestPage(kind: r.kind, id: r.id, initial: r))),
+                // beside the list on an iPad in two panes (8 November 2026), else its page pushed
+                onOpen: () => openRequest(context, r),
+                selected: RequestPane.of(context)?.selected == requestKeyOf(r),
                 busy: _all || _busy.contains(_key(r)),
                 onApprove: () => _decide(r, approve: true),
                 onReject: () => _decide(r, approve: false),
@@ -213,7 +215,7 @@ class _ToApproveCardState extends ConsumerState<ToApproveCard> {
 
 /// One thing waiting: whose, what and when; Reject and Approve; tapping it opens its page.
 class _WaitingRow extends StatelessWidget {
-  const _WaitingRow({required this.icon, required this.name, required this.line, required this.onOpen, required this.busy, required this.onApprove, required this.onReject});
+  const _WaitingRow({required this.icon, required this.name, required this.line, required this.onOpen, required this.busy, required this.onApprove, required this.onReject, this.selected = false});
 
   final IconData icon;
   final String name;
@@ -223,47 +225,55 @@ class _WaitingRow extends StatelessWidget {
   final VoidCallback onApprove;
   final VoidCallback onReject;
 
+  /// Open beside the list (an iPad in two panes, 8 November 2026): its row marked.
+  final bool selected;
+
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final text = Theme.of(context).textTheme;
     return InkWell(
       onTap: onOpen,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          children: [
-            IconTile(icon),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: text.labelMedium),
-                  const SizedBox(height: 2),
-                  Text(line, style: text.bodySmall),
-                ],
+      child: Ink(
+        decoration: BoxDecoration(color: selected ? p.track : null),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            children: [
+              IconTile(icon),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name, style: text.labelMedium),
+                    const SizedBox(height: 2),
+                    Text(line, style: text.bodySmall),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            if (busy)
-              const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-            else ...[
-              IconButton(
-                onPressed: onReject,
-                tooltip: ApproveWords.reject,
-                icon: Icon(CupertinoIcons.xmark, size: 18, color: p.danger),
-                style: IconButton.styleFrom(side: BorderSide(color: p.line), minimumSize: const Size.square(Tokens.tapTarget)),
-              ),
-              const SizedBox(width: 6),
-              IconButton.filled(
-                onPressed: onApprove,
-                tooltip: ApproveWords.approve,
-                icon: const Icon(CupertinoIcons.checkmark, size: 18),
-                style: IconButton.styleFrom(minimumSize: const Size.square(Tokens.tapTarget)),
-              ),
+              const SizedBox(width: 8),
+              if (busy)
+                const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+              else ...[
+                IconButton(
+                  onPressed: onReject,
+                  tooltip: ApproveWords.reject,
+                  icon: Icon(CupertinoIcons.xmark, size: 18, color: p.danger),
+                  style: IconButton.styleFrom(side: BorderSide(color: p.line), minimumSize: const Size.square(Tokens.tapTarget)),
+                ),
+                const SizedBox(width: 6),
+                IconButton.filled(
+                  onPressed: onApprove,
+                  tooltip: ApproveWords.approve,
+                  // the tick in the button's own colour, not the theme's ink (it was dark on the black circle: 8 November
+                  // 2026)
+                  icon: Icon(CupertinoIcons.checkmark, size: 18, color: p.onPrimary),
+                  style: IconButton.styleFrom(minimumSize: const Size.square(Tokens.tapTarget)),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
