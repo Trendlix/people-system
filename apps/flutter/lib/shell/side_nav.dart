@@ -116,11 +116,12 @@ class SideNav extends ConsumerWidget {
         _Item(rail: rail, icon: icon, label: label, short: short, on: here == path, onTap: () => onTab(i)),
       for (final p in more.where((p) => !p.account))
         _Item(rail: rail, icon: p.icon, label: p.label, short: p.short, on: here == p.path, onTap: () => router.go(p.path)),
-      if (rail) const _RailLine() else const _GroupHead(SideNavWords.account, top: 18),
+      if (rail) const _RailLine() else const _GroupHead(SideNavWords.account, top: 14),
       for (final p in more.where((p) => p.account))
         _Item(rail: rail, icon: p.icon, label: p.label, short: p.short, on: here == p.path, onTap: () => router.go(p.path)),
     ];
     void signOut() => ref.read(authProvider.notifier).signOut();
+    final side = rail ? 8.0 : 12.0;
     return Material(
       color: SidebarLook.background,
       child: Container(
@@ -128,34 +129,47 @@ class SideNav extends ConsumerWidget {
         decoration: const BoxDecoration(border: Border(right: BorderSide(color: SidebarLook.line))),
         child: SafeArea(
           right: false,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: rail ? const EdgeInsets.fromLTRB(0, 18, 0, 14) : const EdgeInsets.fromLTRB(20, 22, 16, 20),
-                child: rail ? const Center(child: _BrandTile()) : const _Brand(),
-              ),
-              Expanded(
-                child: Semantics(
-                  container: true,
-                  explicitChildNodes: true,
-                  label: SideNavWords.navigation,
-                  child: ListView(padding: EdgeInsets.symmetric(horizontal: rail ? 8 : 12), children: items),
+          // who is signed in at the foot while everything fits; in a short window (an 11" on its side, a manager's
+          // longer list) the whole column scrolls, nothing cut off between the places and the foot
+          child: LayoutBuilder(
+            builder: (context, c) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: c.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: rail ? const EdgeInsets.fromLTRB(0, 18, 0, 14) : const EdgeInsets.fromLTRB(20, 20, 16, 16),
+                        child: rail ? const Center(child: _BrandTile()) : const _Brand(),
+                      ),
+                      Semantics(
+                        container: true,
+                        explicitChildNodes: true,
+                        label: SideNavWords.navigation,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: side),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: items),
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(height: 1, margin: const EdgeInsets.only(top: 12), color: SidebarLook.line),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(side, 8, side, 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _Person(me: me, rail: rail, onTap: () => onTab(3)),
+                            _Item(rail: rail, icon: CupertinoIcons.square_arrow_left, label: ShellWords.signOut, short: SideNavWords.signOut, on: false, onTap: signOut),
+                            if (!rail) _Version(onTap: () => router.go('/profile/about')),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Container(height: 1, color: SidebarLook.line),
-              Padding(
-                padding: EdgeInsets.fromLTRB(rail ? 8 : 12, 10, rail ? 8 : 12, 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _Person(me: me, rail: rail, onTap: () => onTab(3)),
-                    _Item(rail: rail, icon: CupertinoIcons.square_arrow_left, label: ShellWords.signOut, short: SideNavWords.signOut, on: false, onTap: signOut),
-                    if (!rail) _Version(onTap: () => router.go('/profile/about')),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
