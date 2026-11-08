@@ -72,8 +72,11 @@ void main() {
       await preview(tester, device, '2-requests');
     }, variant: on);
 
+    // the app's own clock, as the Dashboard's, so Today counts the time worked from the 08:56 check-in on People's clock
+    // (the store's picture pins the day to 30 October for October's calendar, which counts nothing today: that picture
+    // scrolls Today away); the month this one, October's days moved to it
     testWidgets('${device.name}: attendance', (tester) async {
-      await openApp(tester, device, samplePeople(), attendanceDay: DateTime(2026, 10, 30, 14));
+      await openApp(tester, device, samplePeople());
       await tester.tap(find.text(ShellWords.attendance).first);
       await tester.pumpAndSettle();
       await preview(tester, device, '3-attendance');
