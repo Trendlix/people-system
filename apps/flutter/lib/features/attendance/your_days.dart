@@ -9,8 +9,9 @@ import 'attendance_words.dart';
 
 /// "Your days" (the phone design, 30 October 2026; the website's My Attendance table): My corrections and Ask for a
 /// correction (while the month's payroll isn't approved, else why not), every day kept, each its day and date, what it
-/// was (worked and leave as badges; working from home, official duty, exempt, a correction under it) and its hours with
-/// its balance; a day opens its details.
+/// was (worked and leave as badges; working from home, official duty, exempt, a correction under it), and on a day
+/// worked its check-in and check-out, its attendance percentage and its hours with its balance (8 November 2026); a day
+/// opens its details.
 class YourDaysCard extends StatelessWidget {
   const YourDaysCard({super.key, required this.month, required this.today, required this.onOpenDay, required this.onMyCorrections, required this.onAsk, this.selected});
 
@@ -91,6 +92,11 @@ class YourDaysCard extends StatelessWidget {
   }
 }
 
+/// A day's row (owner, 8 November 2026: "show the checking time and the checkout time with the attendance percentage
+/// without expandding the field"): its date and what it was, and on a day worked its attendance percentage beside them
+/// (dayRateOf, in the owner's colours); under them its check-in and check-out (the first in and the last out, one People
+/// finds missing said so) with its hours, then its notes with its balance. A day not worked stays its date and what it
+/// was. Two lines, so a 360-point phone fits it at larger text too; the same in the iPad's pane.
 class _DayRow extends StatelessWidget {
   const _DayRow({required this.day, required this.month, required this.last, required this.onTap, this.selected = false});
 
@@ -105,66 +111,128 @@ class _DayRow extends StatelessWidget {
     final p = context.palette;
     final text = Theme.of(context).textTheme;
     final d = day;
-    final label = AttendanceWords.dayLabel(d.date);
+    const tabular = [FontFeature.tabularFigures()];
     final balance = balanceOf(d);
-    final notes = dayNotes(d, month);
     final open = month.openCorrectionOn(d.date);
-    final cell = text.bodyMedium?.copyWith(height: 1.35, fontFeatures: const [FontFeature.tabularFigures()]);
+    final rate = dayRateOf(d);
+    final band = rateBandOf(rate);
+    final times = rowTimesOf(d);
+    // an open check-in after the day's pairs (the check-out shown is its last pair's), as its details say it
+    final openPress = pairsOf(d)?.open;
+    final cell = text.bodyMedium?.copyWith(height: 1.35, fontFeatures: tabular);
+    final small = text.bodySmall?.copyWith(height: 1.35);
+    // a check-in or check-out People finds missing, as the website's day says it (in the warning colour)
+    final missing = cell?.copyWith(color: p.warn, fontWeight: FontWeight.w500);
+    final notes = <Widget>[
+      for (final n in dayNotes(d, month)) Text(n, style: small),
+      if (openPress != null) Text(openPress, style: small?.copyWith(color: p.warn)),
+      if (open != null) Text(AttendanceWords.correctionOf(AttendanceWords.statusOfCorrection(open.status)), style: small?.copyWith(color: p.ink)),
+    ];
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 82),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          constraints: const BoxConstraints(minHeight: 60),
+          // a day of one line (rest, leave, a holiday) in the middle of its height
+          alignment: AlignmentDirectional.centerStart,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
           decoration: BoxDecoration(color: selected ? p.track : null, border: last ? null : Border(bottom: BorderSide(color: p.line))),
           child: Semantics(
             button: true,
             selected: selected,
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  width: 81,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(label.day, style: cell),
-                      const SizedBox(height: 5),
-                      Text(label.rest, style: text.bodySmall?.copyWith(height: 1.35)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      StatusBadge(status: d.status),
-                      for (final n in notes) ...[const SizedBox(height: 4), Text(n, style: text.bodySmall?.copyWith(height: 1.35))],
-                      if (open != null) ...[
-                        const SizedBox(height: 4),
-                        Text(AttendanceWords.correctionOf(AttendanceWords.statusOfCorrection(open.status)), style: text.bodySmall?.copyWith(color: p.ink, height: 1.35)),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                SizedBox(
-                  width: 81,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(d.worked ? AttendanceWords.hoursText(d.hoursCounted) : '—', style: cell),
-                      if (balance != null) ...[
-                        const SizedBox(height: 4),
-                        Semantics(
-                          label: balance.short ? AttendanceWords.shortTitle : AttendanceWords.extraTitle,
-                          child: Text(balance.text, style: text.bodySmall?.copyWith(height: 1.35, fontFeatures: const [FontFeature.tabularFigures()])),
+                // the date and what it was (the badge under the date when the words are too large for one line), and
+                // on a day worked its percentage
+                Row(
+                  children: [
+                    Expanded(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(AttendanceWords.dayLabel(d.date), style: cell?.copyWith(fontWeight: FontWeight.w500)),
+                          StatusBadge(status: d.status),
+                        ],
+                      ),
+                    ),
+                    if (rate != null) ...[
+                      const SizedBox(width: 10),
+                      Semantics(
+                        label: AttendanceWords.dayRateLabel(AttendanceWords.percent(rate)),
+                        excludeSemantics: true,
+                        child: Text(
+                          AttendanceWords.percent(rate),
+                          style: text.titleSmall?.copyWith(height: 1.35, color: band == null ? null : p.bandColour(band), fontFeatures: tabular),
                         ),
-                      ],
+                      ),
+                    ],
+                  ],
+                ),
+                if (d.worked) ...[
+                  const SizedBox(height: 7),
+                  // its check-in and check-out (else its first note: exempt, official duty…) with its hours on the
+                  // right; each on a line of its own, so the times keep to one line on a phone at larger text
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: times == null
+                            ? (notes.firstOrNull ?? const SizedBox.shrink())
+                            : Semantics(
+                                label: AttendanceWords.rowTimesLabel(times.checkIn, times.checkOut),
+                                excludeSemantics: true,
+                                child: times.noCheckIn || times.noCheckOut
+                                    ? Text.rich(
+                                        TextSpan(
+                                          children: [
+                                            TextSpan(text: times.checkIn ?? AttendanceWords.noCheckIn, style: times.noCheckIn ? missing : null),
+                                            const TextSpan(text: ' – '),
+                                            TextSpan(text: times.checkOut ?? AttendanceWords.noCheckOut, style: times.noCheckOut ? missing : null),
+                                          ],
+                                        ),
+                                        style: cell,
+                                      )
+                                    : Text(AttendanceWords.rowTimes(times.checkIn, times.checkOut), style: cell),
+                              ),
+                      ),
+                      const SizedBox(width: 10),
+                      Semantics(
+                        label: AttendanceWords.hoursLabel(AttendanceWords.hoursText(d.hoursCounted)),
+                        excludeSemantics: true,
+                        child: Text(AttendanceWords.hoursText(d.hoursCounted), style: cell),
+                      ),
                     ],
                   ),
-                ),
+                  // its other notes, with its balance on the right
+                  if (notes.length > (times == null ? 1 : 0) || balance != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              for (final (i, n) in notes.skip(times == null ? 1 : 0).indexed) ...[if (i > 0) const SizedBox(height: 4), n],
+                            ],
+                          ),
+                        ),
+                        if (balance != null) ...[
+                          const SizedBox(width: 10),
+                          Semantics(
+                            label: balance.short ? AttendanceWords.shortTitle : AttendanceWords.extraTitle,
+                            child: Text(balance.text, style: small?.copyWith(fontFeatures: tabular)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ] else
+                  for (final n in notes) ...[const SizedBox(height: 4), n],
               ],
             ),
           ),

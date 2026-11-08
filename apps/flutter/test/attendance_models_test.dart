@@ -401,8 +401,53 @@ void main() {
       expect(pairsOf(m.dayOn('2026-10-01')!), isNull);
       expect(correctedNoteOf(m.dayOn('2026-10-13')!), 'Corrected from ${clockOf(DateTime.parse('2026-10-13T09:00:00.000+03:00'))} – no check-out');
       expect(AttendanceWords.hoursText(141.93), '141:56');
-      expect(AttendanceWords.dayLabel('2026-10-01'), (day: 'Thu 01', rest: '/10/2026'));
+      // on one line (8 November 2026: "Thu 01" over "/10/2026" read as broken)
+      expect(AttendanceWords.dayLabel('2026-10-01'), 'Thu 01 Oct');
+      expect(AttendanceWords.dayLabel('2026-11-01'), 'Sun 01 Nov');
       expect(AttendanceWords.dayTitle('2026-10-27'), 'Tuesday 27/10/2026');
+    });
+
+    // a day's row (owner, 8 November 2026: "show the checking time and the checkout time with the attendance percentage
+    // without expandding the field")
+    test('a day’s attendance percentage: the rate card’s rule over the one day', () {
+      final m = MyMonth.fromJson(octoberJson());
+      double? rate(String date) => dayRateOf(m.dayOn(date)!);
+      String percent(String date) => AttendanceWords.percent(rate(date));
+      // 8:59 of a 9-hour shift, 8:20, 7:55, and 9:46 with extra time (above 100%)
+      expect((percent('2026-10-01'), percent('2026-10-05'), percent('2026-10-26'), percent('2026-10-06')), ('100%', '93%', '88%', '109%'));
+      expect((rateBandOf(rate('2026-10-05')), rateBandOf(rate('2026-10-26'))), (RateBand.high, RateBand.mid));
+      // a day not worked has none
+      expect((rate('2026-10-02'), rate('2026-10-08'), rate('2026-10-25')), (null, null, null));
+
+      // the day's permission counts as worked, as the payroll and the rate card count it: not short, 100%
+      final permitted = DayRecord.of(dayJson('2026-10-28', inAt: '10:00', outAt: '18:00', hours: 8, extra: {'permissionHours': 1}))!;
+      expect((AttendanceWords.percent(dayRateOf(permitted)), balanceOf(permitted)), ('100%', null));
+      // an open check-in counted as half a day until corrected: 50%, in red
+      final open = DayRecord.of(dayJson('2026-10-29', inAt: '09:00', hours: 4.5, shortHours: 4.5, extra: {'missingCheckOut': true, 'openHalfDay': true}))!;
+      expect((AttendanceWords.percent(dayRateOf(open)), rateBandOf(dayRateOf(open))), ('50%', RateBand.low));
+      // without a shift, no percentage
+      expect(dayRateOf(DayRecord.of(dayJson('2026-10-28', inAt: '09:00', outAt: '17:00', hours: 8, extra: {'expectedHours': null}))!), isNull);
+    });
+
+    test('a day’s times on its row: the first in and the last out, a missing one said so', () {
+      final m = MyMonth.fromJson(octoberJson());
+      String at(String iso) => clockOf(DateTime.parse(iso));
+      expect(rowTimesOf(m.dayOn('2026-10-27')!), (checkIn: at('2026-10-27T08:57:00.000+03:00'), checkOut: at('2026-10-27T17:57:00.000+03:00'), noCheckIn: false, noCheckOut: false));
+      // two pairs: the first check-in and the last check-out
+      expect(rowTimesOf(m.dayOn('2026-10-12')!), (checkIn: at('2026-10-12T09:02:00.000+03:00'), checkOut: at('2026-10-12T18:05:00.000+03:00'), noCheckIn: false, noCheckOut: false));
+      expect((rowTimesOf(m.dayOn('2026-10-02')!), rowTimesOf(m.dayOn('2026-10-25')!)), (null, null));
+
+      final open = DayRecord.of(dayJson('2026-10-29', inAt: '09:00', hours: 4.5, extra: {'missingCheckOut': true, 'openHalfDay': true}))!;
+      expect(rowTimesOf(open), (checkIn: at('2026-10-29T09:00:00.000+03:00'), checkOut: null, noCheckIn: false, noCheckOut: true));
+      final noIn = DayRecord.of(dayJson('2026-10-29', outAt: '18:00', extra: {'missingCheckIn': true}))!;
+      expect(rowTimesOf(noIn), (checkIn: null, checkOut: at('2026-10-29T18:00:00.000+03:00'), noCheckIn: true, noCheckOut: false));
+      // a full day of official duty needs no check-out: the check-in alone, not missing
+      final duty = DayRecord.of(dayJson('2026-10-29', inAt: '09:00', hours: 9, extra: {'od': {'requestId': 'od2', 'fullDay': true}}))!;
+      expect(rowTimesOf(duty)?.noCheckOut, isFalse);
+      expect(AttendanceWords.rowTimes('09:00', null), 'In at 09:00');
+      expect(AttendanceWords.rowTimes('08:57', '17:57'), '08:57 – 17:57');
+      expect(AttendanceWords.rowTimesLabel('08:57', null), 'Check-in 08:57, no check-out');
+      expect(AttendanceWords.rowTimesLabel(null, '17:57'), 'No check-in, check-out 17:57');
     });
 
     test('the lock words name their own check-in places', () {
