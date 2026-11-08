@@ -7,9 +7,14 @@ import 'package:people/features/profile/profile_words.dart';
 import 'package:people/features/sign_in/sign_in_screen.dart';
 import 'package:people/providers.dart';
 import 'package:people/shell/shell_words.dart';
+import 'package:people/auth/unlock_words.dart';
+import 'package:people/platform/biometrics.dart';
 
 import 'fakes.dart';
 import 'profile_models_test.dart' show calendarsJson, devicesJson, interviewHoursJson, ownProfileJson, sessionsJson;
+
+/// The words an Android phone shows, as before (unlock_words.dart).
+const android = UnlockWords(UnlockKind.fingerprint);
 
 // The account's screens (the phone design, 30 October 2026), opened from the More menu: Change Password (People's rule
 // and refusals, this phone's fingerprint credential dropped once it changed), Profile Image (a new photo sent to HR:
@@ -180,8 +185,8 @@ void main() {
       expect(people.calls, contains('POST /api/auth/devices/d1/revoke'));
       expect(store.device, isNull);
       expect(store.token, 'kept');
-      expect(find.text(AccountWords.noPhone), findsOneWidget);
-      expect(find.text(AccountWords.phoneSignedOut), findsOneWidget);
+      expect(find.text(android.noPhone), findsOneWidget);
+      expect(find.text(android.phoneSignedOut), findsOneWidget);
     });
 
     testWidgets('turns fingerprint sign-in on for this phone when it can and keeps none', (tester) async {
@@ -199,7 +204,7 @@ void main() {
       await tapVisible(tester, find.text(AccountWords.turnOn));
       expect(people.bodyOf('POST /api/auth/devices'), {'deviceName': 'Google Pixel 8', 'platform': 'android'});
       expect(store.device, (id: 'd1', secret: 'new-secret', userId: 'u1'));
-      expect(find.text(AccountWords.turnedOn), findsOneWidget);
+      expect(find.text(android.turnedOn), findsOneWidget);
       expect(find.text(AccountWords.thisPhone), findsOneWidget);
       expect(find.text(AccountWords.turnOn), findsNothing);
     });

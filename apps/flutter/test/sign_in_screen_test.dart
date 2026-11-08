@@ -9,8 +9,13 @@ import 'package:people/features/sign_in/email_code.dart';
 import 'package:people/features/sign_in/forgot_password.dart';
 import 'package:people/features/sign_in/sign_in_screen.dart';
 import 'package:people/providers.dart';
+import 'package:people/auth/unlock_words.dart';
+import 'package:people/platform/biometrics.dart';
 
 import 'fakes.dart';
+
+/// The words an Android phone shows, as before (unlock_words.dart).
+const android = UnlockWords(UnlockKind.fingerprint);
 
 // The sign-in screen (README Phase 1): the password, People's refusal in its words; the fingerprint when the phone has
 // it, asked for at once.
@@ -114,7 +119,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(people.bodyOf('POST /api/auth/email-code/sign-in'), {'email': 'h.test@example.test', 'code': '482913'});
     expect(find.byType(EmailCodeForm), findsNothing);
-    expect(find.text(ShellWords.offerTitle), findsOneWidget);
+    expect(find.text(android.offerTitle), findsOneWidget);
   });
 
   testWidgets('says People’s refusal of a code in its words, and asks for 6 digits', (tester) async {
@@ -176,11 +181,11 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, SignInWords.password), 'secret');
     await tester.tap(find.text(SignInWords.signIn));
     await tester.pumpAndSettle();
-    expect(find.text(ShellWords.offerTitle), findsOneWidget);
-    await tester.tap(find.text(ShellWords.offerYes));
+    expect(find.text(android.offerTitle), findsOneWidget);
+    await tester.tap(find.text(android.offerYes));
     await tester.pumpAndSettle();
     expect(store.device?.id, 'd1');
-    expect(find.text(ShellWords.fingerprintOn), findsOneWidget);
+    expect(find.text(android.turnedOn), findsOneWidget);
 
     await tester.tap(find.text(ShellWords.more));
     await tester.pumpAndSettle();
@@ -189,5 +194,56 @@ void main() {
     // the sign-in screen asks for the fingerprint by itself, and it signs in
     expect(people.calls, contains('POST /api/auth/devices/sign-in'));
     expect(find.text(CheckInWords.checkInForWork), findsOneWidget);
+  });
+  // owner, 8 November 2026: on iPhones "it gets a message sign in with fingerprint, and most people got confused as there
+  // is no fingerprints"
+  testWidgets('on an iPhone with Face ID: Face ID in every word, never the fingerprint', (tester) async {
+    final store = MemorySessionStore();
+    final biometrics = FakeBiometrics(unlock: UnlockKind.faceId);
+    people
+      ..on('POST /api/auth/login', (req) => signedIn('fresh', {'id': 'u1'}))
+      ..on('POST /api/auth/devices', (req) => json({'id': 'd1', 'secret': 'very-secret'}, 201))
+      ..on('POST /api/auth/logout', (req) => json({}, 204));
+    await open(tester, people, store, biometrics: biometrics);
+    await tester.enterText(find.widgetWithText(TextField, SignInWords.email), 'h.test@example.test');
+    await tester.enterText(find.widgetWithText(TextField, SignInWords.password), 'secret');
+    await tester.tap(find.text(SignInWords.signIn));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in with Face ID?'), findsOneWidget);
+    expect(find.byIcon(Icons.face_unlock_rounded), findsOneWidget);
+    await tester.tap(find.text('Use Face ID'));
+    await tester.pumpAndSettle();
+    expect(biometrics.asked.last, 'Confirm it’s you to sign in with Face ID next time');
+    expect(find.text('Face ID sign-in is on.'), findsOneWidget);
+
+    // next time: Face ID is asked for at once; closed, the button says Face ID too
+    biometrics.outcome = FingerprintOutcome.cancelled;
+    await tester.tap(find.text(ShellWords.more));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ShellWords.signOut));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in with Face ID'), findsOneWidget);
+    expect(find.textContaining(RegExp('[Ff]ingerprint')), findsNothing);
+
+    // Face ID turned off on the phone: said in its name
+    biometrics.outcome = FingerprintOutcome.unavailable;
+    await tester.tap(find.text('Sign in with Face ID'));
+    await tester.pumpAndSettle();
+    expect(find.text('Face ID isn’t available right now: sign in with your password.'), findsOneWidget);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  test('Touch ID on an iPhone with a home button and most iPads; Android as before', () {
+    const touch = UnlockWords(UnlockKind.touchId);
+    expect(touch.signIn, 'Sign in with Touch ID');
+    expect(touch.offerTitle, 'Sign in with Touch ID?');
+    expect(touch.accountTitle, 'Touch ID Sign-In');
+    expect(touch.icon, Icons.fingerprint_rounded);
+    expect(android.signIn, 'Sign in with fingerprint');
+    expect(android.offerTitle, 'Sign in with your fingerprint?');
+    expect(android.offerYes, 'Use fingerprint');
+    expect(android.turnedOn, 'Fingerprint sign-in is on.');
+    expect(android.unavailable, 'The fingerprint isn’t available right now: sign in with your password.');
+    expect(android.accountTitle, 'Fingerprint Sign-In');
+    expect(android.noneSetUp, 'No fingerprint or face set up on this phone');
   });
 }

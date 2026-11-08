@@ -6,6 +6,7 @@ import '../platform/biometrics.dart';
 import '../providers.dart';
 import 'session_store.dart';
 import 'app_lock.dart';
+import 'unlock_words.dart';
 
 // Signing in (README Phase 1; owner, 30 October 2026: "The 3 easy wins first"): the password once, then the fingerprint
 // (People's device credentials, apps/api auth.controller.ts). The session is an app session (the user agent's mark) of
@@ -15,10 +16,7 @@ import 'app_lock.dart';
 abstract final class AuthWords {
   static const sessionEnded = 'Your session ended. Please sign in again.';
   static const confirmSignIn = 'Sign in to Trendlix People';
-  static const confirmTurnOn = 'Confirm it’s you to sign in with your fingerprint next time';
   static const lockedOut = 'Too many tries: unlock your phone and try again, or sign in with your password.';
-  static const unavailable = 'The fingerprint isn’t available right now: sign in with your password.';
-  static const noCredential = 'People didn’t give this phone a fingerprint sign-in: please try again.';
 }
 
 sealed class AuthState {
@@ -115,12 +113,13 @@ class AuthController extends AsyncNotifier<AuthState> {
   Future<bool> turnOnFingerprint() async {
     final s = state.value;
     if (s is! SignedIn) return false;
-    if (!_check(await _biometrics.confirm(AuthWords.confirmTurnOn))) return false;
+    final words = UnlockWords(await ref.read(unlockKindProvider.future));
+    if (!_check(await _biometrics.confirm(words.confirmTurnOn), words)) return false;
     final identity = ref.read(deviceIdentityProvider);
     final body = await _client.post('/api/auth/devices', {'deviceName': await identity.name(), 'platform': identity.platform});
     final id = body is Map ? body['id'] : null;
     final secret = body is Map ? body['secret'] : null;
-    if (id is! String || secret is! String || id.isEmpty || secret.isEmpty) throw const FingerprintProblem(AuthWords.noCredential);
+    if (id is! String || secret is! String || id.isEmpty || secret.isEmpty) throw FingerprintProblem(words.noCredential);
     await _store.writeDevice((id: id, secret: secret, userId: s.me.id));
     return true;
   }
@@ -133,7 +132,8 @@ class AuthController extends AsyncNotifier<AuthState> {
       state = AsyncData(await _signedOut());
       return;
     }
-    if (!_check(await _biometrics.confirm(AuthWords.confirmSignIn))) return;
+    final words = UnlockWords(await ref.read(unlockKindProvider.future));
+    if (!_check(await _biometrics.confirm(AuthWords.confirmSignIn), words)) return;
     try {
       final signed = await _client.signIn('/api/auth/devices/sign-in', {'id': device.id, 'secret': device.secret});
       await _store.write(signed.token);
@@ -147,11 +147,11 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 
   /// True: confirmed. False: cancelled. Else the reason, thrown.
-  bool _check(FingerprintOutcome outcome) => switch (outcome) {
+  bool _check(FingerprintOutcome outcome, UnlockWords words) => switch (outcome) {
     FingerprintOutcome.confirmed => true,
     FingerprintOutcome.cancelled => false,
     FingerprintOutcome.lockedOut => throw const FingerprintProblem(AuthWords.lockedOut),
-    FingerprintOutcome.unavailable => throw const FingerprintProblem(AuthWords.unavailable),
+    FingerprintOutcome.unavailable => throw FingerprintProblem(words.unavailable),
   };
 
   /// Ends the session on People too (whatever it answers, the phone is signed out); the fingerprint stays on.

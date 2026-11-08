@@ -7,6 +7,7 @@ import '../theme/parts.dart';
 import '../theme/tokens.dart';
 import '../theme/wide.dart';
 import 'auth_controller.dart';
+import 'unlock_words.dart';
 
 /// The app lock's words, in one place (ready for Arabic).
 abstract final class LockWords {
@@ -16,7 +17,6 @@ abstract final class LockWords {
   static const unlock = 'Unlock';
   static const signOut = 'Sign out';
   static const lockedOut = 'Too many tries: unlock your phone and try again, or sign out.';
-  static const unavailable = 'The fingerprint isn’t available right now: sign out and sign in with your password.';
 }
 
 /// The app locked behind the fingerprint or face (owner, 31 October 2026: "when the app is closed and reopened, ask for
@@ -121,7 +121,8 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       case FingerprintOutcome.lockedOut:
         setState(() => _problem = LockWords.lockedOut);
       case FingerprintOutcome.unavailable:
-        setState(() => _problem = LockWords.unavailable);
+        final words = UnlockWords(await ref.read(unlockKindProvider.future));
+        if (mounted) setState(() => _problem = words.lockUnavailable);
     }
   }
 

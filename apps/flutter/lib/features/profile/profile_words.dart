@@ -178,14 +178,10 @@ abstract final class AccountWords {
   static const cancel = 'Cancel';
   static const noSessions = 'You have no other sessions open.';
   static const mobileSecurity = 'Mobile security';
-  static const fingerprintTitle = 'Fingerprint Sign-In';
-  static const noPhone = 'No phone signs in with a fingerprint.';
   static const thisPhone = 'This phone';
   static String added(String day, String? used) => used == null ? 'Added $day · Never used' : 'Added $day · Last used $used';
   static const turnOn = 'Turn on for this phone';
   static const turningOn = 'Turning on…';
-  static const turnedOn = 'Fingerprint sign-in is on.';
-  static const phoneSignedOut = 'That phone no longer signs in with a fingerprint.';
 
   // interview hours
   static const hoursTitle = 'Your Interview Hours';

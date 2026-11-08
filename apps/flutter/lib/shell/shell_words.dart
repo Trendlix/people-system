@@ -19,9 +19,6 @@ abstract final class ShellWords {
   static const markAllRead = 'Mark all as read';
   static const noNotifications = 'Nothing new.';
   static const notificationsFailed = 'Couldn’t load your notifications.';
-  static const offerTitle = 'Sign in with your fingerprint?';
-  static const offerYes = 'Use fingerprint';
   static const offerNo = 'Not now';
-  static const fingerprintOn = 'Fingerprint sign-in is on.';
   static String unread(int n) => n == 1 ? '1 unread notification' : '$n unread notifications';
 }

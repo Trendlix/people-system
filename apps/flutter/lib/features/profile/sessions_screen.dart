@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/people_client.dart';
 import '../../auth/auth_controller.dart';
+import '../../auth/unlock_words.dart';
 import '../../format.dart';
 import '../../models/account.dart';
 import '../../providers.dart';
@@ -282,7 +283,7 @@ class _FingerprintCardState extends ConsumerState<_FingerprintCard> {
       ref
         ..invalidate(myDevicesProvider)
         ..invalidate(thisPhoneProvider);
-      if (mounted) setState(() => _said = (text: AccountWords.phoneSignedOut, ok: true));
+      if (mounted) setState(() => _said = (text: ref.read(unlockWordsProvider).phoneSignedOut, ok: true));
     } on Object catch (e) {
       if (mounted) setState(() => _said = (text: wordsOf(e), ok: false));
     } finally {
@@ -301,7 +302,7 @@ class _FingerprintCardState extends ConsumerState<_FingerprintCard> {
         ref
           ..invalidate(myDevicesProvider)
           ..invalidate(thisPhoneProvider);
-        if (mounted) setState(() => _said = (text: AccountWords.turnedOn, ok: true));
+        if (mounted) setState(() => _said = (text: ref.read(unlockWordsProvider).turnedOn, ok: true));
       }
     } on FingerprintProblem catch (e) {
       if (mounted) setState(() => _said = (text: e.message, ok: false));
@@ -322,6 +323,7 @@ class _FingerprintCardState extends ConsumerState<_FingerprintCard> {
     final list = devices.value;
     final offer = list != null && phone != null && phone.canUseFingerprint && !list.any((d) => d.id == thisId);
     final said = _said;
+    final unlock = ref.watch(unlockWordsProvider);
     return SurfaceCard(
       padding: const EdgeInsets.all(22),
       child: Row(
@@ -335,7 +337,7 @@ class _FingerprintCardState extends ConsumerState<_FingerprintCard> {
               borderRadius: BorderRadius.circular(11),
               border: Border.all(color: p.line),
             ),
-            child: Icon(Icons.fingerprint_rounded, size: 24, color: p.ink),
+            child: Icon(unlock.icon, size: 24, color: p.ink),
           ),
           const SizedBox(width: 18),
           Expanded(
@@ -346,12 +348,12 @@ class _FingerprintCardState extends ConsumerState<_FingerprintCard> {
                 const SizedBox(height: 6),
                 Semantics(
                   header: true,
-                  child: Text(AccountWords.fingerprintTitle, style: text.titleMedium?.copyWith(fontSize: 18, letterSpacing: 0, height: 1.5)),
+                  child: Text(unlock.accountTitle, style: text.titleMedium?.copyWith(fontSize: 18, letterSpacing: 0, height: 1.5)),
                 ),
                 const SizedBox(height: 15),
                 switch (devices) {
                   AsyncValue(value: final List<FingerprintDevice> list) when list.isEmpty => Text(
-                    AccountWords.noPhone,
+                    unlock.noPhone,
                     style: text.labelMedium?.copyWith(height: 1.5),
                   ),
                   AsyncValue(value: final List<FingerprintDevice> list) => Column(

@@ -47,10 +47,11 @@ Map<String, Object?> meJson({String id = 'u1', String name = 'Hazem Soliman', bo
     {'id': id, 'email': 'h.test@example.test', 'roles': ['employee'], 'name': name, 'employeeId': 'e1', if (hold) 'hold': true};
 
 class FakeBiometrics implements Biometrics {
-  FakeBiometrics({this.has = true, this.outcome = FingerprintOutcome.confirmed});
+  FakeBiometrics({this.has = true, this.outcome = FingerprintOutcome.confirmed, this.unlock = UnlockKind.fingerprint});
 
   bool has;
   FingerprintOutcome outcome;
+  UnlockKind unlock;
   final asked = <String>[];
 
   @override
@@ -61,6 +62,9 @@ class FakeBiometrics implements Biometrics {
     asked.add(reason);
     return outcome;
   }
+
+  @override
+  Future<UnlockKind> kind() async => unlock;
 }
 
 class FakeIdentity implements DeviceIdentity {

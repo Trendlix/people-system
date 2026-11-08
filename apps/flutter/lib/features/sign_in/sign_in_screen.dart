@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/people_client.dart';
 import '../../auth/auth_controller.dart';
+import '../../auth/unlock_words.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
 import 'email_code.dart';
@@ -13,7 +14,6 @@ import 'forgot_password.dart';
 abstract final class SignInWords {
   static const eyebrow = 'Trendlix People';
   static const title = 'Welcome back.';
-  static const fingerprint = 'Sign in with fingerprint';
   static const orPassword = 'or use your password';
   static const email = 'Work email';
   static const password = 'Password';
@@ -100,6 +100,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final notice = widget.state.notice;
+    final unlock = ref.watch(unlockWordsProvider);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -128,8 +129,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                               child: FilledButton.icon(
                                 onPressed: _busy ? null : _fingerprint,
                                 style: FilledButton.styleFrom(textStyle: text.titleMedium),
-                                icon: const Icon(Icons.fingerprint_rounded, size: 26),
-                                label: const Text(SignInWords.fingerprint),
+                                icon: Icon(unlock.icon, size: 26),
+                                label: Text(unlock.signIn),
                               ),
                             ),
                             const SizedBox(height: 18),

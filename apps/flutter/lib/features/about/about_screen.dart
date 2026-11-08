@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/auth_controller.dart';
+import '../../auth/unlock_words.dart';
 import '../../platform/locator.dart';
 import '../../providers.dart';
 import '../../theme/look.dart';
@@ -68,6 +69,7 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
     final problem = await ref.read(locatorProvider).readiness();
     final last = ref.read(locationCacheProvider).last;
     final hasBiometrics = await ref.read(biometricsProvider).available();
+    final unlock = UnlockWords(await ref.read(unlockKindProvider.future));
     final credential = await ref.read(sessionStoreProvider).readDevice();
     if (!mounted) return;
 
@@ -98,8 +100,9 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
           _ => AboutWords.locationUnread,
         },
         lastPosition: last == null ? null : positionText(accuracy: last.spot.accuracy, mock: last.spot.mock, age: DateTime.now().difference(last.at)),
+        fingerprintLabel: unlock.aboutRow,
         fingerprint: !hasBiometrics
-            ? AboutWords.fingerprintNone
+            ? unlock.noneSetUp
             : (credential != null && me != null && credential.userId == me.id ? AboutWords.fingerprintOn : AboutWords.fingerprintOff),
         email: me?.email,
         userId: me?.id,

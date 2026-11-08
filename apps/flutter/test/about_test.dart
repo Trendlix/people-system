@@ -9,8 +9,13 @@ import 'package:people/features/about/about_screen.dart';
 import 'package:people/features/about/diagnostics.dart';
 import 'package:people/providers.dart';
 import 'package:people/shell/shell_words.dart';
+import 'package:people/auth/unlock_words.dart';
+import 'package:people/platform/biometrics.dart';
 
 import 'fakes.dart';
+
+/// The words an Android phone shows, as before (unlock_words.dart).
+const android = UnlockWords(UnlockKind.fingerprint);
 
 // About this app (owner, 31 October 2026: "display the running app version in the more menu. displaying the details that
 // might help in any problem diognostic").
@@ -138,7 +143,7 @@ void main() {
     await tester.scrollUntilVisible(find.text('Android 15 (SDK 35)'), 200, scrollable: page());
     expect(find.text('Google Pixel 8'), findsOneWidget);
     expect(find.text(AboutWords.locationOn), findsOneWidget);
-    expect(find.text(AboutWords.fingerprintNone), findsOneWidget);
+    expect(find.text(android.noneSetUp), findsOneWidget);
     await tester.scrollUntilVisible(find.text(AboutWords.copy), 200, scrollable: page());
     expect(find.text('h.test@example.test'), findsWidgets);
     await tester.tap(find.text(AboutWords.copy));

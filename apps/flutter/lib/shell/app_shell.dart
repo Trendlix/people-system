@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../api/people_client.dart';
 import '../auth/auth_controller.dart';
+import '../auth/unlock_words.dart';
 import '../features/about/diagnostics.dart' show AboutWords, versionLineOf;
 import '../features/kpis/kpi_reminder.dart';
 import '../features/kpis/kpi_words.dart' show KpiWords;
@@ -61,21 +62,24 @@ class _AppShellState extends ConsumerState<AppShell> {
     final s = ref.read(authProvider).value;
     if (s is! SignedIn || !s.offerFingerprint || !mounted) return;
     auth.fingerprintOffered();
+    // Face ID or Touch ID on an iPhone or iPad, the fingerprint on Android (unlock_words.dart)
+    final words = UnlockWords(await ref.read(unlockKindProvider.future));
+    if (!mounted) return;
     final yes = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        icon: const Icon(Icons.fingerprint_rounded, size: 40),
-        title: const Text(ShellWords.offerTitle),
+        icon: Icon(words.icon, size: 40),
+        title: Text(words.offerTitle),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text(ShellWords.offerNo)),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text(ShellWords.offerYes)),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(words.offerYes)),
         ],
       ),
     );
     if (yes != true || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
-      if (await auth.turnOnFingerprint()) messenger.showSnackBar(const SnackBar(content: Text(ShellWords.fingerprintOn)));
+      if (await auth.turnOnFingerprint()) messenger.showSnackBar(SnackBar(content: Text(words.turnedOn)));
     } on FingerprintProblem catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } on ApiException catch (e) {

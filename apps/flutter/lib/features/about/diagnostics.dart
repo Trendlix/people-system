@@ -49,7 +49,6 @@ abstract final class AboutWords {
   static const noPosition = 'None read yet';
   static const fingerprintOn = 'On';
   static const fingerprintOff = 'Off';
-  static const fingerprintNone = 'No fingerprint or face set up on this phone';
   static const unreachable = 'Couldn’t reach People';
 }
 
@@ -80,6 +79,7 @@ class Diagnostics {
     this.location,
     this.lastPosition,
     this.fingerprint,
+    this.fingerprintLabel = AboutWords.fingerprint,
     this.email,
     this.userId,
     this.roles = const [],
@@ -103,6 +103,9 @@ class Diagnostics {
 
   final String phoneModel, phoneSystem, screen, look;
   final String? location, lastPosition, fingerprint;
+
+  /// The fingerprint row's name in the phone's own words: "Face ID sign-in" on an iPhone (unlock_words.dart).
+  final String fingerprintLabel;
   final String? email, userId;
   final List<String> roles;
 
@@ -169,7 +172,7 @@ List<DiagnosticSection> diagnosticSections(Diagnostics d) {
         if (d.look.isNotEmpty) (AboutWords.look, d.look),
         (AboutWords.location, known(d.location)),
         (AboutWords.lastPosition, d.lastPosition ?? AboutWords.noPosition),
-        (AboutWords.fingerprint, known(d.fingerprint)),
+        (d.fingerprintLabel, known(d.fingerprint)),
       ],
     ),
     if (d.email != null)
