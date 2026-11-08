@@ -82,7 +82,7 @@ class YourDaysCard extends StatelessWidget {
               child: Column(
                 children: [
                   for (final (i, d) in m.days.indexed)
-                    _DayRow(day: d, month: m, last: i == m.days.length - 1, selected: d.date == selected, onTap: () => onOpenDay(d.date)),
+                    _DayRow(day: d, month: m, today: today, last: i == m.days.length - 1, selected: d.date == selected, onTap: () => onOpenDay(d.date)),
                 ],
               ),
             ),
@@ -98,10 +98,11 @@ class YourDaysCard extends StatelessWidget {
 /// finds missing said so) with its hours, then its notes with its balance. A day not worked stays its date and what it
 /// was. Two lines, so a 360-point phone fits it at larger text too; the same in the iPad's pane.
 class _DayRow extends StatelessWidget {
-  const _DayRow({required this.day, required this.month, required this.last, required this.onTap, this.selected = false});
+  const _DayRow({required this.day, required this.month, required this.today, required this.last, required this.onTap, this.selected = false});
 
   final DayRecord day;
   final MyMonth month;
+  final String today;
   final bool last;
   final VoidCallback onTap;
   final bool selected;
@@ -112,20 +113,23 @@ class _DayRow extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final d = day;
     const tabular = [FontFeature.tabularFigures()];
-    final balance = balanceOf(d);
     final open = month.openCorrectionOn(d.date);
-    final rate = dayRateOf(d);
-    final band = rateBandOf(rate);
     final times = rowTimesOf(d);
     // an open check-in after the day's pairs (the check-out shown is its last pair's), as its details say it
     final openPress = pairsOf(d)?.open;
+    // today, still checked in: "08:56 – checked in", with no percentage, hours or balance until they check out (People
+    // counts an open check-in as half a day, which would read as a red 50% in the middle of the day)
+    final stillIn = d.date == today && times != null && !times.noCheckIn && (times.noCheckOut || openPress != null);
+    final rate = stillIn ? null : dayRateOf(d);
+    final balance = stillIn ? null : balanceOf(d);
+    final band = rateBandOf(rate);
     final cell = text.bodyMedium?.copyWith(height: 1.35, fontFeatures: tabular);
     final small = text.bodySmall?.copyWith(height: 1.35);
     // a check-in or check-out People finds missing, as the website's day says it (in the warning colour)
     final missing = cell?.copyWith(color: p.warn, fontWeight: FontWeight.w500);
     final notes = <Widget>[
       for (final n in dayNotes(d, month)) Text(n, style: small),
-      if (openPress != null) Text(openPress, style: small?.copyWith(color: p.warn)),
+      if (openPress != null) Text(openPress, style: stillIn ? small : small?.copyWith(color: p.warn)),
       if (open != null) Text(AttendanceWords.correctionOf(AttendanceWords.statusOfCorrection(open.status)), style: small?.copyWith(color: p.ink)),
     ];
     return Material(
@@ -182,6 +186,12 @@ class _DayRow extends StatelessWidget {
                       Expanded(
                         child: times == null
                             ? (notes.firstOrNull ?? const SizedBox.shrink())
+                            : stillIn && times.noCheckOut
+                            ? Semantics(
+                                label: AttendanceWords.rowTimesTodayLabel(times.checkIn!),
+                                excludeSemantics: true,
+                                child: Text('${times.checkIn} – ${AttendanceWords.stillIn}', style: cell),
+                              )
                             : Semantics(
                                 label: AttendanceWords.rowTimesLabel(times.checkIn, times.checkOut),
                                 excludeSemantics: true,
@@ -199,12 +209,14 @@ class _DayRow extends StatelessWidget {
                                     : Text(AttendanceWords.rowTimes(times.checkIn, times.checkOut), style: cell),
                               ),
                       ),
-                      const SizedBox(width: 10),
-                      Semantics(
-                        label: AttendanceWords.hoursLabel(AttendanceWords.hoursText(d.hoursCounted)),
-                        excludeSemantics: true,
-                        child: Text(AttendanceWords.hoursText(d.hoursCounted), style: cell),
-                      ),
+                      if (!stillIn) ...[
+                        const SizedBox(width: 10),
+                        Semantics(
+                          label: AttendanceWords.hoursLabel(AttendanceWords.hoursText(d.hoursCounted)),
+                          excludeSemantics: true,
+                          child: Text(AttendanceWords.hoursText(d.hoursCounted), style: cell),
+                        ),
+                      ],
                     ],
                   ),
                   // its other notes, with its balance on the right

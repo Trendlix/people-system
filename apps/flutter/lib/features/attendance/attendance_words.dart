@@ -137,6 +137,9 @@ abstract final class AttendanceWords {
   // 2026: "show the checking time and the checkout time with the attendance percentage without expandding the field")
   static const noCheckIn = 'no check-in';
   static const noCheckOut = 'no check-out';
+  // today, still checked in: not missing yet, and no percentage until the day is over
+  static const stillIn = 'checked in';
+  static String rowTimesTodayLabel(String came) => '$checkIn $came, still checked in';
 
   /// "08:57 – 17:57" (as [times] says a day on record); one alone on a day that needs no other: "In at 08:57".
   static String rowTimes(String? came, String? left) =>

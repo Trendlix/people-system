@@ -43,7 +43,7 @@ MyMonth november() => MyMonth.fromJson({
 String at(String date, String time) => clockOf(DateTime.parse('${date}T$time:00.000+03:00'));
 
 /// Your days alone on a phone [width] points wide, its text [scale] times, in the [brightness] look.
-Future<void> pumpDays(WidgetTester tester, {double width = 390, double scale = 1, Brightness brightness = Brightness.light, ValueChanged<String>? onOpenDay}) async {
+Future<void> pumpDays(WidgetTester tester, {double width = 390, double scale = 1, Brightness brightness = Brightness.light, ValueChanged<String>? onOpenDay, String today = '2026-11-08'}) async {
   tester.view
     ..physicalSize = Size(width * 3, 1000 * 3)
     ..devicePixelRatio = 3;
@@ -55,7 +55,7 @@ Future<void> pumpDays(WidgetTester tester, {double width = 390, double scale = 1
       home: Scaffold(
         body: ListView(
           padding: Tokens.pagePadding,
-          children: [YourDaysCard(month: november(), today: '2026-11-08', onOpenDay: onOpenDay ?? (_) {}, onMyCorrections: () {}, onAsk: () {})],
+          children: [YourDaysCard(month: november(), today: today, onOpenDay: onOpenDay ?? (_) {}, onMyCorrections: () {}, onAsk: () {})],
         ),
       ),
     ),
@@ -132,6 +132,16 @@ void main() {
     expect(inRow(day, find.text('50%')), findsOneWidget);
     expect(tester.widget<Text>(inRow(day, find.text('50%'))).style?.color, Palette.light.danger);
     expect(heard(tester, day), contains(AttendanceWords.rowTimesLabel(at('2026-11-02', '09:00'), null)));
+  });
+
+  testWidgets('today, still checked in: "checked in", with no percentage, hours or balance until the check-out', (tester) async {
+    await pumpDays(tester, today: '2026-11-02');
+    const day = 'Mon 02 Nov';
+    expect(inRow(day, find.text('${at('2026-11-02', '09:00')} – ${AttendanceWords.stillIn}')), findsOneWidget);
+    for (final gone in [AttendanceWords.noCheckOut, '4:30', '−4:30 short', '50%']) {
+      expect(inRow(day, find.textContaining(gone)), findsNothing, reason: gone);
+    }
+    expect(heard(tester, day), contains(AttendanceWords.rowTimesTodayLabel(at('2026-11-02', '09:00'))));
   });
 
   testWidgets('a rest day and a day of leave stay their date and what they were', (tester) async {
