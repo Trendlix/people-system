@@ -266,7 +266,9 @@ class _WaitingRow extends StatelessWidget {
                 IconButton.filled(
                   onPressed: onApprove,
                   tooltip: ApproveWords.approve,
-                  icon: const Icon(CupertinoIcons.checkmark, size: 18),
+                  // the tick in the button's own colour, not the theme's ink (it was dark on the black circle: 8 November
+                  // 2026)
+                  icon: Icon(CupertinoIcons.checkmark, size: 18, color: p.onPrimary),
                   style: IconButton.styleFrom(minimumSize: const Size.square(Tokens.tapTarget)),
                 ),
               ],

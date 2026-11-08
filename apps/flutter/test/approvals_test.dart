@@ -1,9 +1,17 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:people/app.dart';
+import 'package:people/auth/session_store.dart';
 import 'package:people/features/requests/approvals.dart';
 import 'package:people/features/requests/request_page.dart';
 import 'package:people/features/requests/requests_data.dart';
 import 'package:people/models/requests.dart';
+import 'package:people/providers.dart';
+import 'package:people/shell/shell_words.dart';
+import 'package:people/theme/look.dart';
+import 'package:people/theme/tokens.dart';
 
 import 'fakes.dart';
 import 'requests_fixtures.dart';
@@ -104,4 +112,26 @@ void main() {
     // decided: no longer waiting for them
     expect(find.text(ApproveWords.decideTitle), findsNothing);
   });
+
+  // the tick was the theme's ink on the black circle, so it didn't show (8 November 2026)
+  for (final dark in [false, true]) {
+    testWidgets('draws the Approve tick in the button’s own colour, ${dark ? 'dark' : 'light'}', (tester) async {
+      people.on('GET /api/leave/requests', (req) => json([waitingLeave('w1', '$y-10-20T08:00:00.000Z')]));
+      phoneScreen(tester);
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: noRetry,
+          overrides: overridesFor(people, store: MemorySessionStore(token: 'kept'), look: MemoryLookStore(dark ? ThemeMode.dark : ThemeMode.light)),
+          child: const PeopleApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(ShellWords.requests));
+      await tester.pumpAndSettle();
+      final look = dark ? Palette.dark : Palette.light;
+      final tick = tester.widget<Icon>(find.descendant(of: find.byTooltip(ApproveWords.approve), matching: find.byIcon(CupertinoIcons.checkmark)));
+      expect(tick.color, look.onPrimary);
+      expect(tick.color, isNot(look.primary));
+    });
+  }
 }
