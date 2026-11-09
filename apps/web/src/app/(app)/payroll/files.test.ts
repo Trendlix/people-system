@@ -5,6 +5,7 @@ import {
   bankFilesReady,
   bankLabel,
   bankLeftOut,
+  byName,
   batchFileHref,
   batchHiddenText,
   batchMarks,
@@ -220,5 +221,20 @@ describe('bank transfer batches (owner, 5 November 2026)', () => {
     expect(makesBankBatches({ roles: ['ceo', 'super_admin'], developer: true })).toBe(false);
     expect(makesBankBatches({ roles: ['hr'], viewAs: { by: { id: 'x', email: 'x@example.com' }, act: false } })).toBe(false);
     expect(makesBankBatches({ roles: ['hr'], viewAs: { by: { id: 'x', email: 'x@example.com' }, act: true } })).toBe(true);
+  });
+});
+
+// the CIB and ACH lists by name (owner, 9 November 2026: "sort alphabetically")
+describe('a bank file’s people by name', () => {
+  it('A to Z, case and accents aside, the same name by employee code', () => {
+    const people = [
+      { id: '1', name: 'Youssef Ramadan', employeeCode: 'EMP-0019' },
+      { id: '2', name: 'ahmed Tarek', employeeCode: 'EMP-0005' },
+      { id: '3', name: 'Marina Samir', employeeCode: 'EMP-0010' },
+      { id: '4', name: 'Marina Samir', employeeCode: 'EMP-0002' },
+      { id: '5', name: 'Émad Ali', employeeCode: null },
+    ];
+    expect(byName(people).map((p) => p.id)).toEqual(['2', '5', '4', '3', '1']);
+    expect(people.map((p) => p.id)).toEqual(['1', '2', '3', '4', '5']);
   });
 });

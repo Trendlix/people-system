@@ -13,6 +13,7 @@ import {
   BANK_FILE_LABELS,
   BANK_FILES,
   bankLabel,
+  byName,
   batchFileHref,
   batchMarks,
   batchNote,
@@ -57,7 +58,8 @@ export function BankBatchPicker({
   makes: boolean;
 }) {
   const marks = useMemo(() => batchMarks(batches), [batches]);
-  const files = BANK_FILES.map((file) => ({ file, ...owedOf(payees(lines, file), batches) })).filter((f) => f.owed.length + f.paid.length > 0);
+  // each file's people by name, A to Z (9 November 2026), those owed and those paid in full alike
+  const files = BANK_FILES.map((file) => ({ file, ...owedOf(byName(payees(lines, file)), batches) })).filter((f) => f.owed.length + f.paid.length > 0);
   if (!files.length) return <p className="text-sm text-muted">Nobody on this run is paid through the bank files.</p>;
   return (
     <div className="space-y-6">

@@ -139,6 +139,14 @@ export function payees<L extends PayeeLine>(lines: readonly L[], file: PayrollBa
   return lines.filter((l) => !l.onHold && l.result.transfer > 0 && l.bank.file === file && l.bank.problem === null);
 }
 
+/**
+ * The people of a bank file's lists by name, A to Z (owner, 9 November 2026, of the CIB and ACH lists: "sort
+ * alphabetically"), letters' case and accents aside; the same name by employee code.
+ */
+export function byName<L extends { name: string; employeeCode?: string | null }>(lines: readonly L[]): L[] {
+  return [...lines].sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) || (a.employeeCode ?? '').localeCompare(b.employeeCode ?? '', 'en', { numeric: true }));
+}
+
 /** Paid to a mobile wallet (MIDG; owner, 5 November 2026). */
 export const isWallet = (line: Pick<PayeeLine, 'bank'>) => bankNamed(line.bank.bankShort)?.wallet === true;
 
