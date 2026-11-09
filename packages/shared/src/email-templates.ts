@@ -387,7 +387,7 @@ export const EMAIL_TEMPLATES: Readonly<Record<EmailTemplateKey, EmailTemplateKin
     key: 'shortlist_review',
     group: 'team',
     label: 'Applicants to review',
-    when: 'To the recruiter’s manager (Review 2) or the vacancy’s hiring manager (Final Review) when applicants reach their review.',
+    when: 'To the vacancy’s hiring manager when applicants reach their Final Review.',
     fields: [JOB, f('count', 'How many, in words', '3 applicants'), f('names', 'Their names, one a line', '- Mona Ali\n- Omar Said\n- Sara Adel'), f('link', 'My Hiring', 'https://people.trendlix.com/recruitment/my-hiring')],
     required: [],
     start: {

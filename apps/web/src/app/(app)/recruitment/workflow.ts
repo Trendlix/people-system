@@ -180,3 +180,6 @@ export function siblingsIn(ids: readonly string[], id: string): Siblings | null 
   if (i < 0) return null;
   return { prev: i > 0 ? ids[i - 1] : null, next: i < ids.length - 1 ? ids[i + 1] : null, index: i + 1, total: ids.length };
 }
+
+/** A hiring manager's Final Review waiting, on their vacancy (9 November 2026): "3 applicants wait for your Final Review." */
+export const finalReviewWaiting = (n: number): string => `${n} ${n === 1 ? 'applicant waits' : 'applicants wait'} for your Final Review: pass them on to HR Screening or reject them.`;

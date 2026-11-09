@@ -20,7 +20,8 @@ export async function reviewsWaiting(prisma: PrismaService, selfId: string): Pro
       where: {
         filteredOut: false,
         stage: 'review_2',
-        vacancy: { status: LIVE, recruiter: { employments: { some: { endDate: null, managerId: selfId } } } },
+        // their vacancies' Final Review (9 November 2026: the hiring manager's; the recruiter's manager's before)
+        vacancy: { status: LIVE, hiringManagerId: selfId },
       },
       select: {
         id: true,

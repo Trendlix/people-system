@@ -138,6 +138,10 @@ export const APP_ENDPOINTS: readonly string[] = [
   'GET /api/me/notifications',
   'GET /api/me/notifications/unread-count',
   'POST /api/me/notifications/read-all',
+  // a notification opened, and the phone registered for push (8 November 2026)
+  'POST /api/me/notifications/{x}/read',
+  'POST /api/me/push-devices',
+  'POST /api/me/push-devices/unregister',
   // timesheets (4 November 2026): one's own week, and the weeks to approve
   'GET /api/me/timesheet',
   'PUT /api/me/timesheet',

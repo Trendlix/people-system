@@ -45,8 +45,8 @@ export const VACANCY_INCLUDE = {
   department: { select: { id: true, nameEn: true } },
   grade: { select: { id: true, code: true, levelEn: true, confidential: true } },
   hiringManager: { select: { id: true, fullNameEn: true } },
-  // its recruiter (3 November 2026) and their manager now, who takes Review 2
-  recruiter: { select: { id: true, fullNameEn: true, employments: { where: { endDate: null }, orderBy: { joinDate: 'desc' }, take: 1, select: { manager: { select: { id: true, fullNameEn: true } } } } } },
+  // its recruiter (3 November 2026), who takes Applicants
+  recruiter: { select: { id: true, fullNameEn: true } },
   shift: { select: { id: true, code: true } },
   submittedBy: USER,
   decidedBy: USER,

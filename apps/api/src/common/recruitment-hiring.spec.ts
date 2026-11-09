@@ -67,13 +67,15 @@ describe('the pipeline board', () => {
 });
 
 describe('who sees which applicants', () => {
-  it('shows a hiring manager their vacancy’s applicants from HR Screening on (5 November 2026), never one filtered out', () => {
+  it('shows a hiring manager their vacancy’s applicants from the Final Review on (9 November 2026), never one filtered out', () => {
     expect(hiringManagerSees({ stage: 'applied', rejectedFrom: null, filteredOut: false })).toBe(false);
-    expect(hiringManagerSees({ stage: 'review_2', rejectedFrom: null, filteredOut: false })).toBe(false);
+    // their Final Review since 9 November 2026
+    expect(hiringManagerSees({ stage: 'review_2', rejectedFrom: null, filteredOut: false })).toBe(true);
     expect(hiringManagerSees({ stage: 'screening', rejectedFrom: null, filteredOut: false })).toBe(true);
     expect(hiringManagerSees({ stage: 'hired', rejectedFrom: null, filteredOut: false })).toBe(true);
     expect(hiringManagerSees({ stage: 'rejected', rejectedFrom: 'interview', filteredOut: false })).toBe(true);
-    expect(hiringManagerSees({ stage: 'rejected', rejectedFrom: 'review_2', filteredOut: false })).toBe(false);
+    expect(hiringManagerSees({ stage: 'rejected', rejectedFrom: 'review_2', filteredOut: false })).toBe(true);
+    expect(hiringManagerSees({ stage: 'rejected', rejectedFrom: 'applied', filteredOut: false })).toBe(false);
     expect(hiringManagerSees({ stage: 'screening', rejectedFrom: null, filteredOut: true })).toBe(false);
   });
 

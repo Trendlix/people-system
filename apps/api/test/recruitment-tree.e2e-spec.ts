@@ -9,14 +9,16 @@ import { createApp, createUser, signIn } from './helpers.js';
 
 // The recruitment tree (owner, 3 November 2026: "Recrutment tree"; asked, "HR1 (Recruter) - HR2 (Her MAnager if there is)
 // - then Manager", "Declined closes, rest stay", "Reason list + feedback", "Wait in Applicants", "A Recruiter field",
-// "Yes, at once"; 5 November 2026: Review 1 merged into Applicants, Review 2 the Final Review, the hiring manager's review
-// gone, a review's Reject with "optional Feedback", review rejections apart from the Rejected tab). A Video Editor
+// "Yes, at once"; 5 November 2026: Review 1 merged into Applicants, Review 2 the Final Review, a review's Reject with
+// "optional Feedback", review rejections apart from the Rejected tab; 9 November 2026: "give the hiring manager access to
+// move his batch to HR screening", the Final Review and the Technical Interview the hiring manager's). A Video Editor
 // vacancy recruited by Rita (in HR), whose manager Mazen isn't in HR, hired for by Hana; and one recruited by Hadi (in
-// HR, nobody manages him) without a hiring manager. Rita's Applicants (another HR person refused, no Send to Review 1),
-// Mazen's Final Review on My Hiring (told once), Hana from HR Screening on, HR Screening (Unreachable kept, the interview
-// refused until accepted), the Technical Interview (Pending kept, Accepted to the Offer), a decline closing, the Final
-// Review skipped without the recruiter's manager, a Super Admin taking any step, the Rejected tab without the reviews'
-// rejections ("Rejected at review" apart), the restore and the board. Email is kept in MailService's outbox
+// HR) without a hiring manager. Rita's Applicants (another HR person refused, no Send to Review 1), Hana's Final Review
+// on My Hiring (told once, a batch passed to HR Screening; Mazen has no part any more), HR Screening (Unreachable kept,
+// the interview refused until accepted), the Technical Interview (HR's Pending kept, HR refused Accepted, Hana's Accepted
+// to the Offer), a decline closing, the Final Review skipped and the interview HR's without a hiring manager, a Super
+// Admin taking any step, the Rejected tab without the reviews' rejections ("Rejected at review" apart), the restore and
+// the board. Email is kept in MailService's outbox
 // (MAIL_TRANSPORT=memory). Every name is invented; this file deletes what it made.
 
 process.env.MAIL_TRANSPORT = 'memory';
@@ -147,10 +149,10 @@ describe('The recruitment tree (e2e)', () => {
   });
 
   describe('the vacancy’s recruiter', () => {
-    it('names the recruiter and their manager; only an HR person may be one', async () => {
+    it('names the recruiter; only an HR person may be one', async () => {
       expect(v.recruiter).toEqual({ id: people.rita, name: `Rita Recruiter ${RUN}` });
-      expect(v.recruiterManager).toEqual({ id: people.mazen, name: `Mazen Manager ${RUN}` });
-      expect(solo.recruiterManager).toBeNull();
+      expect(v.hiringManager).toEqual({ id: people.hana, name: `Hana Hiring ${RUN}` });
+      expect(solo.hiringManager).toBeNull();
       expect(said(await post('hr', '/recruitment/vacancies', { jobTitleId, employmentType: 'full_time', recruiterId: people.hana }).expect(400))).toEqual([
         'The recruiter must be a current employee who works in HR.',
       ]);
@@ -186,7 +188,7 @@ describe('The recruitment tree (e2e)', () => {
       expect(await prisma.auditLog.findFirst({ where: { entityId: apps.Lina, action: 'decide' } })).toMatchObject({ diff: { step: 'applied', outcome: 'rejected' } });
     });
 
-    it('passes several at once to the Final Review (the others skipped with why); Mazen told once', async () => {
+    it('passes several at once to the Final Review (the others skipped with why); Hana told once', async () => {
       const before = mail.outbox.length;
       const stray = randomUUID();
       const r = (
@@ -205,39 +207,41 @@ describe('The recruitment tree (e2e)', () => {
         'Applicant not found.',
       ]);
       expect((await stageOf('Sara')).stage).toBe('review_2');
-      expect(await notices('mazen')).toEqual([{ title: `3 applicants for ${job} wait for your final review: pass or reject them`, body: [name('Sara'), name('Adam'), name('Nour')].join(', '), link: '/recruitment/my-hiring' }]);
-      expect(mail.outbox.slice(before).map((m) => m.to)).toEqual([emails.mazen]);
+      expect(await notices('hana')).toEqual([{ title: `3 applicants for ${job} wait for your final review: pass or reject them`, body: [name('Sara'), name('Adam'), name('Nour')].join(', '), link: '/recruitment/my-hiring' }]);
+      expect(mail.outbox.slice(before).map((m) => m.to)).toEqual([emails.hana]);
+      // the recruiter's manager has no part any more (9 November 2026)
+      expect(await notices('mazen')).toEqual([]);
       // Rita works on the HR pages: nothing sent her
       expect(await notices('rita')).toEqual([]);
     });
   });
 
-  describe('the Final Review: the recruiter’s manager', () => {
-    it('Mazen, outside HR, sees those at his Final Review on My Hiring and their page, never their expected salary', async () => {
-      const mine = (await get('mazen', '/recruitment/my-hiring').expect(200)).body as MyHiring;
+  describe('the Final Review: the hiring manager’s (9 November 2026)', () => {
+    it('Hana sees those at her Final Review on My Hiring and their page, never their expected salary; Mazen nothing', async () => {
+      const mine = (await get('hana', '/recruitment/my-hiring').expect(200)).body as MyHiring;
       expect(mine.toReview).toEqual([{ vacancy: { id: v.id, number: v.number, title: v.title }, applicants: expect.any(Array) }]);
       expect(mine.toReview![0].applicants.map((a) => [a.fullName, a.stage])).toEqual([
         [name('Sara'), 'review_2'],
         [name('Adam'), 'review_2'],
         [name('Nour'), 'review_2'],
       ]);
-      const sara = (await get('mazen', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView;
-      expect(sara).toMatchObject({ viewer: 'reviewer', expectedSalary: null, can: { decide: { stage: 'review_2', outcomes: ['passed', 'rejected'], reasons: [] } } });
-      await get('mazen', `/recruitment/applications/${apps.Lina}`).expect(404);
-      // the hiring manager sees nobody before HR Screening
-      await get('hana', `/recruitment/applications/${apps.Sara}`).expect(404);
+      const sara = (await get('hana', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView;
+      expect(sara).toMatchObject({ viewer: 'hiring_manager', expectedSalary: null, nextBy: `The hiring manager: Hana Hiring ${RUN}`, can: { decide: { stage: 'review_2', outcomes: ['passed', 'rejected'], reasons: [] } } });
+      // nobody before her review: Lina was rejected at Applicants
+      await get('hana', `/recruitment/applications/${apps.Lina}`).expect(404);
+      await get('mazen', `/recruitment/applications/${apps.Sara}`).expect(404);
+      expect(((await get('mazen', '/recruitment/my-hiring').expect(200)).body as MyHiring).toReview ?? []).toEqual([]);
     });
 
-    it('passes two to HR Screening, rejects one; his pass is the last review', async () => {
-      await post('hr', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'passed' }).expect(403);
-      await post('mazen', `/recruitment/vacancies/${v.id}/decide`, { applicationIds: [apps.Sara, apps.Adam], stage: 'review_2', outcome: 'passed' }).expect(200);
-      await post('mazen', `/recruitment/applications/${apps.Nour}/decide`, { outcome: 'rejected' }).expect(200);
+    it('passes her batch to HR Screening, rejects one; HR may not take her review', async () => {
+      expect(said(await post('hr', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'passed' }).expect(403))).toEqual(['The hiring manager takes this step.']);
+      await post('hana', `/recruitment/vacancies/${v.id}/decide`, { applicationIds: [apps.Sara, apps.Adam], stage: 'review_2', outcome: 'passed' }).expect(200);
+      await post('hana', `/recruitment/applications/${apps.Nour}/decide`, { outcome: 'rejected' }).expect(200);
       expect((await stageOf('Sara')).stage).toBe('screening');
       expect(await stageOf('Nour')).toMatchObject({ stage: 'rejected', rejectedFrom: 'review_2' });
-      // past his review, no longer his to see; the hiring manager sees them now
-      await get('mazen', `/recruitment/applications/${apps.Sara}`).expect(404);
+      // still hers to see, the one she rejected too
       expect(((await get('hana', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView).viewer).toBe('hiring_manager');
-      await get('hana', `/recruitment/applications/${apps.Nour}`).expect(404);
+      await get('hana', `/recruitment/applications/${apps.Nour}`).expect(200);
     });
   });
 
@@ -263,13 +267,19 @@ describe('The recruitment tree (e2e)', () => {
     });
   });
 
-  describe('the Technical Interview', () => {
-    it('Pending keeps them; Accepted takes them to the Offer, where an offer can be made', async () => {
+  describe('the Technical Interview: the hiring manager’s (9 November 2026)', () => {
+    it('HR records the candidate’s Pending; Accepted and Rejected are Hana’s, which takes them to the Offer', async () => {
       const pending = (await post('hr', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'pending' }).expect(200)).body as ApplicationView;
-      expect(pending).toMatchObject({ stage: 'interview', hold: 'pending', can: { makeOffer: false, scheduleInterview: true } });
-      expect(said(await post('hr', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'rejected', reasons: ['location'] }).expect(400))[0]).toContain('Choose the reasons from: Culture Fit');
-      const offer = (await post('hr', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'accepted', feedback: 'Great test edit' }).expect(200)).body as ApplicationView;
-      expect(offer).toMatchObject({ stage: 'offer', hold: null, nextBy: null, can: { makeOffer: true, decide: null } });
+      expect(pending).toMatchObject({ stage: 'interview', hold: 'pending', can: { makeOffer: false, scheduleInterview: true, decide: { stage: 'interview', outcomes: ['pending', 'unreachable', 'declined'], reasons: [] } } });
+      expect(said(await post('hr', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'accepted' }).expect(403))).toEqual([
+        'The hiring manager accepts or rejects at this step; HR records Pending, Unreachable or Declined.',
+      ]);
+      const hanas = (await get('hana', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView;
+      expect(hanas.can.decide).toEqual({ stage: 'interview', outcomes: ['accepted', 'rejected', 'pending', 'unreachable', 'declined'], reasons: expect.arrayContaining(['skills_mismatch']) });
+      expect(said(await post('hana', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'rejected', reasons: ['location'] }).expect(400))[0]).toContain('Choose the reasons from: Culture Fit');
+      const offer = (await post('hana', `/recruitment/applications/${apps.Sara}/decide`, { outcome: 'accepted', feedback: 'Great test edit' }).expect(200)).body as ApplicationView;
+      expect(offer).toMatchObject({ stage: 'offer', hold: null, nextBy: null, can: { decide: null } });
+      expect(((await get('hr', `/recruitment/applications/${apps.Sara}`).expect(200)).body as ApplicationView).can.makeOffer).toBe(true);
       expect(offer.decisions!.map((d) => [d.stage, d.outcome])).toEqual([
         ['applied', 'passed'],
         ['review_2', 'passed'],
@@ -281,8 +291,8 @@ describe('The recruitment tree (e2e)', () => {
     });
   });
 
-  describe('without a recruiter’s manager', () => {
-    it('the Final Review is skipped; a decline closes them', async () => {
+  describe('without a hiring manager', () => {
+    it('the Final Review is skipped; the interview is HR’s; a decline closes them', async () => {
       const basma = (await post('hadi', `/recruitment/applications/${apps.Basma}/decide`, { outcome: 'passed' }).expect(200)).body as ApplicationView;
       expect(basma.stage).toBe('screening');
       expect(await notices('hadi')).toEqual([]);
@@ -328,12 +338,12 @@ describe('The recruitment tree (e2e)', () => {
       expect(await stageOf('Lina')).toMatchObject({ stage: 'rejected', rejectedFrom: 'applied' });
     });
 
-    it('the board has a column a step; the hiring manager’s starts at HR Screening', async () => {
+    it('the board has a column a step; the hiring manager’s starts at her Final Review', async () => {
       const board = (await get('hr', `/recruitment/vacancies/${v.id}/board`).expect(200)).body as VacancyBoard;
       expect(board.columns.map((c) => c.stage)).toEqual(['applied', 'review_2', 'screening', 'interview', 'offer', 'hired', 'rejected']);
       expect(board.columns.find((c) => c.stage === 'offer')!.cards.map((c) => c.id)).toEqual([apps.Sara]);
       const hanas = (await get('hana', `/recruitment/vacancies/${v.id}/board`).expect(200)).body as VacancyBoard;
-      expect(hanas.columns.map((c) => c.stage)).toEqual(['screening', 'interview', 'offer', 'hired', 'rejected']);
+      expect(hanas.columns.map((c) => c.stage)).toEqual(['review_2', 'screening', 'interview', 'offer', 'hired', 'rejected']);
     });
   });
 });

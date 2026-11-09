@@ -52,7 +52,7 @@ import { vacancyPortfolioText } from '../../portfolio';
 import { agencyBackgroundText } from '../../agency';
 import { experienceBasisText } from '../../career';
 import { tickable, vacancyCaller } from '../../shortlist';
-import { applyLinksHint, careersTextHint, refineNav, workflowNav } from '../../workflow';
+import { applyLinksHint, careersTextHint, finalReviewWaiting, refineNav, workflowNav } from '../../workflow';
 import { ListScrollRestorer } from '../../list-return';
 import { ApplicantFilters, CollapsibleCard, HiringWorkflow } from '../../workflow-ui';
 import { VacancySelection } from '../../shortlist-ui';
@@ -327,14 +327,13 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
           <Fact label="Headcount">
             {v.hired} hired of {v.headcount}
           </Fact>
-          <Fact label="Hiring manager">{v.hiringManager?.name ?? '—'}</Fact>
-          {/* the recruitment tree (5 November 2026): the recruiter reviews Applicants, their manager takes the Final Review */}
-          {v.recruiter !== undefined && (
-            <Fact label="Recruiter">
-              {v.recruiter ? v.recruiter.name : 'None: HR reviews Applicants'}
-              {v.recruiterManager && <span className="block text-xs text-muted">Final Review: {v.recruiterManager.name}</span>}
-            </Fact>
-          )}
+          {/* the recruitment tree (9 November 2026): the recruiter reviews Applicants; the hiring manager takes the Final Review
+              and the Technical Interview */}
+          <Fact label="Hiring manager">
+            {v.hiringManager?.name ?? '—'}
+            <span className="block text-xs text-muted">{v.hiringManager ? 'Final Review and Technical Interview' : 'None: no Final Review, HR decides the interview'}</span>
+          </Fact>
+          {v.recruiter !== undefined && <Fact label="Recruiter">{v.recruiter ? v.recruiter.name : 'None: HR reviews Applicants'}</Fact>}
           <Fact label="Grade">{v.grade ? `${v.grade.code} · ${v.grade.levelEn}` : '—'}</Fact>
           <Fact label="Shift">{v.shift?.code ?? '—'}</Fact>
           <Fact label="Contract length">{v.durationMonths ? `${v.durationMonths} months` : '—'}</Fact>
@@ -442,6 +441,16 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
             {suggestedViewLabel(v.suggestions)}
           </Link>
         </nav>
+      )}
+      {/* their Final Review (owner, 9 November 2026: "give the hiring manager access to move his batch to HR screening"): ticked
+          and passed on together on My Hiring */}
+      {hiringManager && (v.stageCounts.review_2 ?? 0) > 0 && (
+        <p role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+          {finalReviewWaiting(v.stageCounts.review_2 ?? 0)}{' '}
+          <Link href={MY_HIRING_PATH} className="font-semibold text-warn">
+            Review them on My Hiring
+          </Link>
+        </p>
       )}
       <Suspense fallback={<Loading />}>
         {view === 'board' ? <Board v={v} /> : view === 'suggested' ? <Suggestions v={v} searchParams={searchParams} /> : <Applicants v={v} searchParams={searchParams} />}

@@ -1,20 +1,20 @@
-import { decisionProblems, rejectReasonsOf, stageAfter, STEP_OUTCOMES_OF, takesStep, type TreeCaller } from '@trendlix/shared';
+import { decisionProblems, outcomesFor, rejectReasonsOf, stageAfter, STEP_OUTCOMES_OF, takesStep, takesStepProblem, type TreeCaller } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 
 // The recruitment tree (owner, 3 November 2026: "Recrutment tree"; 5 November 2026: the reviews merged): packages/shared
 // recruitment-tree.ts.
 
-describe('where a pass leads (5 November 2026: Applicants the recruiter’s review, Review 2 the Final Review)', () => {
+describe('where a pass leads (9 November 2026: the Final Review the hiring manager’s)', () => {
   it('Applicants → Final Review → HR Screening → Technical Interview → Offer', () => {
-    const manager = { hasRecruiterManager: true };
+    const manager = { hasHiringManager: true };
     expect(stageAfter('applied', manager)).toBe('review_2');
     expect(stageAfter('review_2', manager)).toBe('screening');
     expect(stageAfter('screening', manager)).toBe('interview');
     expect(stageAfter('interview', manager)).toBe('offer');
   });
 
-  it('skips the Final Review without a recruiter’s manager; the hiring manager has no review any more', () => {
-    expect(stageAfter('applied', { hasRecruiterManager: false })).toBe('screening');
+  it('skips the Final Review without a hiring manager', () => {
+    expect(stageAfter('applied', { hasHiringManager: false })).toBe('screening');
   });
 });
 
@@ -53,24 +53,43 @@ describe('the outcomes and reasons', () => {
   });
 });
 
-describe('who takes each step', () => {
-  const nobody: TreeCaller = { manages: false, superAdmin: false, isRecruiter: false, isRecruiterManager: false, hasRecruiter: true, hasRecruiterManager: true };
+describe('who takes each step (owner, 9 November 2026: "give the hiring manager access to move his batch to HR screening")', () => {
+  const nobody: TreeCaller = { manages: false, superAdmin: false, isRecruiter: false, isHiringManager: false, hasRecruiter: true, hasHiringManager: true };
   const hr = { ...nobody, manages: true };
-  it('Applicants the recruiter, the Final Review their manager; HR the rest; a Super Admin any', () => {
+  const manager = { ...nobody, isHiringManager: true };
+  it('Applicants the recruiter; the Final Review and the interview the hiring manager; HR Screening HR; a Super Admin any', () => {
     expect(takesStep('applied', { ...hr, isRecruiter: true })).toBe(true);
     // another HR person: not the recruiter's review
     expect(takesStep('applied', hr)).toBe(false);
-    expect(takesStep('review_2', { ...nobody, isRecruiterManager: true })).toBe(true);
+    expect(takesStep('review_2', manager)).toBe(true);
     expect(takesStep('review_2', hr)).toBe(false);
     expect(takesStep('screening', hr)).toBe(true);
-    expect(takesStep('interview', hr)).toBe(true);
-    expect(takesStep('interview', { ...nobody, isRecruiterManager: true })).toBe(false);
+    expect(takesStep('screening', manager)).toBe(false);
+    expect(takesStep('interview', manager)).toBe(true);
+    expect(takesStep('interview', hr)).toBe(false);
     expect(takesStep('review_2', { ...nobody, superAdmin: true })).toBe(true);
+    expect(takesStep('interview', { ...nobody, superAdmin: true })).toBe(true);
   });
 
-  it('a review nobody is named for is HR’s', () => {
+  it('a step nobody is named for is HR’s', () => {
     expect(takesStep('applied', { ...hr, hasRecruiter: false })).toBe(true);
-    expect(takesStep('review_2', { ...hr, hasRecruiterManager: false })).toBe(true);
-    expect(takesStep('review_2', { ...nobody, hasRecruiterManager: false })).toBe(false);
+    expect(takesStep('review_2', { ...hr, hasHiringManager: false })).toBe(true);
+    expect(takesStep('interview', { ...hr, hasHiringManager: false })).toBe(true);
+    expect(takesStep('review_2', { ...nobody, hasHiringManager: false })).toBe(false);
+  });
+
+  it('at the interview the hiring manager accepts or rejects; HR records the candidate’s Pending, Unreachable or Declined', () => {
+    expect(outcomesFor('interview', manager)).toEqual(['accepted', 'rejected', 'pending', 'unreachable', 'declined']);
+    expect(outcomesFor('interview', hr)).toEqual(['pending', 'unreachable', 'declined']);
+    expect(outcomesFor('interview', { ...hr, hasHiringManager: false })).toEqual(STEP_OUTCOMES_OF.interview);
+    expect(outcomesFor('review_2', hr)).toEqual([]);
+    expect(outcomesFor('screening', manager)).toEqual([]);
+    expect(takesStepProblem('interview', hr, 'declined')).toBeNull();
+    expect(takesStepProblem('interview', hr, 'accepted')).toBe('The hiring manager accepts or rejects at this step; HR records Pending, Unreachable or Declined.');
+    expect(takesStepProblem('review_2', hr)).toBe('The hiring manager takes this step.');
+    expect(takesStepProblem('screening', manager, 'accepted')).toBe('HR takes this step.');
+    expect(takesStepProblem('interview', manager, 'rejected')).toBeNull();
+    // an outcome the step doesn't take: the decision's own problem (400), not someone else's step
+    expect(takesStepProblem('screening', hr, 'pending')).toBeNull();
   });
 });

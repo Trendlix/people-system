@@ -14,8 +14,8 @@ import { ShortlistToReview } from '../shortlist-review';
 // interviews they sit on (to come, and those of the last 60 days, a scorecard due marked). Since 29 October 2026 (owner:
 // "Score Card for each of them"), a hiring manager's list holds their vacancies' interviews too, though not on the panel:
 // they give their scorecard on each, "Scorecard due" linking to it. Since 3 November 2026 (the recruitment tree), the
-// reviews waiting for them: since 5 November 2026 the Final Review, the recruiter's manager's (the hiring manager reviews
-// no CVs any more).
+// reviews waiting for them: since 9 November 2026 their vacancies' Final Review (owner: "give the hiring manager access to
+// move his batch to HR screening"), ticked and passed on to HR Screening together.
 
 export const metadata: Metadata = { title: 'My Hiring · People System' };
 
@@ -32,7 +32,7 @@ async function Mine() {
           {feedbackDue} {feedbackDue === 1 ? 'scorecard is' : 'scorecards are'} waiting for you.
         </p>
       )}
-      {/* the Final Review waiting for them, to pass or reject (5 November 2026: the recruiter's manager's); shown when something waits */}
+      {/* the Final Review waiting for them, to pass on to HR Screening or reject (9 November 2026: the hiring manager's); shown when something waits */}
       <ShortlistToReview groups={toReview} reviews={false} />
       {vacancies.length > 0 && (
         <section aria-labelledby="my-vacancies" className="space-y-3">

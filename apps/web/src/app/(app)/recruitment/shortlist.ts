@@ -16,8 +16,9 @@ import { decisionOf, type DecisionBody } from './tree';
 // The batches on the site (owner, 29 October 2026: "Tick several at once"; the recruitment tree, 3 November 2026:
 // "Recrutment tree"; 5 November 2026: Review 1 merged into Applicants, Review 2 the Final Review; packages/shared
 // recruitment-tree.ts): on a vacancy's list whoever decides a step ticks those at it and decides them together (the
-// recruiter passes or rejects Applicants); on My Hiring the recruiter's manager ticks theirs at the Final Review and passes
-// or rejects them together, with optional feedback (the reasons are HR Screening's and the interview's). The ticks, the
+// recruiter passes or rejects Applicants); on My Hiring the hiring manager ticks theirs at the Final Review (9 November
+// 2026: "give the hiring manager access to move his batch to HR screening") and passes them on to HR Screening or rejects
+// them together, with optional feedback (the reasons are HR Screening's and the interview's). The ticks, the
 // forms read, and what a result says. Pure code (relative imports), tested in shortlist.test.ts; the API checks everything
 // again.
 
@@ -45,16 +46,17 @@ export const tickedIds = (ids: readonly string[], selected: ReadonlySet<string>)
 
 // ---------- who ticks what on a vacancy's list ----------
 
-/** The caller as the tree's rules know them on a vacancy (who they are against its recruiter and the recruiter's manager). */
-export function vacancyCaller(v: Pick<VacancyView, 'viewer' | 'recruiter' | 'recruiterManager'>, me: { employeeId: string | null; superAdmin: boolean }): TreeCaller {
+/** The caller as the tree's rules know them on a vacancy (who they are against its recruiter and its hiring manager). */
+export function vacancyCaller(v: Pick<VacancyView, 'viewer' | 'recruiter' | 'hiringManager'>, me: { employeeId: string | null; superAdmin: boolean }): TreeCaller {
   const is = (person: { id: string } | null | undefined) => !!person && !!me.employeeId && person.id === me.employeeId;
   return {
     manages: v.viewer === 'manages',
     superAdmin: me.superAdmin,
     isRecruiter: is(v.recruiter),
-    isRecruiterManager: is(v.recruiterManager),
+    // the Final Review and the Technical Interview (9 November 2026)
+    isHiringManager: is(v.hiringManager),
     hasRecruiter: !!v.recruiter,
-    hasRecruiterManager: !!v.recruiterManager,
+    hasHiringManager: !!v.hiringManager,
   };
 }
 

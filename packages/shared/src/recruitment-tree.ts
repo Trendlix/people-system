@@ -2,19 +2,21 @@
 // - then Manager", "Declined closes, rest stay", "Reason list + feedback", "By progress", "Wait in Applicants", "A
 // Recruiter field", "Yes, at once"; 5 November 2026: "Consolidate all incoming applicant data directly into the Review 1
 // tab (renamed 'Applicants'), making the Review 2 tab the final review stage"; asked, "Recruiter's manager", "optional
-// Feedback", "A filter in Applicants", "On to HR Screening"). An application goes through:
+// Feedback", "A filter in Applicants", "On to HR Screening"; 9 November 2026, asked whether the process is right and
+// shown the hiring manager kept out of every decision: "i agree, but give the hiring manager access to move his batch to
+// HR screening"). An application goes through:
 // 1. Applicants: every CV that came in, reviewed by the vacancy's recruiter (an HR person named on the vacancy, by default
 //    whoever made it): the first CV filtration. One a must-have question filtered out waits here until restored.
-// 2. Final Review: the recruiter's direct manager, when the recruiter has one: the second filtration. None: skipped.
-//    Each review passes the applicant on or rejects them, with optional feedback and no reasons (the reasons are HR
-//    Screening's and the interview's). The hiring manager's own CV review of before is gone: they see their vacancy's
-//    applicants from HR Screening on.
+// 2. Final Review: the vacancy's hiring manager approves the shortlist (since 9 November 2026; the recruiter's manager's
+//    before), a batch at a time on My Hiring. No hiring manager: skipped. Each review passes the applicant on or rejects
+//    them, with optional feedback and no reasons (the reasons are HR Screening's and the interview's).
 // 3. HR Screening (HR's call): Accepted (on to the interview), Rejected (its reasons), Unreachable (kept here, to try
 //    again).
-// 4. Technical Interview (scheduled as before): Accepted (on to the offer), Rejected (its reasons), Pending (awaiting the
-//    candidate's answer), Unreachable (could not be contacted), Declined (the candidate declined: closed). Pending and
-//    Unreachable keep them at the interview.
-// 5. Offer: Make offer, then the job offer's cycle as before (accepted: hired).
+// 4. Technical Interview (HR schedules it): the hiring manager accepts (on to the offer) or rejects (its reasons), with
+//    the panel's scorecards (since 9 November 2026; HR's before). Pending (awaiting the candidate's answer), Unreachable
+//    (could not be contacted) and Declined (the candidate declined: closed) are about reaching the candidate: HR records
+//    them too. Pending and Unreachable keep them at the interview. No hiring manager: HR takes the whole step.
+// 5. Offer: Make offer (HR), then the job offer's cycle as before (accepted: hired).
 // A rejection at a review is listed under Applicants ("Rejected at review"), the others on the Rejected tab
 // (recruitment.ts rejectedAtReview).
 // Each decision has a written feedback field, and is kept in the application's history with who and when. A Super Admin
@@ -23,7 +25,7 @@
 
 // ---------- the steps ----------
 
-/** The CV reviews, in order: Applicants (the recruiter's) and the Final Review (the recruiter's manager's). */
+/** The CV reviews, in order: Applicants (the recruiter's) and the Final Review (the hiring manager's, 9 November 2026). */
 export const REVIEW_STAGES = ['applied', 'review_2'] as const;
 export type ReviewStage = (typeof REVIEW_STAGES)[number];
 export const isReviewStage = (value: unknown): value is ReviewStage => (REVIEW_STAGES as readonly unknown[]).includes(value);
@@ -153,37 +155,38 @@ export function decisionProblems(step: DecisionStep | 'offer', input: { outcome?
 
 // ---------- where a pass leads ----------
 
-/** Who the reviews have on an application's vacancy: the recruiter's manager (the Final Review). */
+/** Who the reviews have on an application's vacancy: its hiring manager (the Final Review, 9 November 2026). */
 export interface TreeReviewers {
-  hasRecruiterManager: boolean;
+  hasHiringManager: boolean;
 }
 
 /**
- * The step after a step passed: Applicants to the Final Review (the recruiter's manager), else to HR Screening; the
- * Final Review to HR Screening; HR Screening to the Technical Interview; the Technical Interview to the Offer.
+ * The step after a step passed: Applicants to the Final Review (the hiring manager), else to HR Screening; the Final
+ * Review to HR Screening; HR Screening to the Technical Interview; the Technical Interview to the Offer.
  */
 export function stageAfter(step: DecisionStep, who: TreeReviewers): 'review_2' | 'screening' | 'interview' | 'offer' {
-  if (step === 'applied') return who.hasRecruiterManager ? 'review_2' : 'screening';
+  if (step === 'applied') return who.hasHiringManager ? 'review_2' : 'screening';
   if (step === 'review_2') return 'screening';
   return step === 'screening' ? 'interview' : 'offer';
 }
 
 // ---------- who decides ----------
 
-/** Who is asked to take a step: the recruiter, the recruiter's manager, or HR. */
-export type StepActor = 'recruiter' | 'recruiter_manager' | 'hr';
+/** Who is asked to take a step: the recruiter, the vacancy's hiring manager, or HR. */
+export type StepActor = 'recruiter' | 'hiring_manager' | 'hr';
 
+/** Who takes each step (9 November 2026: the Final Review and the Technical Interview the hiring manager's). */
 export const STEP_ACTOR: Record<DecisionStep, StepActor> = {
   applied: 'recruiter',
-  review_2: 'recruiter_manager',
+  review_2: 'hiring_manager',
   screening: 'hr',
-  interview: 'hr',
+  interview: 'hiring_manager',
 };
 
 /** Who takes each step, in words ("The recruiter"). */
 export const STEP_ACTOR_LABELS: Record<StepActor, string> = {
   recruiter: 'The recruiter',
-  recruiter_manager: 'The recruiter’s manager',
+  hiring_manager: 'The hiring manager',
   hr: 'HR',
 };
 
@@ -192,18 +195,17 @@ export interface TreeCaller {
   /** HR (or a Super Admin): manages recruitment. */
   manages: boolean;
   superAdmin: boolean;
-  /** The caller is the vacancy's recruiter, the recruiter's manager. */
+  /** The caller is the vacancy's recruiter, its hiring manager. */
   isRecruiter: boolean;
-  isRecruiterManager: boolean;
-  /** The vacancy names a recruiter; the recruiter has a manager. */
+  isHiringManager: boolean;
+  /** The vacancy names a recruiter, a hiring manager (each with a sign-in). */
   hasRecruiter: boolean;
-  hasRecruiterManager: boolean;
+  hasHiringManager: boolean;
 }
 
 /**
- * Whether the caller decides a step: a Super Admin any; the recruiter Applicants, the recruiter's manager the Final
- * Review, each its own; HR HR Screening and the Technical Interview; a review nobody is named for (no recruiter, no
- * manager of theirs) HR.
+ * Whether the caller decides a step: a Super Admin any; the recruiter Applicants, the hiring manager the Final Review
+ * and the Technical Interview; HR HR Screening; a step nobody is named for (no recruiter, no hiring manager) HR.
  */
 export function takesStep(step: DecisionStep, c: TreeCaller): boolean {
   if (c.superAdmin) return true;
@@ -212,16 +214,34 @@ export function takesStep(step: DecisionStep, c: TreeCaller): boolean {
       return c.manages;
     case 'recruiter':
       return c.hasRecruiter ? c.isRecruiter : c.manages;
-    case 'recruiter_manager':
-      return c.hasRecruiterManager ? c.isRecruiterManager : c.manages;
+    case 'hiring_manager':
+      return c.hasHiringManager ? c.isHiringManager : c.manages;
   }
 }
 
-/** Why the caller can't take a step (null: they can), in words. */
-export function takesStepProblem(step: DecisionStep, c: TreeCaller): string | null {
-  if (takesStep(step, c)) return null;
-  const who = STEP_ACTOR[step];
-  return `${STEP_ACTOR_LABELS[who]} takes this step.`;
+/** The Technical Interview's outcomes about reaching the candidate, which HR records beside the hiring manager. */
+export const HR_INTERVIEW_OUTCOMES = ['pending', 'unreachable', 'declined'] as const satisfies readonly StepOutcome[];
+
+/**
+ * The outcomes the caller may give at a step: all of them when they take it; at the Technical Interview HR (when the
+ * hiring manager takes it) those about reaching the candidate; else none.
+ */
+export function outcomesFor(step: DecisionStep, c: TreeCaller): StepOutcome[] {
+  if (takesStep(step, c)) return [...STEP_OUTCOMES_OF[step]];
+  if (step === 'interview' && c.manages) return STEP_OUTCOMES_OF.interview.filter((o) => (HR_INTERVIEW_OUTCOMES as readonly string[]).includes(o));
+  return [];
+}
+
+/**
+ * Why the caller can't give that outcome at a step (any, without one), in words; null: they can. An outcome the step
+ * doesn't take at all is left to decisionProblems (a wrong choice, not someone else's).
+ */
+export function takesStepProblem(step: DecisionStep, c: TreeCaller, outcome?: StepOutcome): string | null {
+  const may = outcomesFor(step, c);
+  const asked = outcome !== undefined && STEP_OUTCOMES_OF[step].includes(outcome) ? outcome : undefined;
+  if (asked === undefined ? may.length > 0 : may.includes(asked)) return null;
+  if (may.length) return `${STEP_ACTOR_LABELS[STEP_ACTOR[step]]} accepts or rejects at this step; HR records ${may.map((o) => STEP_OUTCOME_LABELS[o]).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`;
+  return `${STEP_ACTOR_LABELS[STEP_ACTOR[step]]} takes this step.`;
 }
 
 // ---------- the history ----------

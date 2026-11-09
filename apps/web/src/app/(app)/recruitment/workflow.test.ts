@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applicantHref, applicantsHref, listFromOf, readApplicantsQuery } from './recruitment';
-import { applyLinksHint, careersTextHint, fromQuery, levelLabel, refineNav, siblingQueries, siblingsIn, workflowNav, WORKFLOW_STEPS } from './workflow';
+import { applyLinksHint, careersTextHint, finalReviewWaiting, fromQuery, levelLabel, refineNav, siblingQueries, siblingsIn, workflowNav, WORKFLOW_STEPS } from './workflow';
 
 // The hiring workflow apart from the filters (owner, 9 November 2026: "diffrenitate between the filteration and hiring
 // workflow"), and a vacancy's long parts closed at first ("make them collapsable").
@@ -152,5 +152,12 @@ describe('an applicant’s step', () => {
     expect(siblingsIn(['a', 'b', 'c'], 'a')).toEqual({ prev: null, next: 'b', index: 1, total: 3 });
     expect(siblingsIn(['a', 'b', 'c'], 'c')).toMatchObject({ next: null, index: 3 });
     expect(siblingsIn(['a'], 'z')).toBeNull();
+  });
+});
+
+describe('the hiring manager’s Final Review on their vacancy (9 November 2026)', () => {
+  it('says how many wait', () => {
+    expect(finalReviewWaiting(1)).toBe('1 applicant waits for your Final Review: pass them on to HR Screening or reject them.');
+    expect(finalReviewWaiting(8)).toBe('8 applicants wait for your Final Review: pass them on to HR Screening or reject them.');
   });
 });

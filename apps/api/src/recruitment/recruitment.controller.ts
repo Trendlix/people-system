@@ -259,7 +259,8 @@ export class ApplicationsController {
 
   /**
    * Their step decided (the recruitment tree, 3 November 2026): { outcome, reasons, feedback, email } by whoever takes it
-   * (the recruiter, the recruiter's manager, the hiring manager, HR; a Super Admin any).
+   * (the recruiter Applicants, the hiring manager the Final Review and the Technical Interview, HR HR Screening and the
+   * candidate's Pending, Unreachable or Declined at the interview; a Super Admin any).
    */
   @Post(':id/decide')
   @HttpCode(200)

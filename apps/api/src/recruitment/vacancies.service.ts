@@ -185,9 +185,8 @@ export class VacanciesService {
       ...vacancyListView(v, counts),
       grade: v.grade && { id: v.grade.id, code: v.grade.code, levelEn: v.grade.levelEn },
       hiringManager: v.hiringManager && { id: v.hiringManager.id, name: v.hiringManager.fullNameEn },
-      // the recruitment tree (3 November 2026; 5 November 2026): who takes Applicants, and the Final Review
+      // the recruitment tree (3 November 2026): who takes Applicants; the Final Review is the hiring manager's (9 November 2026)
       recruiter: v.recruiter && { id: v.recruiter.id, name: v.recruiter.fullNameEn },
-      recruiterManager: v.recruiter?.employments[0]?.manager ? { id: v.recruiter.employments[0].manager.id, name: v.recruiter.employments[0].manager.fullNameEn } : null,
       workArrangement: v.workArrangement,
       shift: v.shift,
       durationMonths: v.durationMonths,

@@ -47,30 +47,34 @@ describe('the ticks', () => {
   });
 });
 
-describe('who ticks what on a vacancy’s list', () => {
-  const v = { viewer: 'manages' as const, recruiter: { id: 'rana', name: 'Rana Recruiter' }, recruiterManager: { id: 'mona', name: 'Mona Lead' } };
+describe('who ticks what on a vacancy’s list (9 November 2026: the Final Review and the interview the hiring manager’s)', () => {
+  const v = { viewer: 'manages' as const, recruiter: { id: 'rana', name: 'Rana Recruiter' }, hiringManager: { id: 'hana', name: 'Hana Hiring' } };
   const row = (stage: 'applied' | 'review_2' | 'screening' | 'interview' | 'offer' | 'rejected', filteredOut = false) => ({ stage, filteredOut });
 
-  it('lets the recruiter tick Applicants; HR HR Screening and the Technical Interview; never one filtered out', () => {
+  it('lets the recruiter tick Applicants; HR HR Screening; the hiring manager the Final Review and the interview; never one filtered out', () => {
     const hr = vacancyCaller(v, { employeeId: 'someone', superAdmin: false });
     expect(tickable(row('applied'), hr)).toBe(false);
     expect(tickable(row('review_2'), hr)).toBe(false);
     expect(tickable(row('screening'), hr)).toBe(true);
-    expect(tickable(row('interview'), hr)).toBe(true);
+    expect(tickable(row('interview'), hr)).toBe(false);
     expect(tickable(row('offer'), hr)).toBe(false);
     expect(tickable(row('rejected'), hr)).toBe(false);
     const recruiter = vacancyCaller(v, { employeeId: 'rana', superAdmin: false });
     expect(tickable(row('applied'), recruiter)).toBe(true);
     expect(tickable(row('applied', true), recruiter)).toBe(false);
     expect(tickable(row('review_2'), recruiter)).toBe(false);
-    expect(tickable(row('review_2'), vacancyCaller({ ...v, viewer: 'reviewer' as const }, { employeeId: 'mona', superAdmin: false }))).toBe(true);
+    const manager = vacancyCaller({ ...v, viewer: 'hiring_manager' as const }, { employeeId: 'hana', superAdmin: false });
+    expect(tickable(row('review_2'), manager)).toBe(true);
+    expect(tickable(row('interview'), manager)).toBe(true);
+    expect(tickable(row('screening'), manager)).toBe(false);
   });
 
-  it('lets a Super Admin tick every step, and HR a review nobody is named for', () => {
+  it('lets a Super Admin tick every step, and HR a step nobody is named for', () => {
     expect(tickable(row('review_2'), vacancyCaller(v, { employeeId: null, superAdmin: true }))).toBe(true);
-    const hr = vacancyCaller({ ...v, recruiter: null, recruiterManager: null }, { employeeId: 'someone', superAdmin: false });
+    const hr = vacancyCaller({ ...v, recruiter: null, hiringManager: null }, { employeeId: 'someone', superAdmin: false });
     expect(tickable(row('applied'), hr)).toBe(true);
     expect(tickable(row('review_2'), hr)).toBe(true);
+    expect(tickable(row('interview'), hr)).toBe(true);
   });
 });
 

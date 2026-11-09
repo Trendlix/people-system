@@ -438,14 +438,14 @@ async function Applicant({ params, searchParams }: PageProps<'/recruitment/appli
   }
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'applicant')}</Empty>;
   const a = loaded.value;
-  const participant = a.viewer === 'hiring_manager' || a.viewer === 'interviewer' || a.viewer === 'reviewer';
+  const participant = a.viewer === 'hiring_manager' || a.viewer === 'interviewer';
   // the screening comments and the CVs the window opens (24 October 2026); the page shows without them if they fail
   const comments = commentsLoaded.kind === 'ok' ? commentsLoaded.value : null;
   const commentsNotLoaded = commentsLoaded.kind === 'ok' ? '' : recruitmentNotLoaded(commentsLoaded, 'screening comments');
   const ownKey = applicationKey(a.id);
   const cvs = comments?.cvs.length ? comments.cvs : ownCv('application', { id: a.id, reference: a.number, title: a.vacancy.title, sentAt: a.cvUpdatedAt ?? a.appliedAt, earlierCvs: a.earlierCvs }, a.cv);
   // an interviewer's or a reviewer's: My Hiring; else the list it was opened from, where it was, or its step on the vacancy
-  const myHiring = a.viewer === 'interviewer' || a.viewer === 'reviewer';
+  const myHiring = a.viewer === 'interviewer';
   return (
     <div className="space-y-6">
       <div className="space-y-2">

@@ -28,19 +28,18 @@ import type { HoldOutcome } from './recruitment-tree.js';
 
 /**
  * How the caller sees recruitment: HR (and a Super Admin) manage it, the CEO reads everything, a vacancy's hiring manager
- * sees its applicants from the Final Review on (the tree, 3 November 2026), an interviewer those they interview.
+ * sees its applicants from the Final Review on (theirs since 9 November 2026), an interviewer those they interview.
  */
-// 'reviewer': the recruiter's manager, at their Review 2 (the recruitment tree, 3 November 2026)
-export const RECRUITMENT_VIEWERS = ['manages', 'reads', 'hiring_manager', 'interviewer', 'reviewer'] as const;
+export const RECRUITMENT_VIEWERS = ['manages', 'reads', 'hiring_manager', 'interviewer'] as const;
 export type RecruitmentViewer = (typeof RECRUITMENT_VIEWERS)[number];
 
 /**
- * The stages a hiring manager sees their vacancy's applicants at: from HR Screening on (5 November 2026: their own CV
- * review is gone, the reviews are Applicants and the Final Review).
+ * The stages a hiring manager sees their vacancy's applicants at: from the Final Review on (owner, 9 November 2026: "give
+ * the hiring manager access to move his batch to HR screening"; from HR Screening on between 5 and 9 November).
  */
-export const HIRING_MANAGER_STAGES = ['screening', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
+export const HIRING_MANAGER_STAGES = ['review_2', 'screening', 'interview', 'offer', 'hired'] as const satisfies readonly ApplicationStage[];
 
-/** Whether a hiring manager sees an applicant: from HR Screening on, or rejected from there; never one filtered out. */
+/** Whether a hiring manager sees an applicant: from the Final Review on, or rejected from there; never one filtered out. */
 export function hiringManagerSees(a: { stage: ApplicationStage; rejectedFrom: string | null; filteredOut: boolean }): boolean {
   if (a.filteredOut) return false;
   if ((HIRING_MANAGER_STAGES as readonly string[]).includes(a.stage)) return true;
@@ -50,7 +49,7 @@ export function hiringManagerSees(a: { stage: ApplicationStage; rejectedFrom: st
 // ---------- the pipeline board ----------
 
 /**
- * The board's columns, in order: every stage. A hiring manager's board starts at HR Screening. Rejected holds those
+ * The board's columns, in order: every stage. A hiring manager's board starts at the Final Review. Rejected holds those
  * rejected at HR Screening, the interview or the offer; those rejected at a review are under Applicants (5 November 2026).
  */
 export const BOARD_STAGES = ['applied', 'review_2', 'screening', 'interview', 'offer', 'hired', 'rejected'] as const satisfies readonly ApplicationStage[];

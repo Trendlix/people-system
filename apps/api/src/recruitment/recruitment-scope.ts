@@ -27,26 +27,16 @@ export const recruitmentCaller = (user: SessionUser, selfId: string | null): Rec
 /** Nothing: for a caller with no employee profile who doesn't read recruitment. */
 const NONE: Prisma.JobApplicationWhereInput = { id: { in: [] } };
 
-/** The applications a vacancy's hiring manager sees on it: from Shortlisted on (or rejected from there), never one filtered out. */
+/** The applications a vacancy's hiring manager sees on it: from the Final Review on (or rejected from there), never one filtered out. */
 export const HIRING_MANAGER_SEES: Prisma.JobApplicationWhereInput = {
   filteredOut: false,
   OR: [{ stage: { in: [...HIRING_MANAGER_STAGES] } }, { stage: 'rejected', rejectedFrom: { in: [...HIRING_MANAGER_STAGES] } }],
 };
 
-/** The applications a hiring manager sees on their vacancies: from Shortlisted on (or rejected from there), never one filtered out. */
+/** The applications a hiring manager sees on their vacancies: from the Final Review on (or rejected from there), never one filtered out. */
 export const hiringManagerApplications = (selfId: string): Prisma.JobApplicationWhereInput => ({
   vacancy: { hiringManagerId: selfId },
   ...HIRING_MANAGER_SEES,
-});
-
-/**
- * The applications the recruiter's manager sees (the recruitment tree, 3 November 2026): those at their Review 2, or
- * rejected there, of the vacancies whose recruiter they manage now; never one filtered out.
- */
-export const recruiterManagerApplications = (selfId: string): Prisma.JobApplicationWhereInput => ({
-  vacancy: { recruiter: { employments: { some: { endDate: null, managerId: selfId } } } },
-  filteredOut: false,
-  OR: [{ stage: 'review_2' }, { stage: 'rejected', rejectedFrom: 'review_2' }],
 });
 
 /** The applications an interviewer sees: those with an interview they sit on. */
@@ -58,17 +48,15 @@ export const interviewerApplications = (selfId: string): Prisma.JobApplicationWh
 export function visibleApplications(c: RecruitmentCaller): Prisma.JobApplicationWhereInput {
   if (c.reads) return { vacancy: vacancyWhere(c.user) };
   if (!c.selfId) return NONE;
-  return { OR: [hiringManagerApplications(c.selfId), interviewerApplications(c.selfId), recruiterManagerApplications(c.selfId)] };
+  return { OR: [hiringManagerApplications(c.selfId), interviewerApplications(c.selfId)] };
 }
 
 /**
- * How the caller sees an application: HR (or a Super Admin) manage, the CEO reads, else its hiring manager, an
- * interviewer of it, or the recruiter's manager at their Review 2 (`reviewer`, 3 November 2026).
+ * How the caller sees an application: HR (or a Super Admin) manage, the CEO reads, else its hiring manager or an
+ * interviewer of it (the recruiter's manager's Final Review went to the hiring manager on 9 November 2026).
  */
-export function viewerOf(c: RecruitmentCaller, a: { stage?: string; rejectedFrom?: string | null; vacancy: { hiringManagerId: string | null } }): RecruitmentViewer {
+export function viewerOf(c: RecruitmentCaller, a: { vacancy: { hiringManagerId: string | null } }): RecruitmentViewer {
   if (c.manages) return 'manages';
   if (c.reads) return 'reads';
-  if (c.selfId && a.vacancy.hiringManagerId === c.selfId) return 'hiring_manager';
-  // nobody is interviewed before their Review 2: one seen there is the recruiter's manager's
-  return a.stage === 'review_2' || (a.stage === 'rejected' && a.rejectedFrom === 'review_2') ? 'reviewer' : 'interviewer';
+  return c.selfId && a.vacancy.hiringManagerId === c.selfId ? 'hiring_manager' : 'interviewer';
 }

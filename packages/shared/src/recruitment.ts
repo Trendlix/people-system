@@ -848,11 +848,10 @@ export interface VacancyView extends VacancyListItem {
   grade: { id: string; code: string; levelEn: string } | null;
   hiringManager: { id: string; name: string } | null;
   /**
-   * Its recruiter (3 November 2026; recruitment-tree.ts), who takes Review 1, and their manager, who takes Review 2;
-   * null: none named (HR takes Review 1). Left out by an API from before it.
+   * Its recruiter (3 November 2026; recruitment-tree.ts), who takes Applicants; null: none named (HR takes it). Left out
+   * by an API from before it. The Final Review is the hiring manager's (9 November 2026).
    */
   recruiter?: { id: string; name: string } | null;
-  recruiterManager?: { id: string; name: string } | null;
   workArrangement: WorkArrangement;
   shift: { id: string; code: string } | null;
   durationMonths: number | null;
@@ -1075,7 +1074,7 @@ export interface ApplicationView extends ApplicationListItem {
   /**
    * The tree (3 November 2026; recruitment-tree.ts): every decision on them, oldest first, with its reasons and feedback
    * (the feedback HR's, the recruiter's and the reviewers' own: never shown to an interviewer); and who takes their step
-   * now ("The recruiter’s manager: Sara Ali"), null when nobody does (hired, rejected, at Offer).
+   * now ("The hiring manager: Sara Ali"), null when nobody does (hired, rejected, at Offer).
    */
   decisions?: StepDecisionView[];
   nextBy?: string | null;

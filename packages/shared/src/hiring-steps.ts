@@ -2,11 +2,11 @@
 // schedule for interview"), replaced by the recruitment tree on 3 November 2026 (recruitment-tree.ts: Applicants,
 // Review 1, Review 2, Final Review, HR Screening, Technical Interview, Offer). What stays here:
 // - HR's screening call of before (passed or failed with a note), kept on the applications that had one, to read.
-// - The hiring manager's suggestion's words (at the Technical Interview and the Offer: the next step or a rejection).
+// - The hiring manager's suggestion's words (at the Offer since 9 November 2026: the next step or a rejection).
 // - The batches (several applicants at once: HR's Send to Review 1, a review's decisions; at most 100) and their
 //   messages: the reviewer told once a batch, in the app and by email ("One message per batch"), HR told once a batch of
 //   the hiring manager's Final Review.
-// - The reviews waiting for someone on My Hiring: the recruiter's manager's Review 2, the hiring manager's Final Review.
+// - The reviews waiting for someone on My Hiring: the hiring manager's Final Review (9 November 2026).
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/hiring-steps.spec.ts.
 
 import type { CvListFacts } from './cv-analysis.js';
@@ -98,7 +98,7 @@ export interface ReviewApplicant {
   id: string;
   number: string;
   fullName: string;
-  /** The review they wait for: Review 2 (the recruiter's manager's) or the Final Review (the hiring manager's). */
+  /** The review they wait for: the Final Review (the hiring manager's, 9 November 2026). */
   stage: ReviewStage;
   /** The screening questions' match % and the CV match % (null: none). */
   matchPercent: number | null;
