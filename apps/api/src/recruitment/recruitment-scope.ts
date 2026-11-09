@@ -4,7 +4,8 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { managesRecruitment, READS, vacancyWhere } from './recruitment-access.js';
 
 // Who sees which applicants (Phase 2, owner, 22 October 2026: "where will we include the ATS?"; the brief: "A vacancy's
-// hiring manager sees its applicants from Shortlisted on … Interviewers see only the applicants they interview"). HR, the
+// hiring manager sees its applicants from Shortlisted on … Interviewers see only the applicants they interview"; since 9
+// November 2026 the hiring manager's from their Final Review on, recruitment-tree.ts). HR, the
 // CEO and a Super Admin read every one (a C-level vacancy's only the CEO and a Super Admin: recruitment-access.ts); a
 // hiring manager and an interviewer, through their own employee profile (its work email their sign-in), only theirs.
 // Pure, but for the shapes Prisma reads; tested in recruitment-hiring.spec.ts.
