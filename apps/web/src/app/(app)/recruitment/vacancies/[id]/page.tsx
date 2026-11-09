@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Fragment, Suspense } from 'react';
-import { APPLICATION_STAGE_LABELS, GENERAL_KEY, GOOD_MATCH_PERCENT, LABELS, QUESTION_KIND_LABELS, questionMaxPoints, sourceLine, type ScreeningCv, type VacancySuggestionView, type VacancyView } from '@trendlix/shared';
+import { Suspense } from 'react';
+import { GENERAL_KEY, LABELS, QUESTION_KIND_LABELS, questionMaxPoints, sourceLine, type ScreeningCv, type VacancySuggestionView, type VacancyView } from '@trendlix/shared';
 import { RichText } from '@/components/rich-text';
 import { SetUpEmailLink } from '@/components/set-up-email-link';
 import { careersSiteFrom } from '@/lib/careers-base';
@@ -26,14 +26,10 @@ import {
   applicantsHref,
   careersJobHref,
   channelLinks,
-  GOOD_CV_MATCH_PERCENT,
   readApplicantsQuery,
-  REJECTED_AT_REVIEW,
-  STAGE_FILTERS,
   VACANCIES_PATH,
   vacancyEditHref,
   vacancyHref,
-  sortDirOf,
 } from '../../recruitment';
 import { addSuggestion, dismissSuggestion, inviteSuggestion } from '../../suggestion-actions';
 import {
@@ -56,6 +52,9 @@ import { vacancyPortfolioText } from '../../portfolio';
 import { agencyBackgroundText } from '../../agency';
 import { experienceBasisText } from '../../career';
 import { tickable, vacancyCaller } from '../../shortlist';
+import { applyLinksHint, careersTextHint, refineNav, workflowNav } from '../../workflow';
+import { ListScrollRestorer } from '../../list-return';
+import { ApplicantFilters, CollapsibleCard, HiringWorkflow } from '../../workflow-ui';
 import { VacancySelection } from '../../shortlist-ui';
 
 // A vacancy (owner, 22 October 2026: "where will we include the ATS?"): where it stands and what can be done (HR sends it
@@ -117,8 +116,6 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
   const q = readApplicantsQuery(await searchParams);
   const [loaded, user] = await Promise.all([loadApplicants({ ...q, vacancyId: v.id }), getCurrentUser()]);
   const base = vacancyHref(v.id);
-  const cvFirst = q.sort === 'cv' && sortDirOf(q) === 'desc';
-  const yearsFirst = q.sort === 'years' && sortDirOf(q) === 'desc';
   // those rejected at a review, counted apart from Rejected (5 November 2026; none from an API before it)
   const reviewRejected = v.rejectedAtReview ?? 0;
   const total = Object.values(v.stageCounts).reduce((a, b) => a + b, 0) + reviewRejected;
@@ -138,70 +135,11 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
           </Link>
         )}
       </div>
-      <nav aria-label="Applicants by stage" className="flex flex-wrap gap-2">
-        <Link
-          href={applicantsHref(base, { ...q, stage: '', filtered: 'hide', reviewRejected: false })}
-          className={`${chip} ${!q.stage && q.filtered === 'hide' && !q.reviewRejected ? ACTIVE : IDLE}`}
-        >
-          All ({total - v.filteredOut})
-        </Link>
-        {STAGE_FILTERS.map((s) => (
-          <Fragment key={s}>
-            <Link
-              href={applicantsHref(base, { ...q, stage: s, filtered: 'hide', reviewRejected: false })}
-              className={`${chip} ${q.stage === s && q.filtered === 'hide' && !q.reviewRejected ? ACTIVE : IDLE}`}
-            >
-              {APPLICATION_STAGE_LABELS[s]} ({v.stageCounts[s] ?? 0})
-            </Link>
-            {/* Applicants' "Rejected at review" (owner, 5 November 2026): those rejected at a review, kept off Rejected */}
-            {s === 'applied' && (
-              <Link href={applicantsHref(base, { ...q, stage: '', filtered: 'hide', reviewRejected: true })} className={`${chip} ${q.reviewRejected ? ACTIVE : IDLE}`}>
-                {REJECTED_AT_REVIEW} ({reviewRejected})
-              </Link>
-            )}
-          </Fragment>
-        ))}
-        <Link href={applicantsHref(base, { ...q, stage: '', filtered: 'only', reviewRejected: false })} className={`${chip} ${q.filtered === 'only' ? ACTIVE : IDLE}`}>
-          Filtered out ({v.filteredOut})
-        </Link>
-        <Link
-          href={applicantsHref(base, { ...q, minMatch: q.minMatch === null ? GOOD_MATCH_PERCENT : null })}
-          className={`${chip} ${q.minMatch !== null ? ACTIVE : IDLE}`}
-          aria-pressed={q.minMatch !== null}
-        >
-          Match ≥ {GOOD_MATCH_PERCENT}%
-        </Link>
-        {/* the key skills found in the CV (22 October 2026: "make the OCR egine reads the CV and analyse it") */}
-        <Link
-          href={applicantsHref(base, { ...q, minCvMatch: q.minCvMatch === null ? GOOD_CV_MATCH_PERCENT : null })}
-          className={`${chip} ${q.minCvMatch !== null ? ACTIVE : IDLE}`}
-          aria-pressed={q.minCvMatch !== null}
-        >
-          CV match ≥ {GOOD_CV_MATCH_PERCENT}%
-        </Link>
-        {/* the same order as the CV match title's first click, so the chip and the title agree (28 October 2026) */}
-        <Link href={applicantsHref(base, { ...q, sort: cvFirst ? '' : 'cv', dir: '' })} className={`${chip} ${cvFirst ? ACTIVE : IDLE}`} aria-pressed={cvFirst}>
-          Best CV match first
-        </Link>
-        {/* the years typed, else the CV's estimate (owner, 24 October 2026: "CV years in list + more rules") */}
-        <Link href={applicantsHref(base, { ...q, sort: yearsFirst ? '' : 'years', dir: '' })} className={`${chip} ${yearsFirst ? ACTIVE : IDLE}`} aria-pressed={yearsFirst}>
-          Most experience first
-        </Link>
-      </nav>
-      {/* where they came from (owner, 22 October 2026: "what came out of the posted jobs"): each count lists them */}
-      {sourceLine(v.sourceCounts ?? {}).length > 0 && (
-        <p className="text-sm text-muted">
-          By source:{' '}
-          {sourceLine(v.sourceCounts ?? {}).map((s, i) => (
-            <span key={s.source}>
-              {i > 0 && ' · '}
-              <Link href={applicantsHref(base, { source: s.source, filtered: 'all' })} className="whitespace-nowrap">
-                {s.label} {s.count}
-              </Link>
-            </span>
-          ))}
-        </p>
-      )}
+      {/* the hiring workflow and the filters apart (owner, 9 November 2026: "diffrenitate between the filteration and hiring
+          workflow"; workflow.ts): where people stand, the steps in order, those out of it below; then who is shown and how */}
+      <HiringWorkflow nav={workflowNav(base, q, { stages: v.stageCounts, reviewRejected, filteredOut: v.filteredOut })} />
+      {/* the sources (owner, 22 October 2026: "what came out of the posted jobs"), now a filter of their own */}
+      <ApplicantFilters nav={refineNav(base, q, sourceLine(v.sourceCounts ?? {}))} />
       {/* ticked and decided together (owner, 29 October 2026: "Tick several at once"; Applicants' Pass or Reject too); what was done
           stays said above the list once it is read again, even when nobody is left in it */}
       <VacancySelection vacancyId={v.id} rows={tickRows}>
@@ -215,6 +153,8 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
           <ApplicantsTable rows={loaded.value} withVacancy={false} deletes={canDelete(user)} ticks={tickRows.length > 0} sorting={{ q, href: (next) => applicantsHref(base, { ...q, ...next }) }} />
         )}
       </VacancySelection>
+      {/* back where it was, from an applicant's Back (9 November 2026) */}
+      <ListScrollRestorer listHref={applicantsHref(base, q)} />
     </section>
   );
 }
@@ -333,7 +273,8 @@ async function Board({ v }: { v: VacancyView }) {
       <h2 id="vacancy-board" className="text-lg font-semibold">
         Pipeline
       </h2>
-      {loaded.kind !== 'ok' ? <Empty>{recruitmentNotLoaded(loaded, 'board')}</Empty> : <PipelineBoard board={loaded.value} move={moveOnBoard} deletes={canDelete(user)} />}
+      {loaded.kind !== 'ok' ? <Empty>{recruitmentNotLoaded(loaded, 'board')}</Empty> : <PipelineBoard board={loaded.value} move={moveOnBoard} deletes={canDelete(user)} listHref={boardHref(v.id)} />}
+      <ListScrollRestorer listHref={boardHref(v.id)} />
     </section>
   );
 }
@@ -411,31 +352,25 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
         </dl>
       </section>
 
+      {/* closed at first, a line of what is inside (owner, 9 November 2026: "make them collapsable, to save some space and
+          prevent long scrolling") */}
       {published && (
-        <section aria-labelledby="vacancy-links" className="card space-y-2 p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <h2 id="vacancy-links" className="text-lg font-semibold">
-              Apply Links
-            </h2>
-            {/* the careers site lists it while it is open (on hold, its page waits) */}
-            {v.status === 'open' && (
-              <a href={careersJobHref(careersSite, v.slug)} target="_blank" rel="noopener noreferrer" className="btn btn-secondary no-underline">
-                Open on the careers site
-              </a>
-            )}
-          </div>
+        <CollapsibleCard id="vacancy-links" title="Apply Links" hint={applyLinksHint(channelLinks(careersSite, v.slug).length, v.status === 'open')}>
+          {/* the careers site lists it while it is open (on hold, its page waits) */}
+          {v.status === 'open' && (
+            <a href={careersJobHref(careersSite, v.slug)} target="_blank" rel="noopener noreferrer" className="btn btn-secondary no-underline">
+              Open on the careers site
+            </a>
+          )}
           <ul>
             {channelLinks(careersSite, v.slug).map((l) => (
               <CopyLink key={l.source} source={l.source} href={l.href} />
             ))}
           </ul>
-        </section>
+        </CollapsibleCard>
       )}
 
-      <section aria-labelledby="vacancy-text" className="card space-y-4 p-6">
-        <h2 id="vacancy-text" className="text-lg font-semibold">
-          On the Careers Page
-        </h2>
+      <CollapsibleCard id="vacancy-text" title="On the Careers Page" hint={careersTextHint(v)}>
         {[
           ['About the role', v.about],
           ['Responsibilities', v.responsibilities],
@@ -449,7 +384,7 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
           ) : null,
         )}
         {!v.about && !v.responsibilities && !v.requirements && <p className="text-sm text-muted">No text yet.</p>}
-      </section>
+      </CollapsibleCard>
 
       <section aria-labelledby="vacancy-questions" className="card space-y-3 p-6">
         <h2 id="vacancy-questions" className="text-lg font-semibold">

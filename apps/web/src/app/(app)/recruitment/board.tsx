@@ -15,6 +15,7 @@ import { APPLICANTS_PATH, applicantHref, applicantsHref, makeOfferHref, REJECTED
 import { decisionOf, rejectReasonsAt } from './tree';
 import { FeedbackField, HoldBadge, ReasonPicker } from './tree-ui';
 import { CvUpdatedBadge, VerdictBadge } from './ui';
+import { ApplicantRowLink } from './list-return';
 
 // A vacancy's pipeline board (Phase 2, owner, 22 October 2026; the brief: "a board with a column per stage, and cards with
 // name, match %, source and days in stage"; "drag between columns (keyboard-accessible too), with the same rules as the
@@ -69,7 +70,8 @@ function RejectPrompt({ card, onSend, onCancel, pending }: { card: BoardCard; on
 }
 
 /** `deletes`: a Super Admin's Delete applicant on each card (owner, 25 October 2026: "applicant alone - superadmin only"). */
-export function PipelineBoard({ board, move, deletes = false }: { board: VacancyBoard; move: Move; deletes?: boolean }) {
+/** `listHref`: the board's address, so an applicant opened from it comes back here, where it was (9 November 2026). */
+export function PipelineBoard({ board, move, deletes = false, listHref }: { board: VacancyBoard; move: Move; deletes?: boolean; listHref?: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [state, setState] = useState<FormState>({});
@@ -141,11 +143,12 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
                     e.dataTransfer.effectAllowed = 'move';
                   }}
                   onDragEnd={() => setDragging(null)}
-                  className={`space-y-1 rounded-md border border-line bg-card p-2 text-sm shadow-sm ${board.canMove ? 'cursor-grab' : ''}`}
+                  id={`applicant-${card.id}`}
+                  className={`scroll-mt-24 space-y-1 rounded-md border border-line bg-card p-2 text-sm shadow-sm ${board.canMove ? 'cursor-grab' : ''}`}
                 >
-                  <Link href={applicantHref(card.id)} className="block font-semibold">
+                  <ApplicantRowLink href={applicantHref(card.id, listHref)} listHref={listHref} className="block font-semibold">
                     {card.fullName}
-                  </Link>
+                  </ApplicantRowLink>
                   <p className="text-xs text-muted">
                     {/* not asked the screening questions: the CV fit, "72% · CV" (owner, 25 October 2026: "Full CV fit score") */}
                     Match <MatchValue a={card} className="" /> · {APPLICATION_SOURCE_LABELS[card.source]} · {daysText(card.daysInStage)}

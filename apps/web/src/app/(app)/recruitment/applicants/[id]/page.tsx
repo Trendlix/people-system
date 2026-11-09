@@ -34,12 +34,14 @@ import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
 import { DeleteApplicantButton } from '../../delete-ui';
 import { APPLICANT_GONE } from '../../deletes';
 import { cancelInterview, decideApplicant, giveFeedback, markInterview, moveApplicant, rescheduleInterview, restoreApplicant, scheduleInterview, suggestNext } from '../../actions';
-import { loadApplicant, loadApplicantComments, recruitmentNotLoaded } from '../../data';
+import { loadApplicant, loadApplicantComments, loadApplicants, recruitmentNotLoaded } from '../../data';
 import { ActionButton, ReasonButton } from '../../forms';
 import { interviewWhen, MY_HIRING_PATH } from '../../hiring';
 import { FeedbackForm, MoveInterview, ScheduleInterview, SuggestForm, type PersonOption } from '../../hiring-forms';
 import { vacancyOptions } from '../../pickers';
-import { APPLICANTS_PATH, applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
+import { APPLICANTS_PATH, applicantCvHref, applicantHref, applicantsHref, listFromOf, makeOfferHref, matchText, sortApplicants, vacancyHref, type ApplicantsQuery } from '../../recruitment';
+import { levelLabel, siblingQueries, siblingsIn, type Siblings } from '../../workflow';
+import { BackToList } from '../../list-return';
 import { commentsOfRecord, kb, ownCv, showsRecordComments } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
 import { ScorecardRoleBadge, ScorecardSummary } from '../../scorecard-ui';
@@ -367,8 +369,63 @@ async function Interviews({ a }: { a: ApplicationView }) {
   );
 }
 
-async function Applicant({ params }: { params: PageProps<'/recruitment/applicants/[id]'>['params'] }) {
+/**
+ * Previous and Next through the applicant's step (owner, 9 November 2026: "allow me to switch between the CVs in the
+ * same level of the workflow"): the list it was opened from (its filters and order), else its own step on its vacancy
+ * (workflow.ts siblingQueries); each opens in this one's place (replace), so Back still returns to the list. Null when
+ * the list can't be read (an interviewer's), or the applicant isn't in it.
+ */
+async function stepOf(from: string | null, a: ApplicationView): Promise<{ q: ApplicantsQuery; siblings: Siblings } | null> {
+  for (const q of siblingQueries(from, { vacancyId: a.vacancy.id, stage: a.stage, filteredOut: a.filteredOut })) {
+    const loaded = await loadApplicants(q);
+    if (loaded.kind !== 'ok') return null;
+    const siblings = siblingsIn(sortApplicants(loaded.value, q).map((r) => r.id), a.id);
+    if (siblings) return { q, siblings };
+  }
+  return null;
+}
+
+/** Previous, where it is in the step ("3 of 18 · Applicants") and Next; read on its own, the page shown meanwhile. */
+async function StepNav({ a, from }: { a: ApplicationView; from: string | null }) {
+  const step = await stepOf(from, a);
+  if (!step || step.siblings.total < 2) return null;
+  const listHref = from ?? backHref(a);
+  const { prev, next, index, total } = step.siblings;
+  const go = 'inline-flex min-h-9 items-center gap-1 rounded-lg border border-line bg-card px-3 font-semibold no-underline hover:bg-canvas';
+  const off = 'inline-flex min-h-9 items-center gap-1 rounded-lg border border-line-soft px-3 font-semibold text-muted';
+  return (
+    <nav aria-label="Applicants at this step" className="flex items-center gap-2 text-sm">
+      {prev ? (
+        <Link href={applicantHref(prev, listHref)} replace className={go}>
+          ‹ Previous
+        </Link>
+      ) : (
+        <span aria-disabled="true" className={off}>
+          ‹ Previous
+        </span>
+      )}
+      <span className="px-1 text-muted tabular-nums">
+        {index} of {total} · {levelLabel(step.q)}
+      </span>
+      {next ? (
+        <Link href={applicantHref(next, listHref)} replace className={go}>
+          Next ›
+        </Link>
+      ) : (
+        <span aria-disabled="true" className={off}>
+          Next ›
+        </span>
+      )}
+    </nav>
+  );
+}
+
+/** Back, opened without a list (a notification, a link): the applicant's own step on its vacancy, its row named. */
+const backHref = (a: ApplicationView) => applicantsHref(vacancyHref(a.vacancy.id), { ...siblingQueries(null, { vacancyId: a.vacancy.id, stage: a.stage, filteredOut: a.filteredOut })[0], vacancyId: '' });
+
+async function Applicant({ params, searchParams }: PageProps<'/recruitment/applicants/[id]'>) {
   const { id } = await params;
+  const from = listFromOf((await searchParams).from);
   const [loaded, commentsLoaded] = await Promise.all([loadApplicant(id), loadApplicantComments(id)]);
   // 404: deleted since (25 October 2026), or not theirs to open: said plainly, an old notification's or email's link too
   if (loaded.kind === 'unavailable') {
@@ -387,10 +444,25 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
   const commentsNotLoaded = commentsLoaded.kind === 'ok' ? '' : recruitmentNotLoaded(commentsLoaded, 'screening comments');
   const ownKey = applicationKey(a.id);
   const cvs = comments?.cvs.length ? comments.cvs : ownCv('application', { id: a.id, reference: a.number, title: a.vacancy.title, sentAt: a.cvUpdatedAt ?? a.appliedAt, earlierCvs: a.earlierCvs }, a.cv);
+  // an interviewer's or a reviewer's: My Hiring; else the list it was opened from, where it was, or its step on the vacancy
+  const myHiring = a.viewer === 'interviewer' || a.viewer === 'reviewer';
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        {a.viewer === 'interviewer' || a.viewer === 'reviewer' ? <BackLink href={MY_HIRING_PATH}>My Hiring</BackLink> : <BackLink href={vacancyHref(a.vacancy.id)}>{a.vacancy.title}</BackLink>}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {myHiring ? (
+            <BackLink href={MY_HIRING_PATH}>My Hiring</BackLink>
+          ) : (
+            <BackToList listHref={from ?? backHref(a)} applicantId={a.id}>
+              {from?.startsWith(APPLICANTS_PATH) ? 'Applicants' : a.vacancy.title}
+            </BackToList>
+          )}
+          {!myHiring && (
+            <Suspense fallback={null}>
+              <StepNav a={a} from={from} />
+            </Suspense>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="page-title">{a.fullName}</h1>
           <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
@@ -618,11 +690,11 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
   );
 }
 
-export default function ApplicantPage({ params }: PageProps<'/recruitment/applicants/[id]'>) {
+export default function ApplicantPage({ params, searchParams }: PageProps<'/recruitment/applicants/[id]'>) {
   return (
     <div>
       <Suspense fallback={<Loading />}>
-        <Applicant params={params} />
+        <Applicant params={params} searchParams={searchParams} />
       </Suspense>
     </div>
   );

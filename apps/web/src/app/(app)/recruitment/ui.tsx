@@ -27,6 +27,7 @@ import { skipperChip } from './career';
 import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
 import { HOLD_LABELS } from './tree';
 import { HoldBadge } from './tree-ui';
+import { ApplicantRowLink } from './list-return';
 import {
   applicantHref,
   earlierCvHref,
@@ -325,6 +326,8 @@ export function ApplicantsTable({
   ticks?: boolean;
 }) {
   const shown = sorting ? sortApplicants(rows, sorting.q) : rows;
+  // the list as its address has it: an applicant opened from here comes back here, where it was (9 November 2026)
+  const listHref = sorting?.href({ sort: sorting.q.sort, dir: sorting.q.dir });
   return (
     <div className={bare ? 'overflow-x-auto' : 'card overflow-x-auto'}>
       <table className="table">
@@ -352,16 +355,16 @@ export function ApplicantsTable({
         </thead>
         <tbody>
           {shown.map((a) => (
-            <tr key={a.id}>
+            <tr key={a.id} id={`applicant-${a.id}`} className="scroll-mt-24">
               {ticks && (
                 <td className="w-11 px-1">
                   <BatchTick id={a.id} label={a.fullName} />
                 </td>
               )}
               <td>
-                <Link href={applicantHref(a.id)} className="font-semibold">
+                <ApplicantRowLink href={applicantHref(a.id, listHref)} listHref={listHref} className="font-semibold">
                   {a.fullName}
-                </Link>
+                </ApplicantRowLink>
                 <span className="block text-xs text-muted">
                   {joinShown([a.number, a.email])}
                 </span>

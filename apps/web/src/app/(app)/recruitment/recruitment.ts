@@ -46,7 +46,20 @@ export const APPLICANTS_PATH = '/recruitment/applicants';
 
 export const vacancyHref = (id: string) => `${VACANCIES_PATH}/${encodeURIComponent(id)}`;
 export const vacancyEditHref = (id: string) => `${vacancyHref(id)}/edit`;
-export const applicantHref = (id: string) => `${APPLICANTS_PATH}/${encodeURIComponent(id)}`;
+/**
+ * An applicant's page; `from`, the list it was opened from (owner, 9 November 2026: "make the back button take me a step
+ * back to where i was exactly"): its Back returns there, its Previous and Next go through that list's step.
+ */
+export const applicantHref = (id: string, from?: string | null) =>
+  `${APPLICANTS_PATH}/${encodeURIComponent(id)}${from ? `?from=${encodeURIComponent(from)}` : ''}`;
+
+/** The list an applicant was opened from, when it is one of the site's recruitment lists; else none. */
+export function listFromOf(raw: string | string[] | undefined): string | null {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (!v || v.length > 2000 || !v.startsWith('/recruitment/') || v.startsWith('//') || /[\\\s]/.test(v)) return null;
+  return v;
+}
+
 export const applicantCvHref = (id: string, download = false) => `${applicantHref(id)}/cv${download ? '?download=1' : ''}`;
 /** An earlier CV of an applicant (applying again, 25 October 2026: "Update their application"): a PDF opens, a Word file is saved. */
 export const earlierCvHref = (applicationId: string, cvId: string, download = false) => `${applicantHref(applicationId)}/cv/earlier/${encodeURIComponent(cvId)}${download ? '?download=1' : ''}`;

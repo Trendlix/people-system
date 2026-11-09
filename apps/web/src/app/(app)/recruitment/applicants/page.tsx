@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Fragment, Suspense } from 'react';
+import { Suspense } from 'react';
 import {
   APPLICATION_SOURCE_LABELS,
   APPLICATION_SOURCES,
@@ -50,13 +50,14 @@ import {
   managesRecruitment,
   readApplicantsQuery,
   readsRecruitment,
-  REJECTED_AT_REVIEW,
-  STAGE_FILTERS,
   vacancyHref,
   WHO_SEES,
 } from '../recruitment';
 import { ApplicantsTable, ExperienceCell, HoldSelect, LatestRoleCell, MinYearsSelect, SkillSelect, VacancyStatusBadge, VerdictBadge, VerdictSelect } from '../ui';
 import { joinShown, shownCode } from '@/lib/hidden';
+import { workflowNav } from '../workflow';
+import { HiringWorkflow } from '../workflow-ui';
+import { ListScrollRestorer } from '../list-return';
 
 // All applicants (owner, 22 October 2026: "where will we include the ATS?"): across the vacancies, best match first, by
 // stage, source, a good match (70% and over), experience, or a search on names, email, mobile and reference; those
@@ -110,31 +111,13 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
   const groups = loaded.kind === 'ok' && summary.kind === 'ok' ? groupApplicants(summary.value.vacancies, loaded.value, filtering(q)) : null;
   return (
     <div className="space-y-4">
-      <nav aria-label="Applicants by stage" className="flex flex-wrap gap-2">
-        <Link href={applicantsHref(APPLICANTS_PATH, { ...q, stage: '', filtered: 'hide', reviewRejected: false })} className={`${chip} ${!q.stage && q.filtered === 'hide' && !q.reviewRejected ? ACTIVE : IDLE}`}>
-          All
-        </Link>
-        {STAGE_FILTERS.map((s) => (
-          <Fragment key={s}>
-            <Link
-              href={applicantsHref(APPLICANTS_PATH, { ...q, stage: s, filtered: 'hide', reviewRejected: false })}
-              className={`${chip} ${q.stage === s && q.filtered === 'hide' && !q.reviewRejected ? ACTIVE : IDLE}`}
-            >
-              {APPLICATION_STAGE_LABELS[s]}
-            </Link>
-            {/* Applicants' "Rejected at review" (owner, 5 November 2026): those rejected at a review, kept off the Rejected tab */}
-            {s === 'applied' && (
-              <Link href={applicantsHref(APPLICANTS_PATH, { ...q, stage: '', filtered: 'hide', reviewRejected: true })} className={`${chip} ${q.reviewRejected ? ACTIVE : IDLE}`}>
-                {REJECTED_AT_REVIEW}
-              </Link>
-            )}
-          </Fragment>
-        ))}
-        <Link href={applicantsHref(APPLICANTS_PATH, { ...q, stage: '', filtered: 'only', reviewRejected: false })} className={`${chip} ${q.filtered === 'only' ? ACTIVE : IDLE}`}>
-          Filtered out
-        </Link>
-      </nav>
-      <form method="get" className="flex flex-wrap items-end gap-3" role="search">
+      {/* back where it was, from an applicant's Back (9 November 2026) */}
+      <ListScrollRestorer listHref={applicantsHref(APPLICANTS_PATH, q)} />
+      {/* the hiring workflow apart from the filters (owner, 9 November 2026: "diffrenitate between the filteration and hiring
+          workflow"; workflow.ts) */}
+      <HiringWorkflow nav={workflowNav(APPLICANTS_PATH, q, null)} />
+      <form method="get" className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-raised px-4 py-3" role="search" aria-label="Filter and sort">
+        <p className="w-full text-xs font-semibold tracking-wide text-muted uppercase">Filter and sort</p>
         {q.reviewRejected ? <input type="hidden" name="reviewRejected" value="only" /> : q.stage && <input type="hidden" name="stage" value={q.stage} />}
         {q.filtered !== 'hide' && <input type="hidden" name="filtered" value={q.filtered} />}
         {q.vacancyId && <input type="hidden" name="vacancyId" value={q.vacancyId} />}
@@ -388,7 +371,8 @@ async function General({ query, manages }: { query: Query; manages: boolean }) {
           All
         </Link>
       </nav>
-      <form method="get" className="flex flex-wrap items-end gap-3" role="search">
+      <form method="get" className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-raised px-4 py-3" role="search" aria-label="Filter and sort">
+        <p className="w-full text-xs font-semibold tracking-wide text-muted uppercase">Filter and sort</p>
         <input type="hidden" name="tab" value="general" />
         {g.status && <input type="hidden" name="status" value={g.status} />}
         {g.sort && <input type="hidden" name="sort" value={g.sort} />}
