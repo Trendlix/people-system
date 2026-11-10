@@ -83,6 +83,39 @@ void main() {
     expect(find.text(LockWords.title), findsOneWidget);
   });
 
+  // owner, 10 November 2026: "why is there 2 face id captures when i open the app?": iOS cancelled Face ID asked while
+  // the app was still opening, and its plugin asked again
+  testWidgets('asks once the app is in front, not while it is still opening', (tester) async {
+    final biometrics = FakeBiometrics();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await open(tester, people, biometrics);
+    expect(biometrics.asked, isEmpty);
+    expect(find.text(LockWords.title), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(biometrics.asked, [LockWords.reason]);
+    expect(find.text(CheckInWords.checkInForWork), findsOneWidget);
+  });
+
+  testWidgets('not again for the prompt’s own moment away; again once back from out of sight, still locked', (tester) async {
+    final biometrics = FakeBiometrics(outcome: FingerprintOutcome.cancelled);
+    await open(tester, people, biometrics);
+    expect(biometrics.asked, [LockWords.reason]);
+    // the Face ID prompt makes the app inactive for a moment
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(biometrics.asked, [LockWords.reason]);
+    // another app, then back: asked again
+    biometrics.outcome = FingerprintOutcome.confirmed;
+    for (final s in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused, AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      tester.binding.handleAppLifecycleStateChanged(s);
+    }
+    await tester.pumpAndSettle();
+    expect(biometrics.asked, [LockWords.reason, LockWords.reason]);
+    expect(find.text(CheckInWords.checkInForWork), findsOneWidget);
+  });
+
   testWidgets('signs out from the lock', (tester) async {
     await open(tester, people, FakeBiometrics(outcome: FingerprintOutcome.cancelled));
     await tester.tap(find.text(LockWords.signOut));

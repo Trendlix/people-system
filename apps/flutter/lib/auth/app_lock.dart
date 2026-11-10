@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -87,15 +89,43 @@ class LockScreen extends ConsumerStatefulWidget {
   ConsumerState<LockScreen> createState() => _LockScreenState();
 }
 
-class _LockScreenState extends ConsumerState<LockScreen> {
+class _LockScreenState extends ConsumerState<LockScreen> with WidgetsBindingObserver {
   bool _asking = false;
   String? _problem;
+
+  /// The app went out of sight (another app, the screen off) while locked: asked again when it is back.
+  bool _away = false;
 
   @override
   void initState() {
     super.initState();
-    // asked at once, as the app opens
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ask(first: true));
+    WidgetsBinding.instance.addObserver(this);
+    // asked as the app opens, once it is in front (owner, 10 November 2026: "why is there 2 face id captures when i open
+    // the app?": iOS cancelled Face ID asked while the app was still opening, and asked again)
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await whenInFront();
+      if (mounted) unawaited(_ask(first: true));
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Back from out of sight, still locked: asked again (the phone cancelled the one showing as it went). Not after the
+  /// fingerprint or face prompt itself, which only makes the app inactive for a moment.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.hidden || AppLifecycleState.paused:
+        _away = true;
+      case AppLifecycleState.resumed:
+        if (_away && !_asking) unawaited(_ask());
+        _away = false;
+      default:
+    }
   }
 
   Future<void> _ask({bool first = false}) async {

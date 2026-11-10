@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../api/people_client.dart';
 import '../../auth/auth_controller.dart';
 import '../../auth/unlock_words.dart';
+import '../../platform/biometrics.dart' show whenInFront;
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
 import 'email_code.dart';
@@ -43,9 +44,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   @override
   void initState() {
     super.initState();
-    // the fingerprint asked for at once, unless something needs saying first
+    // the fingerprint asked for at once, unless something needs saying first; once the app is in front (10 November 2026:
+    // iOS cancels Face ID asked while the app is still opening)
     if (widget.state.fingerprint && widget.state.notice == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _fingerprint());
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await whenInFront();
+        if (mounted) _fingerprint();
+      });
     }
   }
 

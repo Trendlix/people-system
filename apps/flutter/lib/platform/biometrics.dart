@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
+import 'package:flutter/widgets.dart' show AppLifecycleListener, AppLifecycleState, WidgetsBinding;
 import 'package:local_auth/local_auth.dart';
 
 /// How asking for the fingerprint ended.
@@ -69,8 +72,11 @@ class DeviceBiometrics implements Biometrics {
   @override
   Future<FingerprintOutcome> confirm(String reason) async {
     try {
-      // the fingerprint or face only, never the phone's PIN: the credential is for the person, not whoever has the phone
-      final ok = await _auth.authenticate(localizedReason: reason, biometricOnly: true, persistAcrossBackgrounding: true);
+      // the fingerprint or face only, never the phone's PIN: the credential is for the person, not whoever has the phone.
+      // Never asked again by the plugin itself when the phone cancels it (owner, 10 November 2026: "why is there 2 face
+      // id captures when i open the app?": iOS cancelled the Face ID asked while the app was still coming to the front,
+      // and the plugin asked again once it was): the lock asks again itself after the app was away (app_lock.dart)
+      final ok = await _auth.authenticate(localizedReason: reason, biometricOnly: true, persistAcrossBackgrounding: false);
       return ok ? FingerprintOutcome.confirmed : FingerprintOutcome.cancelled;
     } on LocalAuthException catch (e) {
       return switch (e.code) {
@@ -86,4 +92,22 @@ class DeviceBiometrics implements Biometrics {
       return FingerprintOutcome.unavailable;
     }
   }
+}
+
+/// Done once the app is in front (resumed), at once when it is already (or when the phone hasn't said: a test): the
+/// fingerprint or face is only asked then, as iOS cancels Face ID asked while the app is still opening (10 November 2026).
+Future<void> whenInFront() {
+  final now = WidgetsBinding.instance.lifecycleState;
+  if (now == null || now == AppLifecycleState.resumed) return Future<void>.value();
+  final done = Completer<void>();
+  late final AppLifecycleListener listener;
+  listener = AppLifecycleListener(
+    onResume: () {
+      if (done.isCompleted) return;
+      done.complete();
+      // not while the binding tells its listeners
+      scheduleMicrotask(listener.dispose);
+    },
+  );
+  return done.future;
 }
