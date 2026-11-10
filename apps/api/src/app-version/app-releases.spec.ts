@@ -23,8 +23,10 @@ describe('the newest build from a release', () => {
       publishedAt: '2026-10-31T18:00:00Z',
       downloadUrl: PLAY_TESTING_URL,
       removeOldFirst: true,
-      sameKeySince: '0.7.40',
+      // the phones asking are on the website's APK, never signed with Play's key (10 November 2026): all remove theirs first
+      sameKeySince: null,
     });
+    expect(latestFor(latestFromRelease(release('app-0.7.40', { body }))!, 'Trendlix People/0.7.45 (android) TrendLIXPeople').removeOldFirst).toBe(true);
     // while it is a pre-release (Play not live yet), nobody is moved
     expect(latestFromRelease(release('app-0.7.40', { body, prerelease: true }))).toBeNull();
   });

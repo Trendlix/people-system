@@ -56,6 +56,7 @@ export const APP_ENDPOINTS: readonly string[] = [
   'GET /api/auth/sessions',
   // whether the app is the newest build (its force update, 31 October 2026)
   'GET /api/app/latest',
+  'GET /api/app/ios-latest',
   // the server's version and time, for About this app (31 October 2026)
   'GET /api/version',
   'POST /api/auth/sessions/{x}/end',

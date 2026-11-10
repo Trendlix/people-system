@@ -54,9 +54,16 @@ export function latestFromRelease(release: unknown): LatestApp | null {
   const version = tag.replace(/^app-/, '');
   if (!tag.startsWith('app-') || !VERSION.test(version)) return null;
   const sameKeySince = typeof body === 'string' ? (SAME_KEY_SINCE.exec(body)?.[1] ?? null) : null;
-  // once a Play build is the latest (Google Play is live): the app is got from Play
+  // once a Play build is the latest (Google Play is live): the app is got from Play, and the phones asking (the website's
+  // APK: a Play build asks Play) are signed with the website's key, never Play's, so they remove theirs first
   const play = typeof body === 'string' && PLAY_BUILD.test(body);
-  return { version, publishedAt: typeof at === 'string' ? at : null, downloadUrl: play ? PLAY_TESTING_URL : APP_DOWNLOAD_URL, removeOldFirst: APP_REMOVE_OLD_FIRST, sameKeySince };
+  return {
+    version,
+    publishedAt: typeof at === 'string' ? at : null,
+    downloadUrl: play ? PLAY_TESTING_URL : APP_DOWNLOAD_URL,
+    removeOldFirst: APP_REMOVE_OLD_FIRST,
+    sameKeySince: play ? null : sameKeySince,
+  };
 }
 
 /** The app's version from its user agent ("Trendlix People/0.6.26 (android) …", the app's userAgentOf); null otherwise. */

@@ -104,6 +104,21 @@ jobs:
       - name: Test
         run: flutter test
 
+      # The website's APK beside the Play bundle (owner, 10 November 2026: "when pushing make the update force to all
+      # builds"; asked, "Keep updating the website APK"): the phones that installed it from the website update from it
+      # (People's app/latest, the app's force update) until Google Play is live, which the newest release says once
+      # "Google Play is live" made a Play build the latest (play-live below); from then on the bundle alone.
+      - name: Website APK wanted
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apk=true
+          if [ "$PLAY" = "true" ] && gh release view --repo "$GITHUB_REPOSITORY" --json body -q .body 2>/dev/null | grep -q '^Google Play build'; then
+            apk=false
+            echo "Google Play is live: the bundle alone"
+          fi
+          echo "APK=$apk" >> "$GITHUB_ENV"
+
       # The app's one signing key, so each APK installs over the last (a phone refuses an update signed with another
       # key; owner, 2 November 2026: "if it is not applicable skip it", the app's step to remove the old version first).
       # From the secret ANDROID_DEBUG_KEYSTORE_BASE64 when it is set; else the keystore kept in the Actions cache (GitHub
@@ -111,14 +126,14 @@ jobs:
       # each had a key of their own: the cache of ~/.android/debug.keystore was never saved, Gradle's key being elsewhere.
       # The build signs with it through PEOPLE_KEYSTORE (android/app/build.gradle.kts). A debug keystore's passwords.
       - name: Signing key from the cache
-        if: env.PLAY != 'true' && env.HAS_DEBUG_KEYSTORE != 'true'
+        if: env.APK == 'true' && env.HAS_DEBUG_KEYSTORE != 'true'
         uses: actions/cache@v6
         with:
           path: ~/.people-signing/people.keystore
           key: people-signing-keystore-v1
 
       - name: Signing key from the secret
-        if: env.PLAY != 'true' && env.HAS_DEBUG_KEYSTORE == 'true'
+        if: env.APK == 'true' && env.HAS_DEBUG_KEYSTORE == 'true'
         env:
           KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
@@ -126,7 +141,7 @@ jobs:
           printf '%s' "$KEYSTORE" | base64 -d > ~/.people-signing/people.keystore
 
       - name: Signing key
-        if: env.PLAY != 'true'
+        if: env.APK == 'true'
         run: |
           mkdir -p ~/.people-signing
           if [ ! -s ~/.people-signing/people.keystore ]; then
@@ -185,10 +200,11 @@ jobs:
             echo "::error::The repository variable API_CA_CERT is not set (deploy/ca-cert.sh prints it): without it the app can't reach People."
             exit 1
           fi
-          # for Google Play: an app bundle, taking its updates from Play (PEOPLE_STORE=play); else the website's APK
-          if [ "$PLAY" = "true" ]; then kind=appbundle; store=play; else kind=apk; store=; fi
-          flutter build "$kind" --release \
-            --dart-define=PEOPLE_STORE="$store" \
+          # for Google Play: an app bundle, taking its updates from Play (PEOPLE_STORE=play), signed with the upload key;
+          # the website's APK (APK above), taking its updates from People, signed with the website's key
+          build() {
+          flutter build "$1" --release \
+            --dart-define=PEOPLE_STORE="$2" \
             --dart-define=PEOPLE_PUSH="${PEOPLE_PUSH:-}" \
             --build-name="$APP_VERSION_NAME" \
             --build-number="$APP_VERSION_CODE" \
@@ -198,10 +214,13 @@ jobs:
             --dart-define=PEOPLE_APP_BUILD="$APP_VERSION_CODE" \
             --dart-define=PEOPLE_APP_COMMIT="${GITHUB_SHA:0:7}" \
             --dart-define=PEOPLE_APP_BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          if [ "$PLAY" = "true" ]; then build appbundle play; fi
+          if [ "$APK" = "true" ]; then PLAY_UPLOAD_KEYSTORE="" PLAY_UPLOAD_PASSWORD="" build apk ""; fi
 
       - name: Name the APK
         id: apk
-        if: env.PLAY != 'true'
+        if: env.APK == 'true'
         run: |
           src=build/app/outputs/flutter-apk/app-release.apk
           dest="$RUNNER_TEMP/trendlix-people-$APP_VERSION_NAME.apk"
@@ -244,7 +263,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: trendlix-people-${{ steps.version.outputs.name }}
-          path: ${{ steps.apk.outputs.path || steps.aab.outputs.path }}
+          path: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.aab.outputs.path }}
           if-no-files-found: error
           retention-days: 30
 
@@ -252,7 +273,7 @@ jobs:
       # commit, its file always named trendlix-people.apk, so the website's /download (releases/latest/download/…)
       # always finds it. Only from main; a build by hand of another branch stays in the run's artifacts.
       - name: Publish the release
-        if: github.ref == 'refs/heads/main' && env.PLAY != 'true'
+        if: github.ref == 'refs/heads/main' && env.APK == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           APK: ${{ steps.apk.outputs.path }}
@@ -292,7 +313,8 @@ jobs:
 
       # A Play build's release: a pre-release (app/latest ignores it), its bundle attached, saying it is one and since
       # which version Play's key is the same (the first Play build's), so the phones on an older, website-signed build are
-      # told to remove it first once it is made the latest ("Google Play is live" below).
+      # told to remove it first once it is made the latest ("Google Play is live" below). While the website's APK is built
+      # too (10 November 2026), its release, made just above, gets the bundle as well.
       - name: Publish the Play build
         if: github.ref == 'refs/heads/main' && env.PLAY == 'true'
         env:
@@ -524,7 +546,9 @@ jobs:
           rm -rf "$HOME/private_keys" "$RUNNER_TEMP/apple" ios/Flutter/Signing.xcconfig
 
   # "Google Play is live" (Run workflow by hand, the box ticked): the newest Play build becomes the latest release, so People
-  # tells the phones still on the website's APK to remove it and get the app from Play, and /download goes to Play.
+  # tells the phones still on the website's APK to remove it and get the app from Play, and /download goes to Play. The
+  # newest release with a bundle (since 10 November 2026 a release holds the website's APK and the bundle) is marked a
+  # Play build, and from then on builds make the bundle alone (Website APK wanted).
   play-live:
     name: Google Play is live
     if: ${{ inputs.play_live }}
@@ -536,7 +560,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName -q '.[].tagName'); do
-            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body -q .body | grep -q '^Google Play build'; then
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | grep -q '\.aab$'; then
+              body="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
+              if ! printf '%s' "$body" | grep -q '^Google Play build'; then
+                gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes "$(printf '%s\n\nGoogle Play build\n' "$body")"
+              fi
               gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --prerelease=false --latest
               echo "### $tag is the latest release: the phones on the website's APK are sent to Google Play" >> "$GITHUB_STEP_SUMMARY"
               exit 0

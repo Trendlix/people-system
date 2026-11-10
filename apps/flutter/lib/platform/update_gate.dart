@@ -22,7 +22,22 @@ abstract final class UpdateWords {
   static const download = 'Download the update';
   static const remove = 'Remove this version';
   static String cantOpen(String url) => 'The browser couldn’t be opened. Go to $url to download the update.';
+  // from a store (10 November 2026): Google Play's or the App Store's own update
+  static const onPlay = 'A new version is on Google Play. Update to keep using the app.';
+  static String onAppStore(String latest, String mine) => 'Version $latest is on the App Store; this iPhone has $mine. Update to keep using the app.';
+  static const updatePlay = 'Update from Google Play';
+  static const updateAppStore = 'Update from the App Store';
+  static String cantOpenStore(String url) => 'The store couldn’t be opened. Go to $url to update.';
 }
+
+/// Where a store build's update comes from.
+enum UpdateFrom { googlePlay, appStore }
+
+/// A newer version in the store: where, its version when known, and its page there.
+typedef StoreUpdate = ({UpdateFrom from, String? version, Uri page});
+
+/// The app's page on Google Play (its closed test's testers have it).
+final playPage = Uri.parse('https://play.google.com/store/apps/details?id=com.trendlix.people');
 
 /// The app's newest build, as People tells it (GET /api/app/latest).
 typedef LatestApp = ({String version, String downloadUrl, bool removeOldFirst});
@@ -51,20 +66,44 @@ final linkOpenerProvider = Provider<Future<bool> Function(Uri)>(
 
 /// A Play build's update (owner, 6 November 2026: "now i have google play console"; asked, "Play only"): Google Play says
 /// whether a newer version of the app is live there, and when it is, Play's own full-screen update runs (an "immediate"
-/// update: the app restarts on the new version). Never in the way when Play can't tell (a build not installed from Play,
-/// no Play services). Replaced in the tests.
-final playUpdateProvider = Provider<Future<void> Function()>(
-  (ref) => () async {
+/// update: the app restarts on the new version). Since 10 November 2026 (owner: "make the update force to all builds")
+/// "Update required" stays in place of the app while Play has one, so backing out of Play's update leaves nothing usable.
+/// Never in the way when Play can't tell (a build not installed from Play, no Play services). Replaced in the tests.
+abstract interface class PlayUpdates {
+  /// Whether Google Play has a newer version for this phone; false when it can't tell.
+  Future<bool> available();
+
+  /// Play's full-screen update. True: it ran; false: Play doesn't allow it here, or it failed (the app's Play page then).
+  Future<bool> update();
+}
+
+class DevicePlayUpdates implements PlayUpdates {
+  const DevicePlayUpdates();
+
+  @override
+  Future<bool> available() async {
     try {
       final info = await InAppUpdate.checkForUpdate();
-      if (info.updateAvailability == UpdateAvailability.updateAvailable && info.immediateUpdateAllowed) {
-        await InAppUpdate.performImmediateUpdate();
-      }
+      return info.updateAvailability == UpdateAvailability.updateAvailable || info.updateAvailability == UpdateAvailability.developerTriggeredUpdateInProgress;
     } on Exception {
       // not installed from Play, or Play unreachable: the app carries on
+      return false;
     }
-  },
-);
+  }
+
+  @override
+  Future<bool> update() async {
+    try {
+      final info = await InAppUpdate.checkForUpdate();
+      if (!info.immediateUpdateAllowed) return false;
+      return await InAppUpdate.performImmediateUpdate() == AppUpdateResult.success;
+    } on Exception {
+      return false;
+    }
+  }
+}
+
+final playUpdateProvider = Provider<PlayUpdates>((ref) => const DevicePlayUpdates());
 
 /// Always the newest build (owner, 31 October 2026: "in the next build i would prefare to apply the force update rule";
 /// asked, "Always the latest build" and "A fixed People link"): on opening and coming back, the app asks People for the
@@ -73,8 +112,10 @@ final playUpdateProvider = Provider<Future<void> Function()>(
 /// app is in the stores, the steps say to remove this version before installing the new one ("remind him to remove the
 /// old version till posted to the app store or google playstore"; People's removeOldFirst), with a button to the app's
 /// App info page, where Uninstall is. Never in the way when it can't tell: a build without a version (a developer's,
-/// 0.0.0), not on Android (only an APK is built), or People unreachable. Once known old, it stays held until the new
-/// build is installed. A Play build asks Play instead (playUpdateProvider): Play updates it.
+/// 0.0.0), or People unreachable. Once known old, it stays held until the new build is installed. A Play build asks Play
+/// instead (playUpdateProvider), held while Play has a newer version; an iPhone or iPad asks People for the App Store's
+/// version (GET /api/app/ios-latest; owner, 10 November 2026: "make the update force to all builds"), held while it is
+/// newer, with the way to the App Store.
 class UpdateGate extends ConsumerStatefulWidget {
   const UpdateGate({super.key, required this.child, this.askEvery = const Duration(minutes: 2)});
 
@@ -90,6 +131,9 @@ class UpdateGate extends ConsumerStatefulWidget {
 class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObserver {
   /// The newer build to install; null: none, or not known.
   LatestApp? _newer;
+
+  /// A newer version in Google Play or the App Store; null: none, or not known.
+  StoreUpdate? _store;
   DateTime? _askedAt;
   bool _asking = false;
 
@@ -119,12 +163,21 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
   Future<void> _ask() async {
     final config = ref.read(configProvider);
     final mine = config.version;
-    if (_asking || mine == '0.0.0' || defaultTargetPlatform != TargetPlatform.android) return;
+    final ios = defaultTargetPlatform == TargetPlatform.iOS;
+    if (_asking || mine == '0.0.0' || (defaultTargetPlatform != TargetPlatform.android && !ios)) return;
     _asking = true;
     _askedAt = DateTime.now();
+    if (ios) {
+      try {
+        await _askAppStore(mine);
+      } finally {
+        _asking = false;
+      }
+      return;
+    }
     if (config.playStore) {
       try {
-        await ref.read(playUpdateProvider)();
+        await _askPlay();
       } finally {
         _asking = false;
       }
@@ -149,6 +202,46 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
     }
   }
 
+  /// Google Play: held while it has a newer version, its update run by itself once.
+  Future<void> _askPlay() async {
+    final has = await ref.read(playUpdateProvider).available();
+    if (!mounted) return;
+    setState(() => _store = has ? (from: UpdateFrom.googlePlay, version: null, page: playPage) : null);
+    if (has && !_openedOnce) {
+      _openedOnce = true;
+      await _updateFromStore();
+    }
+  }
+
+  /// The App Store's version, as People reads it: held while it is newer than this build (a TestFlight build newer than
+  /// the store's isn't).
+  Future<void> _askAppStore(String mine) async {
+    try {
+      final body = await ref.read(peopleClientProvider).get('/api/app/ios-latest');
+      if (!mounted || body is! Map) return;
+      final latest = body['version'], url = body['storeUrl'];
+      final page = url is String ? Uri.tryParse(url) : null;
+      setState(() => _store = latest is String && page != null && isOlderVersion(mine, latest) ? (from: UpdateFrom.appStore, version: latest, page: page) : null);
+    } on Exception {
+      // People unreachable or an older People without the endpoint: never a reason to hold the app
+    }
+  }
+
+  /// The store's update: Play's own, else (not allowed, failed) its page; the App Store's page.
+  Future<void> _updateFromStore() async {
+    final store = _store;
+    if (store == null) return;
+    setState(() => _problem = null);
+    if (store.from == UpdateFrom.googlePlay && await ref.read(playUpdateProvider).update()) return;
+    var opened = false;
+    try {
+      opened = await ref.read(linkOpenerProvider)(store.page);
+    } on Exception {
+      opened = false;
+    }
+    if (!opened && mounted) setState(() => _problem = UpdateWords.cantOpenStore(store.page.toString()));
+  }
+
   Future<void> _download(LatestApp newer) async {
     setState(() => _problem = null);
     var opened = false;
@@ -162,6 +255,8 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
+    final store = _store;
+    if (store != null) return _storeGate(context, store);
     final newer = _newer;
     if (newer == null) return widget.child;
     final p = context.palette;
@@ -225,6 +320,58 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
                         ),
                       ),
                     ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// "Update required" from a store: what is newer and where, and the way to update (Play's own, the App Store's page).
+  Widget _storeGate(BuildContext context, StoreUpdate store) {
+    final p = context.palette;
+    final text = Theme.of(context).textTheme;
+    final mine = ref.watch(configProvider).version;
+    final play = store.from == UpdateFrom.googlePlay;
+    final problem = _problem;
+    return Stack(
+      children: [
+        Offstage(child: widget.child),
+        Positioned.fill(
+          child: Scaffold(
+            backgroundColor: p.canvas,
+            body: SafeArea(
+              child: SingleChildScrollView(
+                padding: centredPadding(context, const EdgeInsets.fromLTRB(24, 24, 24, 32), max: Tokens.noticeMaxWidth),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(alignment: AlignmentDirectional.centerStart, child: Wordmark(height: 28, forDark: p.isDark)),
+                    const SizedBox(height: 36),
+                    Center(child: Icon(CupertinoIcons.arrow_down_circle, size: 56, color: p.ink)),
+                    const SizedBox(height: 20),
+                    const Center(child: Eyebrow(UpdateWords.eyebrow)),
+                    const SizedBox(height: 8),
+                    Text(UpdateWords.title, textAlign: TextAlign.center, style: text.displaySmall),
+                    const SizedBox(height: 10),
+                    Text(
+                      play ? UpdateWords.onPlay : UpdateWords.onAppStore(store.version ?? '', mine),
+                      textAlign: TextAlign.center,
+                      style: text.bodyMedium?.copyWith(color: p.muted),
+                    ),
+                    if (problem != null) ...[const SizedBox(height: 12), Notice(text: problem, ok: false)],
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      height: Tokens.buttonHeight,
+                      child: FilledButton.icon(
+                        onPressed: _updateFromStore,
+                        icon: const Icon(CupertinoIcons.arrow_down_to_line, size: 20),
+                        label: Text(play ? UpdateWords.updatePlay : UpdateWords.updateAppStore),
+                      ),
+                    ),
                   ],
                 ),
               ),
