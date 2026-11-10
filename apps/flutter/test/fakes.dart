@@ -93,6 +93,11 @@ class FakeLocator implements Locator {
   LocationProblem? afterAsking;
   var asked = 0;
 
+  /// "Allow all the time" (10 November 2026): whether it is allowed, and whether asking allows it.
+  bool always = true;
+  bool alwaysOnAsking = false;
+  var askedAlways = 0;
+
   @override
   Future<LocationRead> read() async => answer;
 
@@ -111,6 +116,17 @@ class FakeLocator implements Locator {
 
   @override
   Future<void> openLocationSettings() async => openedLocation++;
+
+  @override
+  Future<bool> allowedAllTheTime() async => always;
+
+  @override
+  Future<bool> askAllTheTime() async {
+    askedAlways++;
+    always = always || alwaysOnAsking;
+    if (!always) openedApp++;
+    return always;
+  }
 }
 
 /// The app's providers over the fakes. The client is built as the app builds it, a 401 signing out.

@@ -30,6 +30,14 @@ abstract interface class Locator {
 
   /// The phone's location switch.
   Future<void> openLocationSettings();
+
+  /// Whether the app may read the location all the time (Android's "Allow all the time"): the hourly location while
+  /// checked in needs it (owner, 10 November 2026: "make sure that the location should be always on for the hourly ping").
+  Future<bool> allowedAllTheTime();
+
+  /// Asks for "Allow all the time": Android 10 offers it in its prompt; from Android 11 only the app's settings do, so they
+  /// open. True: allowed now (false: not, or the settings opened for them to choose it).
+  Future<bool> askAllTheTime();
 }
 
 class DeviceLocator implements Locator {
@@ -96,4 +104,26 @@ class DeviceLocator implements Locator {
 
   @override
   Future<void> openLocationSettings() => Geolocator.openLocationSettings();
+
+  @override
+  Future<bool> allowedAllTheTime() async {
+    try {
+      return await Geolocator.checkPermission() == LocationPermission.always;
+    } on Exception {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> askAllTheTime() async {
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission != LocationPermission.always) permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.always) return true;
+      await Geolocator.openAppSettings();
+    } on Exception {
+      // the settings couldn't open: they press Check in again
+    }
+    return false;
+  }
 }

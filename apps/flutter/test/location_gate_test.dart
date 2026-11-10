@@ -179,4 +179,10 @@ class _CountingLocator implements Locator {
 
   @override
   Future<void> openLocationSettings() => inner.openLocationSettings();
+
+  @override
+  Future<bool> allowedAllTheTime() => inner.allowedAllTheTime();
+
+  @override
+  Future<bool> askAllTheTime() => inner.askAllTheTime();
 }

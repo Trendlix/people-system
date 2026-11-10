@@ -14,6 +14,9 @@ import 'today_controller.dart';
 
 // One press of Check in / Check out, for whichever screen shows the button (the Dashboard's shift card, the Attendance
 // tab's Today panel): busy while the spot is read and sent, then what it came to, good news or why not and what to do.
+// While the company has the hourly location on, a check-in on Android waits for "Allow all the time" (owner, 10 November
+// 2026: "make sure that the location should be always on for the hourly ping"): what it reads and why first, then the
+// phone's prompt or the app's settings; not allowed, no check-in, and what to choose.
 
 /// What a press came to, in words to show: good news, or a problem with the way to fix it.
 typedef PressNotice = ({String text, bool ok, String? action, VoidCallback? onAction});
@@ -30,6 +33,20 @@ mixin CheckInPress<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     });
     PressNotice? said;
     try {
+      final today = ref.read(todayProvider).value;
+      if (today != null && needsAlwaysToCheckIn(today)) {
+        final locator = ref.read(locatorProvider);
+        if (!await locator.allowedAllTheTime()) {
+          if (!mounted || !await showPingDisclosure(context)) {
+            said = (text: PingWords.needAlways, ok: false, action: PingWords.allowAlways, onAction: press);
+            return;
+          }
+          if (!await locator.askAllTheTime()) {
+            said = (text: PingWords.inSettings, ok: false, action: CheckInWords.checkIn, onAction: press);
+            return;
+          }
+        }
+      }
       final outcome = await ref.read(todayProvider.notifier).press();
       switch (outcome) {
         case Pressed(:final punch, :final messages, :final kept):
@@ -38,10 +55,6 @@ mixin CheckInPress<T extends ConsumerStatefulWidget> on ConsumerState<T> {
               ? null
               : (punch.kind == PunchKind.checkIn ? CheckInWords.checkedIn : CheckInWords.checkedOut)(clockOf(punch.at), CheckInWords.placeOf(punch));
           said = (text: [if (!kept) CheckInWords.sameAgain, ?done, ...messages].join('\n'), ok: true, action: null, onAction: null);
-          // checked in with the hourly location on (1 November 2026): what it reads and why, then "Allow all the time"
-          if (kept && punch?.kind == PunchKind.checkIn && (ref.read(todayProvider).value?.locationPings ?? false) && mounted) {
-            unawaited(askAlwaysLocation(context));
-          }
         case NoLocation(:final problem):
           final locator = ref.read(locatorProvider);
           final VoidCallback onAction = switch (problem) {

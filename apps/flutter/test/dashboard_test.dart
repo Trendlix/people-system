@@ -8,6 +8,7 @@ import 'package:people/features/manual_changes/manual_changes.dart';
 import 'package:people/features/requests/kinds/od.dart' show OdWords;
 import 'package:people/features/today/check_in_words.dart';
 import 'package:people/features/sign_in/sign_in_screen.dart';
+import 'package:people/platform/location_pings.dart';
 import 'package:people/platform/locator.dart';
 import 'package:people/providers.dart';
 import 'package:people/shell/shell_words.dart';
@@ -66,6 +67,12 @@ Future<void> open(WidgetTester tester, FakePeople people, {FakeLocator? locator,
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// A dialog over the button's spinner, which never settles: pumped a fixed time.
+Future<void> settleDialog(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
 }
 
 void main() {
@@ -179,6 +186,72 @@ void main() {
     expect(find.text(CheckInWords.noLocation(LocationProblem.deniedForever)), findsOneWidget);
     await tester.tap(find.text('Open settings'));
     expect(locator.openedApp, 1);
+  });
+
+  // owner, 10 November 2026: "make sure that the location should be always on for the hourly ping"
+  group('with the hourly location on, a check-in waits for “Allow all the time”', () {
+    void pingsOn() {
+      people
+        ..on('GET /api/me/attendance/today', (req) => json({...todayJson(), 'locationPings': true}))
+        ..on('POST /api/me/attendance/punches', (req) => json({...todayJson(next: 'out', punches: [punchJson('in', '2026-10-30T06:58:00.000Z')]), 'locationPings': true, 'messages': <String>[], 'kept': true}));
+    }
+
+    testWidgets('says what it reads and why first; put off, no check-in', (tester) async {
+      pingsOn();
+      final locator = FakeLocator()..always = false;
+      await open(tester, people, locator: locator);
+      await tester.tap(find.text(CheckInWords.checkInForWork));
+      await settleDialog(tester);
+      expect(find.text(PingWords.disclosure), findsOneWidget);
+      await tester.tap(find.text(PingWords.notNow));
+      await tester.pumpAndSettle();
+      expect(people.calls, isNot(contains('POST /api/me/attendance/punches')));
+      expect(find.text(PingWords.needAlways), findsOneWidget);
+      expect(locator.askedAlways, 0);
+    });
+
+    testWidgets('the app’s settings opened to choose it; checked in once it is allowed', (tester) async {
+      pingsOn();
+      final locator = FakeLocator()..always = false;
+      await open(tester, people, locator: locator);
+      await tester.tap(find.text(CheckInWords.checkInForWork));
+      await settleDialog(tester);
+      await tester.tap(find.text(PingWords.allow));
+      await tester.pumpAndSettle();
+      expect(locator.openedApp, 1);
+      expect(people.calls, isNot(contains('POST /api/me/attendance/punches')));
+      expect(find.text(PingWords.inSettings), findsOneWidget);
+      // allowed in the settings, then Check in again
+      locator.always = true;
+      await tester.tap(find.text(CheckInWords.checkIn));
+      await tester.pumpAndSettle();
+      expect(people.calls, contains('POST /api/me/attendance/punches'));
+      expect(find.text(PingWords.disclosure), findsNothing);
+    });
+
+    testWidgets('allowed at the phone’s prompt: checked in at once', (tester) async {
+      pingsOn();
+      final locator = FakeLocator()
+        ..always = false
+        ..alwaysOnAsking = true;
+      await open(tester, people, locator: locator);
+      await tester.tap(find.text(CheckInWords.checkInForWork));
+      await settleDialog(tester);
+      await tester.tap(find.text(PingWords.allow));
+      await tester.pumpAndSettle();
+      expect(people.calls, contains('POST /api/me/attendance/punches'));
+      expect(locator.openedApp, 0);
+    });
+
+    testWidgets('not asked with the hourly location off', (tester) async {
+      people.on('POST /api/me/attendance/punches', (req) => json({...todayJson(next: 'out', punches: [punchJson('in', '2026-10-30T06:58:00.000Z')]), 'messages': <String>[], 'kept': true}));
+      final locator = FakeLocator()..always = false;
+      await open(tester, people, locator: locator);
+      await tester.tap(find.text(CheckInWords.checkInForWork));
+      await tester.pumpAndSettle();
+      expect(find.text(PingWords.disclosure), findsNothing);
+      expect(people.calls, contains('POST /api/me/attendance/punches'));
+    });
   });
 
   testWidgets('shows why someone doesn’t check in on the system, with no button', (tester) async {

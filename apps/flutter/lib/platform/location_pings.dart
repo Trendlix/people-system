@@ -18,12 +18,18 @@ import '../models/today.dart';
 // sends it to People (POST /api/me/attendance/pings), which reads it against the check-in and flags it for HR when away.
 // Without "Allow all the time", or with the phone's location off, the task says so instead ("Location off" for HR). It
 // stops at check-out, when People says they aren't checked in any more, and when signed out. Before asking for "Allow
-// all the time", the app says what it reads and why (Google Play's prominent disclosure).
+// all the time", the app says what it reads and why (Google Play's prominent disclosure). Since 10 November 2026 (owner:
+// "make sure that the location should be always on for the hourly ping") a check-in waits for it while the company has
+// the hourly location on (press_flow.dart), where before it was asked after the check-in and could be put off.
 
 const pingTask = 'people.locationPing';
 
 class PingWords {
   static const title = 'Location while checked in';
+  // a check-in waits for "Allow all the time" while the hourly location is on (10 November 2026)
+  static const needAlways = 'Hourly location is on: allow your location all the time to check in.';
+  static const inSettings = 'In the app’s settings, choose Location → Allow all the time, then check in.';
+  static const allowAlways = 'Allow all the time';
   // in the form Google Play asks for a background location's prominent disclosure (6 November 2026)
   static const disclosure =
       'Trendlix People collects location data to confirm you’re at the place you checked in, every hour while you’re checked in, even when the app is closed or not in use. It is sent to HR and stops when you check out.\n\nOn the next screen, choose “Allow all the time”.';
@@ -72,6 +78,13 @@ class WorkmanagerPingScheduler implements PingScheduler {
 }
 
 final pingSchedulerProvider = Provider<PingScheduler>((ref) => const WorkmanagerPingScheduler());
+
+/// Whether this phone sends the hourly location: Android's (WorkManager); an iPhone doesn't yet.
+bool get pingsOnThisPhone => defaultTargetPlatform == TargetPlatform.android && !kIsWeb;
+
+/// Whether a check-in waits for "Allow all the time" (10 November 2026): checking in, the hourly location on, on a phone
+/// that sends it.
+bool needsAlwaysToCheckIn(Today t) => t.locationPings && t.next == PunchKind.checkIn && pingsOnThisPhone;
 
 /// Whether the hourly task should run for today as People sees it: switched on, and checked in now.
 bool pingsWanted(Today t) => t.locationPings && t.next == PunchKind.checkOut;
@@ -139,16 +152,9 @@ Future<void> sendPing({SessionStore store = const SecureSessionStore(), PingSche
   }
 }
 
-/// After a check-in, while the company has the hourly location on: says what it reads and why, then asks for "Allow all
-/// the time" (Android takes the person to the app's settings for it). Nothing when allowed already.
-Future<void> askAlwaysLocation(BuildContext context) async {
-  if (defaultTargetPlatform != TargetPlatform.android || kIsWeb) return;
-  try {
-    if (await Geolocator.checkPermission() == LocationPermission.always) return;
-  } catch (_) {
-    return;
-  }
-  if (!context.mounted) return;
+/// Before a check-in waits for "Allow all the time" (10 November 2026): what the app reads and why (Google Play's
+/// prominent disclosure), with Continue. True: they go on to allow it.
+Future<bool> showPingDisclosure(BuildContext context) async {
   final go = await showDialog<bool>(
     context: context,
     builder: (c) => AlertDialog(
@@ -160,9 +166,5 @@ Future<void> askAlwaysLocation(BuildContext context) async {
       ],
     ),
   );
-  if (go != true) return;
-  try {
-    final now = await Geolocator.requestPermission();
-    if (now != LocationPermission.always) await Geolocator.openAppSettings();
-  } catch (_) {}
+  return go == true;
 }
