@@ -117,7 +117,7 @@ jobs:
             apk=false
             echo "Google Play is live: the bundle alone"
           fi
-          echo "APK=$apk" >> "$GITHUB_ENV"
+          echo "WEBSITE_APK=$apk" >> "$GITHUB_ENV"
 
       # The app's one signing key, so each APK installs over the last (a phone refuses an update signed with another
       # key; owner, 2 November 2026: "if it is not applicable skip it", the app's step to remove the old version first).
@@ -126,14 +126,14 @@ jobs:
       # each had a key of their own: the cache of ~/.android/debug.keystore was never saved, Gradle's key being elsewhere.
       # The build signs with it through PEOPLE_KEYSTORE (android/app/build.gradle.kts). A debug keystore's passwords.
       - name: Signing key from the cache
-        if: env.APK == 'true' && env.HAS_DEBUG_KEYSTORE != 'true'
+        if: env.WEBSITE_APK == 'true' && env.HAS_DEBUG_KEYSTORE != 'true'
         uses: actions/cache@v6
         with:
           path: ~/.people-signing/people.keystore
           key: people-signing-keystore-v1
 
       - name: Signing key from the secret
-        if: env.APK == 'true' && env.HAS_DEBUG_KEYSTORE == 'true'
+        if: env.WEBSITE_APK == 'true' && env.HAS_DEBUG_KEYSTORE == 'true'
         env:
           KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
         run: |
@@ -141,7 +141,7 @@ jobs:
           printf '%s' "$KEYSTORE" | base64 -d > ~/.people-signing/people.keystore
 
       - name: Signing key
-        if: env.APK == 'true'
+        if: env.WEBSITE_APK == 'true'
         run: |
           mkdir -p ~/.people-signing
           if [ ! -s ~/.people-signing/people.keystore ]; then
@@ -201,7 +201,8 @@ jobs:
             exit 1
           fi
           # for Google Play: an app bundle, taking its updates from Play (PEOPLE_STORE=play), signed with the upload key;
-          # the website's APK (APK above), taking its updates from People, signed with the website's key
+          # the website's APK (WEBSITE_APK above; not APK, the publish step's own name for its file), taking its updates
+          # from People, signed with the website's key
           build() {
           flutter build "$1" --release \
             --dart-define=PEOPLE_STORE="$2" \
@@ -216,11 +217,11 @@ jobs:
             --dart-define=PEOPLE_APP_BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           if [ "$PLAY" = "true" ]; then build appbundle play; fi
-          if [ "$APK" = "true" ]; then PLAY_UPLOAD_KEYSTORE="" PLAY_UPLOAD_PASSWORD="" build apk ""; fi
+          if [ "$WEBSITE_APK" = "true" ]; then PLAY_UPLOAD_KEYSTORE="" PLAY_UPLOAD_PASSWORD="" build apk ""; fi
 
       - name: Name the APK
         id: apk
-        if: env.APK == 'true'
+        if: env.WEBSITE_APK == 'true'
         run: |
           src=build/app/outputs/flutter-apk/app-release.apk
           dest="$RUNNER_TEMP/trendlix-people-$APP_VERSION_NAME.apk"
@@ -273,7 +274,7 @@ jobs:
       # commit, its file always named trendlix-people.apk, so the website's /download (releases/latest/download/…)
       # always finds it. Only from main; a build by hand of another branch stays in the run's artifacts.
       - name: Publish the release
-        if: github.ref == 'refs/heads/main' && env.APK == 'true'
+        if: github.ref == 'refs/heads/main' && env.WEBSITE_APK == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           APK: ${{ steps.apk.outputs.path }}
