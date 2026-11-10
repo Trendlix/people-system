@@ -1,5 +1,7 @@
-// TrendLIX Scan Helper lets the People System web app scan from network
-// scanners (eSCL / AirScan). It serves a small HTTP API on 127.0.0.1:47815.
+// TrendLIX Scan Helper lets the People System and Prime ERP web apps scan from
+// network scanners (eSCL / AirScan) and, on Windows, from the scanners
+// installed in Windows (USB scanners, through WIA). It serves a small HTTP API
+// on 127.0.0.1:47815.
 //
 // Usage:
 //
@@ -29,10 +31,11 @@ import (
 	"trendlix.com/scan-helper/internal/escl"
 	"trendlix.com/scan-helper/internal/install"
 	"trendlix.com/scan-helper/internal/server"
+	"trendlix.com/scan-helper/internal/wia"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
-var version = "1.0.1"
+var version = "1.1.0"
 
 const statusURL = "http://127.0.0.1:47815"
 
@@ -69,7 +72,7 @@ func run(args []string) int {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintf(w, `TrendLIX Scan Helper %s: scan from network scanners into the People System.
+	fmt.Fprintf(w, `TrendLIX Scan Helper %s: scan from the office scanners into the People System and Prime ERP.
 
 Usage:
   %[2]s              run the helper (status page: %[3]s)
@@ -179,6 +182,10 @@ func serve(background bool) int {
 	defer cancel()
 	client := escl.NewClient("TrendLIX-Scan-Helper/" + version)
 	reg := server.NewRegistry(discovery.MDNS{}, client, store, logger)
+	// Scanners installed in Windows (USB): none elsewhere. Pages a scan left
+	// behind (the computer switched off mid-scan) are deleted first.
+	wia.CleanTemp("")
+	reg.Local = wia.New(logger.Printf)
 	srv := server.New(server.Options{
 		Version:    version,
 		Registry:   reg,
@@ -200,7 +207,7 @@ func serve(background bool) int {
 
 	logger.Printf("TrendLIX Scan Helper %s is running on %s", version, statusURL)
 	if !background {
-		fmt.Printf("\nTrendLIX Scan Helper %s is running.\n  Status page: %s\n  Log file:    %s\n\nKeep this window open while you scan from the People System.\nTo stop the helper, close this window or press Ctrl+C.\n", version, statusURL, logPath)
+		fmt.Printf("\nTrendLIX Scan Helper %s is running.\n  Status page: %s\n  Log file:    %s\n\nKeep this window open while you scan from the People System or Prime ERP.\nTo stop the helper, close this window or press Ctrl+C.\n", version, statusURL, logPath)
 	}
 
 	installCh := make(chan struct{}, 1)

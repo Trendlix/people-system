@@ -25,7 +25,9 @@ type ManualScanner struct {
 // Config is the content of config.json.
 type Config struct {
 	// AllowedOrigins are web origins allowed to use the helper besides
-	// https://people.trendlix.com and http://localhost:3000.
+	// server.DefaultOrigins: the People System (https://people.trendlix.com,
+	// http://localhost:3000) and Prime ERP (https://erp.ppmeg.com,
+	// http://localhost:5173).
 	AllowedOrigins []string        `json:"allowedOrigins"`
 	Scanners       []ManualScanner `json:"scanners"`
 }

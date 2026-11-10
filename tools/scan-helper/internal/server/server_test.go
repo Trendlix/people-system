@@ -26,6 +26,7 @@ import (
 	"trendlix.com/scan-helper/internal/escl"
 	"trendlix.com/scan-helper/internal/escltest"
 	"trendlix.com/scan-helper/internal/pdf"
+	"trendlix.com/scan-helper/internal/wia"
 )
 
 const appOrigin = "https://people.trendlix.com"
@@ -59,6 +60,7 @@ type env struct {
 	store *config.Store
 	dir   string
 	logs  *syncBuffer
+	reg   *Registry
 }
 
 type envOptions struct {
@@ -66,6 +68,7 @@ type envOptions struct {
 	origins      []string
 	scanTimeout  time.Duration
 	pollInterval time.Duration
+	local        wia.Backend // scanners installed in Windows (a fake)
 }
 
 func newEnv(t *testing.T, o envOptions) *env {
@@ -92,6 +95,8 @@ func newEnv(t *testing.T, o envOptions) *env {
 	reg.BrowseWindow = 10 * time.Millisecond
 	reg.CapsWait = 3 * time.Second
 	reg.ListWait = 3 * time.Second
+	reg.Local = o.local
+	reg.LocalWait = 3 * time.Second
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	reg.Start(ctx)
@@ -101,7 +106,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	srv := New(Options{Version: "1.0.0", Registry: reg, Client: client, Config: store, Log: logger, ScanTimeout: o.scanTimeout, LogPath: filepath.Join(dir, "helper.log")})
 	hs := httptest.NewServer(srv.Handler())
 	t.Cleanup(hs.Close)
-	return &env{t: t, http: hs, store: store, dir: dir, logs: logs}
+	return &env{t: t, http: hs, store: store, dir: dir, logs: logs, reg: reg}
 }
 
 func (e *env) do(method, path, origin string, body any, headers ...string) *http.Response {
@@ -218,7 +223,7 @@ func TestListScanners(t *testing.T) {
 		ID: ScannerID(f.BaseURL()), Name: "HP LaserJet MFP M428fdw", URL: f.BaseURL(), Secure: false,
 		Sources: []string{"platen", "feeder"}, Duplex: true, ColorModes: []string{"color", "grayscale", "bw"},
 		Resolutions: []int{75, 100, 200, 300, 600}, Formats: []string{"application/octet-stream", "image/jpeg", "application/pdf"},
-		Manual: false,
+		Manual: false, Kind: "escl",
 	}
 	got, _ := json.Marshal(sc)
 	exp, _ := json.Marshal(want)
@@ -446,7 +451,7 @@ func TestCORS(t *testing.T) {
 	e := newEnv(t, envOptions{origins: []string{"https://staging.trendlix.com/"}})
 	_, port, _ := net.SplitHostPort(strings.TrimPrefix(e.http.URL, "http://"))
 
-	allowed := []string{"https://people.trendlix.com", "http://localhost:3000", "https://staging.trendlix.com", "http://127.0.0.1:" + port}
+	allowed := []string{"https://people.trendlix.com", "http://localhost:3000", "https://erp.ppmeg.com", "http://localhost:5173", "https://staging.trendlix.com", "http://127.0.0.1:" + port}
 	for _, o := range allowed {
 		resp := e.do("GET", "/v1/status", o, nil)
 		if resp.StatusCode != 200 {
@@ -488,7 +493,8 @@ func TestCORS(t *testing.T) {
 
 	// Other websites are refused, for reads, preflights and actions.
 	for _, method := range []string{"GET", "OPTIONS", "POST", "DELETE"} {
-		for _, o := range []string{"https://evil.example", "null", "https://people.trendlix.com.evil.example", "http://localhost:3001"} {
+		for _, o := range []string{"https://evil.example", "null", "https://people.trendlix.com.evil.example", "http://localhost:3001",
+			"https://erp.ppmeg.com.evil.example", "http://erp.ppmeg.com", "https://www.erp.ppmeg.com", "https://ppmeg.com", "http://localhost:5174"} {
 			path := "/v1/scanners"
 			if method == "DELETE" {
 				path = "/v1/scanners/abc"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"trendlix.com/scan-helper/internal/config"
 	"trendlix.com/scan-helper/internal/discovery"
 	"trendlix.com/scan-helper/internal/escl"
+	"trendlix.com/scan-helper/internal/wia"
 )
 
 // Scanner is a scanner as the HTTP API shows it.
@@ -30,7 +32,21 @@ type Scanner struct {
 	Resolutions []int    `json:"resolutions"`
 	Formats     []string `json:"formats"`
 	Manual      bool     `json:"manual"`
+	// Kind is KindESCL for a network scanner the helper talks to itself, or
+	// KindWIA for a scanner installed in Windows on this computer (a USB
+	// scanner, or a network scanner added in Windows).
+	Kind string `json:"kind"`
 }
+
+// The kinds of scanner.
+const (
+	KindESCL = "escl"
+	KindWIA  = "wia"
+)
+
+// LocalURL is the url a scanner installed in Windows is shown with: it has
+// no network address of its own.
+const LocalURL = "wia://this-computer"
 
 // ScannerID derives a scanner's stable id from its eSCL URL.
 func ScannerID(baseURL string) string {
@@ -38,11 +54,16 @@ func ScannerID(baseURL string) string {
 	return hex.EncodeToString(sum[:])[:12]
 }
 
+// LocalScannerID derives the stable id of a scanner installed in Windows
+// from its WIA device id.
+func LocalScannerID(deviceID string) string { return ScannerID("wia:" + deviceID) }
+
 const (
-	capsTTL       = time.Hour
-	capsRetry     = 30 * time.Second
-	capsTimeout   = 5 * time.Second
-	manualTimeout = 6 * time.Second
+	capsTTL        = time.Hour
+	capsRetry      = 30 * time.Second
+	capsTimeout    = 5 * time.Second
+	manualTimeout  = 6 * time.Second
+	localCapsRetry = 10 * time.Minute // a scanner installed in Windows that didn't say what it can do
 )
 
 // Registry knows the scanners: found by mDNS in the background, plus the
@@ -59,6 +80,13 @@ type Registry struct {
 	Interval     time.Duration // background refresh interval
 	Expiry       time.Duration // forget scanners not seen for this long
 
+	// Local finds the scanners installed in Windows on this computer (WIA);
+	// nil, or not Available, where there are none. Set before Start.
+	Local wia.Backend
+	// LocalWait is how long a round waits for the list of scanners installed
+	// in Windows (it starts Windows PowerShell, which takes a moment).
+	LocalWait time.Duration
+
 	ctx       context.Context
 	mu        sync.Mutex
 	devices   map[string]*device
@@ -67,6 +95,21 @@ type Registry struct {
 	firstDone chan struct{}
 	firstOnce sync.Once
 	discErr   string
+	local     localState
+}
+
+// localState is what is known of the scanners installed in Windows.
+type localState struct {
+	devs    []wia.Device
+	caps    map[string]*localCaps // by WIA device id
+	running chan struct{}         // closed when the listing under way ends
+	err     string                // the last problem, for the status page
+}
+
+type localCaps struct {
+	caps *wia.Caps
+	err  error
+	at   time.Time
 }
 
 type device struct {
@@ -105,12 +148,16 @@ func NewRegistry(b discovery.Browser, c *escl.Client, s *config.Store, l *log.Lo
 		ListWait:     2700 * time.Millisecond,
 		Interval:     2 * time.Minute,
 		Expiry:       10 * time.Minute,
+		LocalWait:    10 * time.Second,
 		ctx:          context.Background(),
 		devices:      map[string]*device{},
 		caps:         map[string]*capsEntry{},
 		firstDone:    make(chan struct{}),
+		local:        localState{caps: map[string]*localCaps{}},
 	}
 }
+
+func (r *Registry) hasLocal() bool { return r.Local != nil && r.Local.Available() }
 
 // Start runs discovery now and then every Interval until ctx ends.
 func (r *Registry) Start(ctx context.Context) {
@@ -154,6 +201,22 @@ func (r *Registry) run(rd *round) {
 		r.mu.Unlock()
 		close(rd.done)
 		r.firstOnce.Do(func() { close(r.firstDone) })
+	}()
+
+	started := time.Now()
+	local := r.refreshLocal()
+	defer func() {
+		// The scanners installed in Windows are listed alongside; a round
+		// waits for them a while, and the listing carries on after it.
+		if wait := r.LocalWait - time.Since(started); wait > 0 {
+			t := time.NewTimer(wait)
+			defer t.Stop()
+			select {
+			case <-local:
+			case <-t.C:
+			case <-r.ctx.Done():
+			}
+		}
 	}()
 
 	ctx, cancel := context.WithTimeout(r.ctx, r.BrowseWindow+3*time.Second)
@@ -202,13 +265,118 @@ func (r *Registry) run(rd *round) {
 	}
 	deadline := time.NewTimer(r.CapsWait)
 	defer deadline.Stop()
+wait:
 	for _, w := range waits {
 		select {
 		case <-w:
 		case <-deadline.C:
-			return // the fetches carry on in the background
+			break wait // the fetches carry on in the background
 		}
 	}
+}
+
+var closedChan = func() chan struct{} { c := make(chan struct{}); close(c); return c }()
+
+// refreshLocal lists the scanners installed in Windows unless a listing is
+// under way, and returns a channel closed when it ends. What they can do is
+// read again only when it is an hour old (ten minutes when it couldn't be
+// read): reading it connects to the scanner.
+func (r *Registry) refreshLocal() <-chan struct{} {
+	if !r.hasLocal() {
+		return closedChan
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.local.running != nil {
+		return r.local.running
+	}
+	ch := make(chan struct{})
+	r.local.running = ch
+	now := time.Now()
+	var known []string
+	for id, c := range r.local.caps {
+		if (c.caps != nil && c.err == nil && now.Sub(c.at) < capsTTL) || (c.err != nil && now.Sub(c.at) < localCapsRetry) {
+			known = append(known, id)
+		}
+	}
+	slices.Sort(known)
+	go func() {
+		devs, err := r.Local.List(r.ctx, known)
+		r.mu.Lock()
+		r.mergeLocalLocked(devs, err, known, time.Now())
+		r.local.running = nil
+		r.mu.Unlock()
+		close(ch)
+	}()
+	return ch
+}
+
+func (r *Registry) mergeLocalLocked(devs []wia.Device, err error, known []string, now time.Time) {
+	if err != nil {
+		msg := localProblem(err)
+		if msg != r.local.err {
+			r.log.Printf("listing the scanners installed in Windows failed: %v", err)
+		}
+		r.local.err = msg
+		if len(devs) == 0 {
+			return // keep what was listed before
+		}
+	} else {
+		r.local.err = ""
+	}
+	before := map[string]bool{}
+	for _, d := range r.local.devs {
+		before[d.ID] = true
+	}
+	listed := map[string]bool{}
+	for _, d := range devs {
+		listed[d.ID] = true
+		if !before[d.ID] {
+			r.log.Printf("found scanner %q installed in Windows (%s)", d.DisplayName(), d.ID)
+		}
+		c := r.local.caps[d.ID]
+		if c == nil {
+			c = &localCaps{}
+			r.local.caps[d.ID] = c
+		}
+		switch {
+		case d.CapsAsked && d.Caps != nil:
+			c.caps, c.err, c.at = d.Caps, nil, now
+		case d.CapsAsked:
+			c.err, c.at = d.CapsErr, now // keep older capabilities, if any
+			r.log.Printf("couldn't read what scanner %q can do: %v", d.DisplayName(), d.CapsErr)
+		case !slices.Contains(known, d.ID):
+			c.err, c.at = errors.New("it didn't say in time"), now
+		}
+	}
+	for _, d := range r.local.devs {
+		if !listed[d.ID] {
+			r.log.Printf("scanner %q is no longer installed or connected", d.DisplayName())
+		}
+	}
+	for id := range r.local.caps {
+		if !listed[id] {
+			delete(r.local.caps, id)
+		}
+	}
+	r.local.devs = devs
+}
+
+// localProblem is what the status page says when the scanners installed in
+// Windows couldn't be listed.
+func localProblem(err error) string {
+	if wia.KindOf(err) == wia.KindNoWIA {
+		return "Windows' scanning (Windows Image Acquisition) can't be used on this computer, so scanners connected by USB can't be listed."
+	}
+	return "Listing the scanners installed in Windows failed: " + err.Error()
+}
+
+// LocalProblem is the last problem listing the scanners installed in
+// Windows, if any, for the status page.
+func (r *Registry) LocalProblem() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.local.err
 }
 
 func (r *Registry) allURLsLocked() []string {
@@ -297,7 +465,11 @@ func (r *Registry) List(ctx context.Context, refresh bool) []Scanner {
 	if refresh {
 		wait = r.Refresh()
 	}
-	t := time.NewTimer(r.ListWait)
+	limit := r.ListWait
+	if r.hasLocal() {
+		limit = max(limit, r.LocalWait+500*time.Millisecond)
+	}
+	t := time.NewTimer(limit)
 	defer t.Stop()
 	select {
 	case <-wait:
@@ -333,11 +505,17 @@ func (r *Registry) Snapshot() []Scanner {
 			out = append(out, r.scannerLocked(m.URL, m.Name, "", nil, true))
 		}
 	}
+	for _, d := range r.local.devs {
+		out = append(out, r.localScannerLocked(d))
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if a, b := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name); a != b {
 			return a < b
 		}
-		return out[i].URL < out[j].URL
+		if out[i].URL != out[j].URL {
+			return out[i].URL < out[j].URL
+		}
+		return out[i].ID < out[j].ID // two scanners of the same model installed in Windows
 	})
 	return out
 }
@@ -383,6 +561,7 @@ func (r *Registry) scannerLocked(u, name, instance string, txt map[string]string
 		URL:    u,
 		Secure: strings.HasPrefix(strings.ToLower(u), "https:"),
 		Manual: manual,
+		Kind:   KindESCL,
 	}
 	if caps != nil {
 		sc.Sources = caps.Sources()
@@ -404,6 +583,35 @@ func (r *Registry) scannerLocked(u, name, instance string, txt map[string]string
 	}
 	if len(sc.Formats) == 0 {
 		sc.Formats = []string{"image/jpeg"}
+	}
+	return sc
+}
+
+// localScannerLocked shows a scanner installed in Windows. Until it says
+// what it can do, it is taken for one with a glass that scans in colour,
+// greyscale and black and white at 300 dpi.
+func (r *Registry) localScannerLocked(d wia.Device) Scanner {
+	sc := Scanner{
+		ID:      LocalScannerID(d.ID),
+		Name:    d.DisplayName(),
+		URL:     LocalURL,
+		Formats: []string{"image/jpeg"},
+		Kind:    KindWIA,
+	}
+	if c := r.local.caps[d.ID]; c != nil && c.caps != nil {
+		sc.Sources = slices.Clone(c.caps.Sources)
+		sc.Duplex = c.caps.Duplex
+		sc.ColorModes = slices.Clone(c.caps.ColorModes)
+		sc.Resolutions = slices.Clone(c.caps.Resolutions)
+	}
+	if len(sc.Sources) == 0 {
+		sc.Sources = []string{"platen"}
+	}
+	if len(sc.ColorModes) == 0 {
+		sc.ColorModes = []string{"color", "grayscale", "bw"}
+	}
+	if len(sc.Resolutions) == 0 {
+		sc.Resolutions = []int{300}
 	}
 	return sc
 }
@@ -444,14 +652,45 @@ func fromTXT(txt map[string]string) (sources, modes []string, duplex bool, forma
 	return sources, modes, duplex, formats
 }
 
-// target is a scanner a scan can run on.
+// target is a scanner a scan can run on: a network scanner at URL, or one
+// installed in Windows (Local) with its WIA device id.
 type target struct {
 	URL  string
 	Name string
+
+	Local     bool
+	DeviceID  string
+	LocalCaps *wia.Caps // nil until it said what it can do
+}
+
+// busyKey is what marks the scanner busy while it scans.
+func (t target) busyKey() string {
+	if t.Local {
+		return "wia:" + t.DeviceID
+	}
+	return t.URL
+}
+
+func (r *Registry) lookupLocal(id string) (target, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, d := range r.local.devs {
+		if LocalScannerID(d.ID) == id {
+			tg := target{URL: LocalURL, Name: d.DisplayName(), Local: true, DeviceID: d.ID}
+			if c := r.local.caps[d.ID]; c != nil {
+				tg.LocalCaps = c.caps
+			}
+			return tg, true
+		}
+	}
+	return target{}, false
 }
 
 // Lookup finds a scanner by id among every known endpoint.
 func (r *Registry) Lookup(id string) (target, bool) {
+	if tg, ok := r.lookupLocal(id); ok {
+		return tg, true
+	}
 	for _, sc := range r.Snapshot() {
 		if sc.ID == id {
 			return target{URL: sc.URL, Name: sc.Name}, true
@@ -582,6 +821,9 @@ func (r *Registry) RemoveManual(id string) error {
 		}
 	}
 	if found == nil {
+		if _, ok := r.lookupLocal(id); ok {
+			return &apiError{400, "This scanner is installed in Windows on this computer, so it can't be removed here. Only scanners added by IP address can be removed."}
+		}
 		if _, ok := r.Lookup(id); ok {
 			return &apiError{400, "This scanner was found on the network automatically, so it can't be removed. Only scanners added by IP address can be removed."}
 		}

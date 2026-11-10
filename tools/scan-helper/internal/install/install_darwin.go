@@ -76,7 +76,7 @@ func infoPlist(version string) string {
 	<key>CFBundleVersion</key><string>` + esc(version) + `</string>
 	<key>LSUIElement</key><true/>
 	<key>LSBackgroundOnly</key><true/>
-	<key>NSLocalNetworkUsageDescription</key><string>TrendLIX Scan Helper finds the office scanners on your network so you can scan documents into the People System.</string>
+	<key>NSLocalNetworkUsageDescription</key><string>TrendLIX Scan Helper finds the office scanners on your network so you can scan documents into the People System and Prime ERP.</string>
 	<key>NSBonjourServices</key><array><string>_uscan._tcp</string><string>_uscans._tcp</string></array>
 </dict>
 </plist>

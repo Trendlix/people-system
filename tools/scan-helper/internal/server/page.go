@@ -11,6 +11,7 @@ type pageData struct {
 	Version    string
 	Scanners   []pageScanner
 	Problem    string
+	Local      string // a problem listing the scanners installed in Windows
 	Background bool
 	Mac        bool
 	Windows    bool
@@ -33,16 +34,18 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refresh := r.URL.Query().Get("refresh") == "1"
+	scanners := s.opts.Registry.List(r.Context(), refresh)
 	data := pageData{
 		Version:    s.opts.Version,
 		Problem:    s.opts.Registry.DiscoveryProblem(),
+		Local:      s.opts.Registry.LocalProblem(),
 		Background: s.opts.Background,
 		Mac:        runtime.GOOS == "darwin",
 		Windows:    runtime.GOOS == "windows",
 		LogPath:    s.opts.LogPath,
 		ConfigPath: s.opts.Config.Path(),
 	}
-	for _, sc := range s.opts.Registry.List(r.Context(), refresh) {
+	for _, sc := range scanners {
 		var f []string
 		for _, src := range sc.Sources {
 			f = append(f, map[string]string{"platen": "glass", "feeder": "document feeder"}[src])
@@ -52,6 +55,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		}
 		if sc.Secure {
 			f = append(f, "encrypted")
+		}
+		if sc.Kind == KindWIA {
+			f = append(f, "installed in Windows on this computer")
 		}
 		data.Scanners = append(data.Scanners, pageScanner{Scanner: sc, Features: strings.Join(f, " · ")})
 	}
@@ -100,14 +106,15 @@ code { font-size:14px; background:var(--bg); padding:1px 5px; border-radius:4px;
 <main>
 <h1>TrendLIX Scan Helper</h1>
 <p class="status">&#9679; Running &middot; version {{.Version}}</p>
-<p class="muted">The People System uses this helper to scan documents from the office scanners. Keep it running while you scan.</p>
+<p class="muted">The People System and Prime ERP use this helper to scan documents from the office scanners. Keep it running while you scan.</p>
 
 <section class="card">
 <h2>Scanners found</h2>
 {{if .Scanners}}<ul>
-{{range .Scanners}}<li><div><div class="name">{{.Name}}</div><div class="small muted">{{.Features}}</div><div class="url">{{.URL}}</div></div>{{if .Manual}}<button class="link" type="button" data-remove="{{.ID}}">Remove</button>{{end}}</li>
-{{end}}</ul>{{else}}<p class="muted">No scanners found yet. Check that the scanner is switched on and on the same network as this computer, or add it by its IP address below.</p>{{end}}
+{{range .Scanners}}<li><div><div class="name">{{.Name}}</div><div class="small muted">{{.Features}}</div>{{if ne .Kind "wia"}}<div class="url">{{.URL}}</div>{{end}}</div>{{if .Manual}}<button class="link" type="button" data-remove="{{.ID}}">Remove</button>{{end}}</li>
+{{end}}</ul>{{else}}<p class="muted">No scanners found yet. Check that the scanner is switched on and on the same network as this computer, or add it by its IP address below.{{if .Windows}} A scanner connected to this computer by USB shows here once it is plugged in and switched on, with its driver installed.{{end}}</p>{{end}}
 {{if .Problem}}<p class="small muted">Automatic search problem: {{.Problem}}</p>{{end}}
+{{if .Local}}<p class="small muted">{{.Local}}</p>{{end}}
 <p class="small"><a href="/?refresh=1">Search again</a></p>
 </section>
 

@@ -4,6 +4,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +22,7 @@ import (
 	"trendlix.com/scan-helper/internal/config"
 	"trendlix.com/scan-helper/internal/escl"
 	"trendlix.com/scan-helper/internal/pdf"
+	"trendlix.com/scan-helper/internal/wia"
 )
 
 const (
@@ -31,16 +34,32 @@ const (
 	ListenHost = "127.0.0.1"
 	// DefaultScanTimeout stops a scan that makes no progress.
 	DefaultScanTimeout = 2 * time.Minute
+	// MaxImagePages is how many pages a scan answered as pictures
+	// ("output": "images") holds at most.
+	MaxImagePages = 10
 )
 
-// DefaultOrigins are the web apps allowed to use the helper.
-var DefaultOrigins = []string{"https://people.trendlix.com", "http://localhost:3000"}
+// DefaultOrigins are the web apps allowed to use the helper: the People
+// System (people.trendlix.com) and Prime ERP (erp.ppmeg.com), and each one's
+// development server on this computer.
+var DefaultOrigins = []string{
+	"https://people.trendlix.com", "http://localhost:3000",
+	"https://erp.ppmeg.com", "http://localhost:5173",
+}
 
-// Messages HR sees.
+// Messages the person scanning sees.
 const (
 	msgBusy        = "The scanner is busy. Try again in a moment."
 	msgFeederEmpty = "The document feeder is empty. Put the pages in the feeder, or scan from the glass."
 	msgUnreachable = "The scanner didn't answer. Check that it is switched on and connected to the same network as this computer, then try again."
+	msgNoFeeder    = "This scanner has no document feeder. Scan from the glass instead."
+	msgNoGlass     = "This scanner has no glass. Put the pages in the document feeder instead."
+	msgNoDuplex    = "This scanner can't scan both sides of the page. Turn off two-sided scanning and try again."
+
+	msgLocalBusy        = "The scanner is busy, perhaps with another program on this computer. Close that program or wait a moment, then try again."
+	msgLocalWarmingUp   = "The scanner is warming up. Try again in a moment."
+	msgLocalUnreachable = "The scanner didn't answer. Check that it is switched on and connected to this computer (its USB cable, or the network for a network scanner), then try again."
+	msgNoWIA            = "Windows' scanning (Windows Image Acquisition) isn't working on this computer. Restart the computer and try again."
 )
 
 // Listen opens the helper's port on 127.0.0.1 only, never on other
@@ -143,7 +162,7 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			h.Set("Access-Control-Allow-Private-Network", "true")
 			h.Set("Access-Control-Expose-Headers", "X-Scan-Pages, Content-Disposition, X-Scan-Warning")
 		} else if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			writeError(w, http.StatusForbidden, "This request was refused because it didn't come from the People System.")
+			writeError(w, http.StatusForbidden, "This request was refused because it didn't come from the People System or Prime ERP.")
 			return
 		}
 		if r.Method == http.MethodOptions {
@@ -270,6 +289,9 @@ type scanRequest struct {
 	Duplex     bool   `json:"duplex"`
 	ColorMode  string `json:"colorMode"`
 	Resolution int    `json:"resolution"`
+	// Output is "pdf" (the default): one PDF with every page; or "images":
+	// the pages as JPEG pictures in JSON (see writeImages).
+	Output string `json:"output"`
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
@@ -306,6 +328,14 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "That resolution isn't possible. 300 dpi is right for documents.")
 		return
 	}
+	output := strings.ToLower(strings.TrimSpace(req.Output))
+	if output == "" {
+		output = "pdf"
+	}
+	if output != "pdf" && output != "images" {
+		writeError(w, http.StatusBadRequest, "The scan was asked for in a form the helper can't give. Reload the page and try again.")
+		return
+	}
 	if strings.TrimSpace(req.ScannerID) == "" {
 		writeError(w, http.StatusBadRequest, "Choose a scanner first.")
 		return
@@ -313,6 +343,10 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	tg, ok := s.opts.Registry.Lookup(req.ScannerID)
 	if !ok {
 		writeError(w, http.StatusNotFound, "That scanner isn't available any more. Refresh the list of scanners and try again.")
+		return
+	}
+	if tg.Local {
+		s.scanLocal(w, r, tg, source, req.Duplex, mode, dpi, output)
 		return
 	}
 
@@ -331,21 +365,28 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	in := caps.Input(source)
 	if in == nil {
 		if source == "feeder" {
-			writeError(w, http.StatusBadRequest, "This scanner has no document feeder. Scan from the glass instead.")
+			writeError(w, http.StatusBadRequest, msgNoFeeder)
 		} else {
-			writeError(w, http.StatusBadRequest, "This scanner has no glass. Put the pages in the document feeder instead.")
+			writeError(w, http.StatusBadRequest, msgNoGlass)
 		}
 		return
 	}
 	duplex := req.Duplex && source == "feeder"
 	if duplex && !caps.Duplex {
-		writeError(w, http.StatusBadRequest, "This scanner can't scan both sides of the page. Turn off two-sided scanning and try again.")
+		writeError(w, http.StatusBadRequest, msgNoDuplex)
 		return
 	}
 	format, ok := escl.ChooseFormat(in)
 	if !ok {
 		writeError(w, http.StatusBadGateway, "The scanner reported an error: it can't send scans as JPEG or PDF, which the helper needs.")
 		return
+	}
+	if output == "images" && format == "application/pdf" {
+		if !slices.Contains(in.Formats, "image/png") {
+			writeError(w, http.StatusBadRequest, "This scanner sends its scans as PDF files only, so it can't give them as pictures. Choose another scanner.")
+			return
+		}
+		format = "image/png"
 	}
 	width, height := escl.Region(in)
 	settings := escl.ScanSettings{
@@ -359,11 +400,11 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		Height:     height,
 	}
 
-	if !s.claim(tg.URL) {
+	if !s.claim(tg.busyKey()) {
 		writeError(w, http.StatusConflict, msgBusy)
 		return
 	}
-	defer s.release(tg.URL)
+	defer s.release(tg.busyKey())
 
 	started := time.Now()
 	sides := ""
@@ -376,7 +417,64 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		s.writeScanError(w, err, tg)
 		return
 	}
-	data, pages, warning, err := assemble(docs, settings.Resolution, "TrendLIX Scan Helper "+s.opts.Version, s.now())
+	s.writeScan(w, docs, settings.Resolution, output, tg, started)
+}
+
+// scanLocal scans with a scanner installed in Windows (WIA).
+func (s *Server) scanLocal(w http.ResponseWriter, r *http.Request, tg target, source string, duplex bool, mode string, dpi int, output string) {
+	caps := tg.LocalCaps
+	duplex = duplex && source == "feeder"
+	settings := wia.Settings{Source: source, Duplex: duplex, ColorMode: mode, Resolution: dpi}
+	if caps != nil {
+		if !slices.Contains(caps.Sources, source) {
+			if source == "feeder" {
+				writeError(w, http.StatusBadRequest, msgNoFeeder)
+			} else {
+				writeError(w, http.StatusBadRequest, msgNoGlass)
+			}
+			return
+		}
+		if duplex && !caps.Duplex {
+			writeError(w, http.StatusBadRequest, msgNoDuplex)
+			return
+		}
+		settings.ColorMode = wia.ChooseColorMode(caps.ColorModes, mode)
+		settings.Resolution = wia.Nearest(caps.Resolutions, dpi)
+	}
+	if output == "images" {
+		settings.MaxPages = MaxImagePages
+	}
+	if !s.claim(tg.busyKey()) {
+		writeError(w, http.StatusConflict, msgLocalBusy)
+		return
+	}
+	defer s.release(tg.busyKey())
+
+	started := time.Now()
+	sides := ""
+	if duplex {
+		sides = ", both sides"
+	}
+	s.opts.Log.Printf("scan started on %q (installed in Windows): %s%s, %s, %d dpi", tg.Name, source, sides, settings.ColorMode, settings.Resolution)
+	pages, err := s.opts.Registry.Local.Scan(r.Context(), tg.DeviceID, settings, caps, s.opts.ScanTimeout)
+	if err != nil {
+		s.writeLocalError(w, err, tg)
+		return
+	}
+	docs := make([]escl.Document, len(pages))
+	for i, p := range pages {
+		docs[i] = escl.Document{ContentType: p.ContentType, Data: p.Data}
+	}
+	s.writeScan(w, docs, settings.Resolution, output, tg, started)
+}
+
+// writeScan answers a scan: one PDF, or the pages as pictures.
+func (s *Server) writeScan(w http.ResponseWriter, docs []escl.Document, dpi int, output string, tg target, started time.Time) {
+	if output == "images" {
+		s.writeImages(w, docs, dpi, tg, started)
+		return
+	}
+	data, pages, warning, err := assemble(docs, dpi, "TrendLIX Scan Helper "+s.opts.Version, s.now())
 	if err != nil {
 		s.opts.Log.Printf("scan on %q failed: %v", tg.Name, err)
 		writeError(w, http.StatusBadGateway, "The scanner reported an error: "+err.Error()+".")
@@ -397,6 +495,88 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	if warning != "" {
 		s.opts.Log.Printf("scan warning: %s", warning)
 	}
+}
+
+// ImagePage is one page of a scan answered as pictures.
+type ImagePage struct {
+	ContentType string `json:"contentType"` // always image/jpeg
+	Width       int    `json:"width"`       // pixels
+	Height      int    `json:"height"`
+	DPI         int    `json:"dpi"`
+	Data        string `json:"data"` // the JPEG, base64
+}
+
+// ImagesAnswer is the answer of a scan with "output": "images".
+type ImagesAnswer struct {
+	Pages   []ImagePage `json:"pages"`
+	Warning string      `json:"warning,omitempty"`
+}
+
+// writeImages answers the pages as JPEG pictures in JSON, for a web page
+// that works on the picture itself (an ID card, a photo).
+func (s *Server) writeImages(w http.ResponseWriter, docs []escl.Document, dpi int, tg target, started time.Time) {
+	ans, err := images(docs, dpi)
+	if err != nil {
+		s.opts.Log.Printf("scan on %q failed: %v", tg.Name, err)
+		writeError(w, http.StatusBadGateway, "The scanner reported an error: "+err.Error()+".")
+		return
+	}
+	data, _ := json.Marshal(ans)
+	h := w.Header()
+	h.Set("Content-Type", "application/json; charset=utf-8")
+	h.Set("Content-Length", strconv.Itoa(len(data)))
+	h.Set("X-Scan-Pages", strconv.Itoa(len(ans.Pages)))
+	h.Set("Cache-Control", "no-store")
+	if ans.Warning != "" {
+		h.Set("X-Scan-Warning", ans.Warning)
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+	s.opts.Log.Printf("scan finished on %q: %d page(s) as pictures, %d KB, %.1fs", tg.Name, len(ans.Pages), len(data)/1024, time.Since(started).Seconds())
+	if ans.Warning != "" {
+		s.opts.Log.Printf("scan warning: %s", ans.Warning)
+	}
+}
+
+// images turns what the scanner sent into JPEG pages: JPEGs as they came,
+// PNGs made JPEGs. A PDF can't be given as pictures.
+func images(docs []escl.Document, dpi int) (ImagesAnswer, error) {
+	ans := ImagesAnswer{Pages: []ImagePage{}}
+	if len(docs) == 0 {
+		return ans, errors.New("it sent no pages")
+	}
+	if len(docs) > MaxImagePages {
+		ans.Warning = fmt.Sprintf("The scanner sent %d pages; only the first %d are included.", len(docs), MaxImagePages)
+		docs = docs[:MaxImagePages]
+	}
+	for i, d := range docs {
+		b := d.Data
+		if pdf.IsPDF(b) {
+			return ans, errors.New("it sent a PDF file instead of pictures")
+		}
+		if pdf.IsPNG(b) {
+			var err error
+			if b, err = pngToJPEG(b); err != nil {
+				return ans, fmt.Errorf("page %d couldn't be read", i+1)
+			}
+		}
+		if !pdf.IsJPEG(b) {
+			return ans, fmt.Errorf("page %d came in a format the helper can't read (%s)", i+1, d.ContentType)
+		}
+		img, err := pdf.ParseJPEG(b)
+		if err != nil {
+			return ans, fmt.Errorf("page %d couldn't be read: %v", i+1, err)
+		}
+		pageDPI := dpi
+		if img.DPIX > 0 {
+			pageDPI = int(img.DPIX + 0.5)
+		}
+		ans.Pages = append(ans.Pages, ImagePage{
+			ContentType: "image/jpeg", Width: img.Width, Height: img.Height, DPI: pageDPI,
+			Data: base64.StdEncoding.EncodeToString(b),
+		})
+	}
+	return ans, nil
 }
 
 func (s *Server) claim(u string) bool {
@@ -431,13 +611,53 @@ func (s *Server) writeScanError(w http.ResponseWriter, err error, tg target) {
 	case escl.KindFeederEmpty:
 		writeError(w, http.StatusUnprocessableEntity, msgFeederEmpty)
 	case escl.KindTimeout:
-		writeError(w, http.StatusGatewayTimeout, fmt.Sprintf(
-			"The scan took more than %s, so it was stopped. Check the scanner for a paper jam or a message on its screen, and try again.",
-			humanDuration(s.opts.ScanTimeout)))
+		writeError(w, http.StatusGatewayTimeout, s.timeoutMessage())
 	case escl.KindUnreachable:
 		writeError(w, http.StatusBadGateway, msgUnreachable)
 	default:
 		detail := se.Detail
+		if detail == "" {
+			detail = "something went wrong"
+		}
+		writeError(w, http.StatusBadGateway, "The scanner reported an error: "+detail+".")
+	}
+}
+
+func (s *Server) timeoutMessage() string {
+	return fmt.Sprintf("The scan took more than %s, so it was stopped. Check the scanner for a paper jam or a message on its screen, and try again.",
+		humanDuration(s.opts.ScanTimeout))
+}
+
+// writeLocalError answers a failed scan on a scanner installed in Windows.
+func (s *Server) writeLocalError(w http.ResponseWriter, err error, tg target) {
+	var we *wia.Error
+	if !errors.As(err, &we) {
+		we = &wia.Error{Kind: wia.KindDevice, Detail: err.Error()}
+	}
+	if we.Kind == wia.KindCanceled {
+		s.opts.Log.Printf("scan on %q cancelled: the web page stopped waiting", tg.Name)
+		return
+	}
+	s.opts.Log.Printf("scan on %q failed: %v", tg.Name, err)
+	switch we.Kind {
+	case wia.KindBusy:
+		writeError(w, http.StatusConflict, msgLocalBusy)
+	case wia.KindWarmingUp:
+		writeError(w, http.StatusConflict, msgLocalWarmingUp)
+	case wia.KindFeederEmpty:
+		writeError(w, http.StatusUnprocessableEntity, msgFeederEmpty)
+	case wia.KindNoFeeder:
+		writeError(w, http.StatusBadRequest, msgNoFeeder)
+	case wia.KindNoFlatbed:
+		writeError(w, http.StatusBadRequest, msgNoGlass)
+	case wia.KindTimeout:
+		writeError(w, http.StatusGatewayTimeout, s.timeoutMessage())
+	case wia.KindOffline, wia.KindNotFound:
+		writeError(w, http.StatusBadGateway, msgLocalUnreachable)
+	case wia.KindNoWIA:
+		writeError(w, http.StatusBadGateway, msgNoWIA)
+	default:
+		detail := we.Detail
 		if detail == "" {
 			detail = "something went wrong"
 		}

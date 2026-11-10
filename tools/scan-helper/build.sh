@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Builds TrendLIX Scan Helper for HR's computers into dist/:
+# Builds TrendLIX Scan Helper for the office computers into dist/:
 #   dist/TrendLIX-Scan-Helper-mac.zip      macOS universal binary (Apple silicon + Intel)
 #   dist/TrendLIX-Scan-Helper-windows.zip  Windows x64 and ARM64 .exe
 #
-# Usage: ./build.sh            (version 1.0.1)
-#        VERSION=1.0.2 ./build.sh
+# Usage: ./build.sh            (version 1.1.0)
+#        VERSION=1.1.1 ./build.sh
 # Needs Go, and on macOS lipo (Xcode command line tools) for the universal binary.
 set -euo pipefail
 
 cd "$(dirname "$0")"
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.1.0}"
 GO="${GO:-$(command -v go || echo /usr/local/go/bin/go)}"
 LDFLAGS="-s -w -X main.version=${VERSION}"
 FLAGS=(-trimpath -buildvcs=false -ldflags "$LDFLAGS")
