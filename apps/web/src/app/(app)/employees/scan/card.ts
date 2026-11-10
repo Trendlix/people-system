@@ -1,7 +1,8 @@
 // Ported from Prime ERP (Trendlix), production/web/src/scan/card.ts at commit 1368621, for the "Adjust by hand" frame of
 // the ID scan. Changes: the hand rotation goes to 10° either way (owner's range here; Prime ERP has 5°), the frame starts
 // on the card's own box (the cut keeps its own margin, CUT_MM), the photo boxes are left out (not used here), and
-// turnCard and frameCard are added for the pages the API sends (POST /id-card/prepare).
+// turnCard and frameCard are added for the pages the API sends (POST /id-card/prepare). The card framed by its four
+// corners (a card photographed at an angle) is from Prime ERP's commit c6646b8, 10 November 2026.
 
 // The measures of a card, and the frame a person drags over a picture: the arithmetic only, nothing drawn here.
 // An Egyptian national ID is a CR80 card: 85.6 × 53.98 mm. A picture fixed to that size has exactly those proportions,
@@ -18,6 +19,9 @@ export interface Rect {
   w: number;
   h: number;
 }
+/** A point of a picture, in its points (across, down), or as shares of it. */
+export type Pt = [number, number];
+
 /**
  * A card on a picture: its middle, its size and the angle of its long side (radians, clockwise as seen on screen), in
  * the picture's own points. `spare`: how much more to keep beyond each side, along its width and along its height, where
@@ -205,4 +209,46 @@ export function frameCard(r: Rect, W: number, H: number, tilt: number): Card {
   const dx = (r.x + r.w / 2) * W - W / 2;
   const dy = (r.y + r.h / 2) * H - H / 2;
   return { cx: W / 2 + dx * Math.cos(t) - dy * Math.sin(t), cy: H / 2 + dx * Math.sin(t) + dy * Math.cos(t), w: r.w * W, h: r.h * H, angle: t };
+}
+
+// ---------- the card framed by its four corners (added here, after Prime ERP's commit c6646b8) ----------
+// A card photographed at an angle is framed by its corners rather than by a frame: each corner a point on the picture as
+// shown, as shares of it, top left, top right, bottom right, bottom left; what is cut out is the card flattened from
+// them (flatten.ts).
+
+/** The corners of a card on a picture, in its points: top left, top right, bottom right, bottom left, as it reads. */
+export function cornersOf(c: Card): Pt[] {
+  const u = [(Math.cos(c.angle) * c.w) / 2, (Math.sin(c.angle) * c.w) / 2];
+  const v = [(-Math.sin(c.angle) * c.h) / 2, (Math.cos(c.angle) * c.h) / 2];
+  return [
+    [c.cx - u[0] - v[0], c.cy - u[1] - v[1]],
+    [c.cx + u[0] - v[0], c.cy + u[1] - v[1]],
+    [c.cx + u[0] + v[0], c.cy + u[1] + v[1]],
+    [c.cx - u[0] + v[0], c.cy - u[1] + v[1]],
+  ];
+}
+
+/**
+ * Where the corners of the card a frame stands for lie on the picture shown untilted, as shares of it, kept on the
+ * picture: the frame `r` laid over the picture W by H shown turned by `tilt` degrees (frameCard).
+ */
+export const frameCorners = (r: Rect, W: number, H: number, tilt: number): Pt[] =>
+  cornersOf(frameCard(r, W, H, tilt)).map(([x, y]): Pt => [clamp(x / W, 0, 1), clamp(y / H, 0, 1)]);
+
+/** A corner moved by dx, dy (shares of the picture) since the pointer took hold of it, kept on the picture. */
+export const dragCorner = (q: Pt[], i: number, dx: number, dy: number): Pt[] =>
+  q.map((p, j): Pt => (j === i ? [clamp(p[0] + dx, 0, 1), clamp(p[1] + dy, 0, 1)] : [p[0], p[1]]));
+
+/** Arrow keys move a corner a five-hundredth of the picture, with Shift a hundredth. Null for any other key. */
+export function keyCorner(q: Pt[], i: number, key: string, shift: boolean): Pt[] | null {
+  const d = ARROWS[key];
+  const s = shift ? 0.01 : 0.002;
+  return d ? dragCorner(q, i, d[0] * s, d[1] * s) : null;
+}
+
+/** Corners as shares of a picture, after it is turned clockwise by `deg` (0, 90, 180 or 270), as turnCanvas turns it. */
+export function turnCorners(q: Pt[], deg = 90): Pt[] {
+  let out = q.map(([x, y]): Pt => [x, y]);
+  for (let n = 0; n < (((Math.round(deg / 90) % 4) + 4) % 4); n++) out = out.map(([x, y]): Pt => [1 - y, x]);
+  return out;
 }

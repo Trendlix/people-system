@@ -9,10 +9,14 @@ import type { IdCardFound, IdCardPrepared } from '@/lib/types';
 import { idScanTitle, PAPERWORK_ACCEPT, PAPERWORK_MAX_BYTES, PDF_MAX_BYTES, PDF_TOO_LARGE, SCANS_MAX_BYTES, SCANS_TOO_LARGE, TOO_LARGE } from '../paperwork';
 import { prepareIdCard } from '../paperwork-actions';
 import { shrinkPhoto } from '../shrink-photo';
-import { CARD_TOL, cardDims, cardOff, cardRect, CARD_MM, fineOf, foundRect, frameCard, quarterFor, startRect, turnCard, type Card, type Rect, type Side } from './card';
-import { Cropper, degrees, FrameSays, RotateBar } from './crop';
+import {
+  CARD_TOL, cardDims, cardOff, cardRect, CARD_MM, fineOf, foundRect, frameCard, frameCorners, quarterFor, startRect, turnCard, turnCorners,
+  type Card, type Pt, type Rect, type Side,
+} from './card';
+import { CornersSay, Cropper, degrees, FrameSays, RotateBar } from './crop';
 import { fitEdges, pixelsOf } from './edges';
-import { base64File, canvasFrom, cardJpeg, cutCard, turnCanvas } from './image';
+import { cornerCut, flatPixels } from './flatten';
+import { base64File, canvasFrom, canvasOfPixels, cardJpeg, cutCard, sourceOf, turnCanvas, type Cut } from './image';
 
 // The ID scan, shared by the Add employee page and the National ID page (after the scan dialog of Prime ERP, Trendlix,
 // production/web/src/scan/fields.tsx at commit 1368621, whose screenshot the owner sent):
@@ -20,6 +24,9 @@ import { base64File, canvasFrom, cardJpeg, cutCard, turnCanvas } from './image';
 //   2. as soon as one is chosen, the OCR service finds the cards on it (POST /id-card/prepare): each one cut out along
 //      its edges and set straight, FRONT and BACK side by side, with "Adjust by hand" for each and "Swap front and back";
 //   3. "Read data from the scan" sends the two cut-out cards to be read (`onRead`), once both sides are there.
+// A card photographed at an angle is flattened by the OCR service, which gives its four corners; it is then framed by
+// hand by them, four round handles, and a card framed by a frame can be framed by its corners too ("Frame by the card's
+// corners"): after Prime ERP's commit c6646b8 (10 November 2026), taken here as an add-on.
 // Nothing is stored here: what is read, and the cut-out cards, go to the page that uses this.
 
 /** How a side was framed by hand last time, so that the frame opens there again. */
@@ -29,6 +36,8 @@ interface Hand {
   base: number;
   fine: number;
   rect: Rect;
+  /** Framed by its corners, as shares of the page turned by `quarter`. */
+  quad: Pt[] | null;
 }
 
 /** A side of the card as it will be read and kept: the card cut out (JPEG), the page it is on, and where on it. */
@@ -37,6 +46,8 @@ interface SideCard {
   page: number;
   /** Where the OCR service found it on that page, in the page's points. */
   found: Card | null;
+  /** The corners the OCR service flattened it from, a card photographed at an angle, in the page's points. */
+  quad: Pt[] | null;
   hand: Hand | null;
 }
 
@@ -52,7 +63,9 @@ interface Prepared {
  * A side being framed by hand: the page it comes from, turned by `quarter`, shown turned by `base + fine` degrees
  * under the frame `rect`. `fine` is the slider (±10°): for a card that was found it starts at how far the card leans
  * from the nearest quarter turn, so a card already upright starts near 0°; `base` holds what the slider cannot (a lean
- * of more than 10°, or less than a tenth of a degree), so that the frame starts exactly on the card.
+ * of more than 10°, or less than a tenth of a degree), so that the frame starts exactly on the card. `quad`: the card
+ * framed by its four corners instead, as shares of `work` shown untilted (a card photographed at an angle, flattened
+ * from them).
  */
 interface Adjust {
   side: Side;
@@ -62,6 +75,7 @@ interface Adjust {
   base: number;
   fine: number;
   rect: Rect;
+  quad: Pt[] | null;
 }
 
 type Files = { front: File | null; back: File | null };
@@ -71,6 +85,7 @@ const READABLE = /^(image\/(jpeg|png|webp)|application\/pdf)$/;
 /** A whole scanner page keeps enough detail for the card at this size, and two of them stay well under 4 MB. */
 const SCAN_SIDE = 3000;
 const CAPTION = 'text-xs font-semibold tracking-wide text-muted uppercase';
+const CORNERS_CROSS = 'The four corners do not make the shape of a card: two of its sides cross. Move each corner onto a corner of the card.';
 
 /** The box the API gives for a card (degrees), as the frame's arithmetic takes it (radians). */
 const cardOf = (f: IdCardFound): Card => ({ cx: f.box.cx, cy: f.box.cy, w: f.box.w, h: f.box.h, angle: (f.box.angle * Math.PI) / 180 });
@@ -78,17 +93,30 @@ const cardOf = (f: IdCardFound): Card => ({ cx: f.box.cx, cy: f.box.cy, w: f.box
 /** What was done with the chosen files, in a sentence. */
 function whatHappened(p: IdCardPrepared): string {
   const { front, back } = p;
+  const flat = (['front', 'back'] as const).filter((s) => p[s]?.quad);
+  const angled =
+    flat.length === 2
+      ? ' Both were photographed at an angle and have been flattened.'
+      : flat.length
+        ? ` The ${flat[0]} was photographed at an angle and has been flattened.`
+        : '';
   if (front && back) {
     const told = front.recognised === 'front' && back.recognised === 'back';
-    return told ? 'Both sides found.' : 'Both sides found. Check which side is which.';
+    return (told ? 'Both sides found.' : 'Both sides found. Check which side is which.') + angled;
   }
-  if (front || back) return `Only one card was found: frame the ${front ? 'back' : 'front'} by hand.`;
+  if (front || back) return `Only one card was found: frame the ${front ? 'back' : 'front'} by hand.${angled}`;
   return 'No card was found: frame each side by hand.';
 }
 
 function prepared(p: IdCardPrepared): Prepared {
   const side = (f: IdCardFound | null, s: Side): SideCard | null =>
-    f && { file: base64File(f.image, `national-id-${s}.jpg`), page: f.page, found: cardOf(f), hand: null };
+    f && {
+      file: base64File(f.image, `national-id-${s}.jpg`),
+      page: f.page,
+      found: cardOf(f),
+      quad: f.quad?.length === 4 ? f.quad.map(([x, y]): Pt => [x, y]) : null,
+      hand: null,
+    };
   return { pages: p.pages, front: side(p.front, 'front'), back: side(p.back, 'back'), note: whatHappened(p) };
 }
 
@@ -229,18 +257,28 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
       let st: Adjust;
       if (hand) {
         // as it was framed last time
-        st = { side, page, work: hand.quarter ? turnCanvas(raw, hand.quarter) : raw, quarter: hand.quarter, base: hand.base, fine: hand.fine, rect: { ...hand.rect } };
+        st = {
+          side,
+          page,
+          work: hand.quarter ? turnCanvas(raw, hand.quarter) : raw,
+          quarter: hand.quarter,
+          base: hand.base,
+          fine: hand.fine,
+          rect: { ...hand.rect },
+          quad: hand.quad && hand.quad.map(([x, y]): Pt => [x, y]),
+        };
       } else if (found) {
         // where the card was found, with the page turned so that it lies level: the quarter turns as by Rotate 90°, the
-        // rest on the slider
+        // rest on the slider; a card the OCR service flattened (photographed at an angle), by its four corners
         const quarter = quarterFor(found.angle);
         const work = quarter ? turnCanvas(raw, quarter) : raw;
         const at = foundRect(turnCard(found, raw.width, raw.height, quarter), work.width, work.height);
         const fine = fineOf(at.base);
-        st = { side, page, work, quarter, base: at.base - fine, fine, rect: at.rect };
+        const quad = card?.quad ? turnCorners(card.quad.map(([x, y]): Pt => [x / raw.width, y / raw.height]), quarter) : null;
+        st = { side, page, work, quarter, base: at.base - fine, fine, rect: at.rect, quad };
       } else {
         // with nothing to start from, a card-shaped frame in the middle
-        st = { side, page, work: raw, quarter: 0, base: 0, fine: 0, rect: cardRect(startRect(), raw.width, raw.height) };
+        st = { side, page, work: raw, quarter: 0, base: 0, fine: 0, rect: cardRect(startRect(), raw.width, raw.height), quad: null };
       }
       setAdjust(st);
       setAdjustSays('');
@@ -266,8 +304,23 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
     setAdjust((a) => {
       if (!a) return a;
       const work = turnCanvas(a.work, 90);
-      return { ...a, work, quarter: (a.quarter + 90) % 360, base: 0, fine: 0, rect: cardRect(startRect(), work.width, work.height) };
+      // the corners turn with the picture
+      return { ...a, work, quarter: (a.quarter + 90) % 360, base: 0, fine: 0, rect: cardRect(startRect(), work.width, work.height), quad: a.quad && turnCorners(a.quad) };
     });
+  }
+
+  /**
+   * "Frame by the card's corners": the card is framed by its four corners instead of a frame, starting where the frame's
+   * corners lie on the picture, each a round handle to drag onto a corner of the card: for a card photographed at an
+   * angle, which is then flattened from them to a rectangle. "Use a rectangle frame" goes back to the frame as it was.
+   */
+  function byCorners() {
+    setAdjustSays('');
+    setAdjust((a) => a && { ...a, quad: frameCorners(a.rect, a.work.width, a.work.height, a.base + a.fine) });
+  }
+  function byFrame() {
+    setAdjustSays('');
+    setAdjust((a) => a && { ...a, quad: null });
   }
 
   /**
@@ -317,19 +370,37 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
     setAdjustSays('Fit undone.');
   }
 
-  /** The framed card becomes the picture of that side: cut out with its margin and brought to the size of an ID card. */
+  /**
+   * The framed card becomes the picture of that side: cut out with its margin and brought to the size of an ID card.
+   * Framed by its corners, it is flattened from them (flatten.ts).
+   */
   async function applyFrame() {
     const st = adjust;
     if (!st) return;
     const W = st.work.width;
     const H = st.work.height;
-    if (Math.abs(cardOff(st.rect.w * W, st.rect.h * H)) > CARD_TOL) {
-      setAdjust({ ...st, rect: cardRect(st.rect, W, H) });
-      setAdjustSays('The frame was reshaped to an ID card. Check it, then press Use this frame again.');
-      return;
+    let cut: Cut;
+    if (st.quad) {
+      const at = cornerCut(st.quad, W, H);
+      if (!at) {
+        setAdjustSays(CORNERS_CROSS);
+        return;
+      }
+      const px = flatPixels(sourceOf(st.work), at.m, at.ow, at.oh);
+      if (!px) {
+        setAdjustSays('The card could not be cut out in this browser. Try again.');
+        return;
+      }
+      cut = Object.assign(canvasOfPixels(px, at.ow, at.oh), { frame: at.frame });
+    } else {
+      if (Math.abs(cardOff(st.rect.w * W, st.rect.h * H)) > CARD_TOL) {
+        setAdjust({ ...st, rect: cardRect(st.rect, W, H) });
+        setAdjustSays('The frame was reshaped to an ID card. Check it, then press Use this frame again.');
+        return;
+      }
+      const [cw, ch] = cardDims(Math.round(st.rect.w * W), Math.round(st.rect.h * H));
+      cut = cutCard(st.work, frameCard(st.rect, W, H, st.base + st.fine), [cw, ch]);
     }
-    const [cw, ch] = cardDims(Math.round(st.rect.w * W), Math.round(st.rect.h * H));
-    const cut = cutCard(st.work, frameCard(st.rect, W, H, st.base + st.fine), [cw, ch]);
     // the print size: the card itself, 85.6 mm across, whatever margin the cut kept around it
     const dpi = Math.round(((cut.frame[2] - cut.frame[0]) * cut.width) / (CARD_MM[0] / 25.4));
     const blob = await cardJpeg(cut, dpi);
@@ -338,11 +409,12 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
       return;
     }
     const file = new File([blob], `national-id-${st.side}.jpg`, { type: 'image/jpeg' });
-    const hand: Hand = { page: st.page, quarter: st.quarter, base: st.base, fine: st.fine, rect: { ...st.rect } };
+    const hand: Hand = { page: st.page, quarter: st.quarter, base: st.base, fine: st.fine, rect: { ...st.rect }, quad: st.quad && st.quad.map(([x, y]): Pt => [x, y]) };
     setSet((s) => {
       if (!s) return s;
       const was = s[st.side];
-      const card: SideCard = { file, page: st.page, found: was?.page === st.page ? was.found : null, hand };
+      const same = was?.page === st.page;
+      const card: SideCard = { file, page: st.page, found: same ? was.found : null, quad: same ? was.quad : null, hand };
       const again = readOnce ? ' Read the scan again to use it.' : '';
       return { ...s, [st.side]: card, note: `The ${st.side} was framed by hand.${again}` };
     });
@@ -484,9 +556,17 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
           className="space-y-3 rounded-lg border border-line bg-canvas p-4 outline-none"
         >
           <p className="text-sm font-semibold">{SIDE_LABEL[adjust.side]}: frame the card by hand</p>
-          <p id={fid('adjust-how')} className="sr-only">
-            The arrow keys move the frame; Shift with the arrow keys resizes it.
-          </p>
+          {adjust.quad ? (
+            <p id={fid('adjust-how')} className="text-sm text-muted">
+              Drag each round handle onto a corner of the card: the card is flattened from them to a rectangle, as if it had
+              been photographed from straight above. With the keyboard, Tab reaches each corner and the arrow keys move it;
+              with Shift they move it further.
+            </p>
+          ) : (
+            <p id={fid('adjust-how')} className="sr-only">
+              The arrow keys move the frame; Shift with the arrow keys resizes it.
+            </p>
+          )}
           {set.pages.length > 1 && (
             <div role="group" aria-label="Page of the scan" className="flex flex-wrap items-center gap-2">
               <span className="text-sm">Page</span>
@@ -508,48 +588,68 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
             <button type="button" onClick={turn} className="btn btn-secondary">
               Rotate 90°
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAdjust((a) => a && { ...a, rect: cardRect(a.rect, a.work.width, a.work.height) });
-                setAdjustSays('');
-              }}
-              className="btn btn-secondary"
-            >
-              ID card shape
-            </button>
-            {/* aria-disabled rather than disabled while it looks, so that the button keeps the keyboard's focus */}
-            <button
-              type="button"
-              onClick={fitToEdges}
-              aria-disabled={fitting}
-              className="btn btn-secondary aria-disabled:cursor-wait aria-disabled:opacity-60"
-            >
-              {fitting ? 'Finding the edges…' : "Fit to the card's edges"}
-            </button>
-            <RotateBar
-              fine={adjust.fine}
-              onFine={(v) => {
-                setAdjust((a) => a && { ...a, fine: fineOf(v) });
-                setAdjustSays('');
-              }}
-            />
+            {adjust.quad ? (
+              <button type="button" onClick={byFrame} className="btn btn-secondary">
+                Use a rectangle frame
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdjust((a) => a && { ...a, rect: cardRect(a.rect, a.work.width, a.work.height) });
+                    setAdjustSays('');
+                  }}
+                  className="btn btn-secondary"
+                >
+                  ID card shape
+                </button>
+                {/* aria-disabled rather than disabled while it looks, so that the button keeps the keyboard's focus */}
+                <button
+                  type="button"
+                  onClick={fitToEdges}
+                  aria-disabled={fitting}
+                  className="btn btn-secondary aria-disabled:cursor-wait aria-disabled:opacity-60"
+                >
+                  {fitting ? 'Finding the edges…' : "Fit to the card's edges"}
+                </button>
+                <button type="button" onClick={byCorners} className="btn btn-secondary">
+                  Frame by the card&apos;s corners
+                </button>
+                <RotateBar
+                  fine={adjust.fine}
+                  onFine={(v) => {
+                    setAdjust((a) => a && { ...a, fine: fineOf(v) });
+                    setAdjustSays('');
+                  }}
+                />
+              </>
+            )}
           </div>
           <Cropper
             work={adjust.work}
-            angle={adjust.base + adjust.fine}
+            angle={adjust.quad ? 0 : adjust.base + adjust.fine}
             rect={adjust.rect}
             onRect={(rect) => {
               setAdjust((a) => a && { ...a, rect });
               setAdjustSays('');
             }}
+            quad={adjust.quad}
+            onQuad={(quad) => {
+              setAdjust((a) => a && { ...a, quad });
+              setAdjustSays('');
+            }}
             label={`The scan the ${adjust.side} is cut out of`}
-            frame="Frame of the card"
+            frame={adjust.quad ? "The card's four corners" : 'Frame of the card'}
             describedBy={fid('adjust-how')}
             tall
           />
           <p className="text-sm text-muted" aria-live="polite">
-            <FrameSays rect={adjust.rect} W={adjust.work.width} H={adjust.work.height} tilt={adjust.base + adjust.fine} />
+            {adjust.quad ? (
+              <CornersSay quad={adjust.quad} W={adjust.work.width} H={adjust.work.height} />
+            ) : (
+              <FrameSays rect={adjust.rect} W={adjust.work.width} H={adjust.work.height} tilt={adjust.base + adjust.fine} />
+            )}
           </p>
           {adjustSays &&
             (said.before ? (

@@ -2,8 +2,9 @@
 // apps/web/src/app/(app)/employees/scan/card.ts, plus the changes and additions made there.
 import { describe, expect, it } from 'vitest';
 import {
-  CARD_MM, CARD_RATIO, cardDims, cardOff, cardRect, CROP_MIN, CUT_FRAME, CUT_MM, dragRect, fineOf, foundRect, frameCard, frameSays,
-  jfifDpi, keyRect, quarterFor, startRect, turnCard, wholeRect, type Card,
+  CARD_MM, CARD_RATIO, cardDims, cardOff, cardRect, cornersOf, CROP_MIN, CUT_FRAME, CUT_MM, dragCorner, dragRect, fineOf, foundRect,
+  frameCard, frameCorners, frameSays, jfifDpi, keyCorner, keyRect, quarterFor, startRect, turnCard, turnCorners, wholeRect, type Card,
+  type Pt,
 } from './card';
 
 const near = (a: number, b: number, by = 1e-9) => expect(Math.abs(a - b)).toBeLessThan(by);
@@ -117,5 +118,47 @@ describe('the pages of POST /id-card/prepare (added here)', () => {
   it('a level frame on a level page is the card under it', () => {
     const c = frameCard({ x: 0.1, y: 0.2, w: 0.5, h: 0.25 }, 1000, 800, 0);
     near(c.cx, 350); near(c.cy, 260); near(c.w, 500); near(c.h, 200); near(c.angle, 0);
+  });
+});
+
+// After Prime ERP production/web/src/scan/card.test.ts (commit c6646b8, 10 November 2026): the card framed by its corners.
+describe('the card framed by its four corners', () => {
+  it('a card\'s corners: top left, top right, bottom right, bottom left, as it reads', () => {
+    const c = cornersOf({ cx: 500, cy: 300, w: 400, h: 252, angle: 0 });
+    expect(c).toEqual([[300, 174], [700, 174], [700, 426], [300, 426]]);
+    const upside = cornersOf({ cx: 500, cy: 300, w: 400, h: 252, angle: Math.PI });
+    near(upside[0][0], 700, 1e-9); near(upside[0][1], 426, 1e-9); // its top left is at the bottom right of the picture
+  });
+  it('the corners of the frame laid where a card was found are that card\'s corners on the picture, kept on it', () => {
+    const found: Card = { cx: 612, cy: 388, w: 520, h: 328, angle: 0.07 };
+    const at = foundRect(found, 1000, 700);
+    const q = frameCorners(at.rect, 1000, 700, at.base);
+    cornersOf(found).forEach(([x, y], i) => { near(q[i][0], x / 1000, 1e-9); near(q[i][1], y / 700, 1e-9); });
+    expect(frameCorners({ x: 0, y: 0, w: 1, h: 1 }, 1000, 700, 8).flat().every((v) => v >= 0 && v <= 1)).toBe(true);
+  });
+  const Q: Pt[] = [[0.1, 0.12], [0.9, 0.15], [0.88, 0.85], [0.12, 0.8]];
+  it('a corner follows the pointer, kept on the picture; the others stay where they are', () => {
+    const q = dragCorner(Q, 1, 0.05, -0.02);
+    near(q[1][0], 0.95); near(q[1][1], 0.13); expect([q[0], q[2], q[3]]).toEqual([Q[0], Q[2], Q[3]]);
+    expect(dragCorner(Q, 2, 0.5, 0.5)[2]).toEqual([1, 1]); expect(dragCorner(Q, 0, -0.5, -0.5)[0]).toEqual([0, 0]);
+    expect(Q[1]).toEqual([0.9, 0.15]); // what it was given is left as it was
+  });
+  it('the arrow keys move a corner a five-hundredth of the picture, with Shift a hundredth; other keys, nothing', () => {
+    near(keyCorner(Q, 0, 'ArrowRight', false)![0][0], 0.102); near(keyCorner(Q, 3, 'ArrowUp', true)![3][1], 0.79);
+    near(keyCorner(Q, 2, 'ArrowLeft', false)![2][0], 0.878); near(keyCorner(Q, 1, 'ArrowDown', true)![1][1], 0.16);
+    expect(keyCorner(Q, 0, 'Enter', false)).toBeNull();
+  });
+  it('a quarter turn of the picture turns the corners with it, as a card found on it turns', () => {
+    turnCorners(Q).forEach(([x, y], i) => { near(x, 1 - Q[i][1]); near(y, Q[i][0]); });
+    const back = turnCorners(turnCorners(turnCorners(turnCorners(Q))));
+    back.forEach(([x, y], i) => { near(x, Q[i][0]); near(y, Q[i][1]); });
+    expect(turnCorners(Q, 270)).toEqual(turnCorners(turnCorners(turnCorners(Q)))); expect(turnCorners(Q, 0)).toEqual(Q);
+    // a card's corners on a page, turned with the page, are the corners of the card turned with it (turnCard)
+    const W = 1000, H = 700, c: Card = { cx: 300, cy: 420, w: 400, h: 252, angle: 0.2 };
+    for (const deg of [90, 180, 270]) {
+      const side = deg !== 180, turned = turnCard(c, W, H, deg), [TW, TH] = side ? [H, W] : [W, H];
+      const q = turnCorners(cornersOf(c).map(([x, y]): Pt => [x / W, y / H]), deg);
+      cornersOf(turned).forEach(([x, y], i) => { near(q[i][0] * TW, x, 1e-6); near(q[i][1] * TH, y, 1e-6); });
+    }
   });
 });

@@ -1002,6 +1002,11 @@ export interface IdCardFound {
   /** Which side the OCR service took it for, when it could tell. */
   recognised: 'front' | 'back' | null;
   confidence: number;
+  /**
+   * A card photographed at an angle, which the OCR service flattened from its corners: the four corners on the page,
+   * top left, top right, bottom right, bottom left of the upright card, measured as `box` is. Absent for any other card.
+   */
+  quad?: [number, number][];
 }
 
 /**

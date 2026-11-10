@@ -1,4 +1,5 @@
 import { CARD_MM, CARD_RATIO, CUT_MM, jfifDpi, type Box, type Card } from './card';
+import type { Source } from './flatten';
 
 // Ported from Prime ERP (Trendlix), production/web/src/scan/image.ts at commit 1368621: the canvas helpers the "Adjust by
 // hand" frame needs (cardJpeg comes from store.ts there). Finding the card on a picture is left out: here the OCR
@@ -109,6 +110,34 @@ export function cutCard(bmp: Picture, card: Card, size?: [number, number]): Cut 
   ctx.rotate(-card.angle);
   ctx.drawImage(bmp, -card.cx, -card.cy);
   return Object.assign(cv, { frame });
+}
+
+/**
+ * A canvas as a picture to take points from (flatten.ts): a part of it copied smoothly to the size asked for, as RGBA.
+ * Added here for the card framed by its corners (after Prime ERP's commit c6646b8).
+ */
+export function sourceOf(cv: HTMLCanvasElement): Source {
+  return {
+    W: cv.width,
+    H: cv.height,
+    copy: (sx, sy, sw, sh, dw, dh) => {
+      const out = canvasOf(dw, dh);
+      const ctx = ctxOf(out, true);
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(cv, sx, sy, sw, sh, 0, 0, out.width, out.height);
+      return ctx.getImageData(0, 0, out.width, out.height).data;
+    },
+  };
+}
+
+/** Points of a picture, RGBA, drawn on a canvas of their own. */
+export function canvasOfPixels(px: Uint8ClampedArray, w: number, h: number): HTMLCanvasElement {
+  const cv = canvasOf(w, h);
+  const ctx = ctxOf(cv);
+  const img = ctx.createImageData(w, h);
+  img.data.set(px);
+  ctx.putImageData(img, 0, 0);
+  return cv;
 }
 
 /** A picture turned clockwise by a quarter, a half or three quarters. */
