@@ -19,6 +19,8 @@ abstract final class ShellWords {
   static const markAllRead = 'Mark all as read';
   // a notification that came while the app is open (8 November 2026)
   static const open = 'Open';
+  // one the app has no screen for: its page on the website, in the phone's browser (10 November 2026)
+  static const onWebsite = 'Opens on the website';
   static const noNotifications = 'Nothing new.';
   static const notificationsFailed = 'Couldn’t load your notifications.';
   static const offerNo = 'Not now';

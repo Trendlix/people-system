@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,7 @@ import 'package:people/notifications/places.dart';
 import 'package:people/notifications/popup_memory.dart';
 import 'package:people/notifications/push_center.dart';
 import 'package:people/platform/push.dart';
+import 'package:people/platform/update_gate.dart' show linkOpenerProvider;
 import 'package:people/providers.dart';
 import 'package:people/shell/shell_words.dart';
 
@@ -93,8 +95,12 @@ Map<String, Object?> inboxRow(String id, {String kind = 'leave_decided', String 
   'createdAt': '$y-11-08T07:00:00.000Z',
 };
 
+/// The links opened in the phone's browser, as each test reads them.
+final browsed = <Uri>[];
+
 Future<void> openWith(WidgetTester tester, FakePeople people, {Push? push, MemoryPopupMemory? popup}) async {
   phoneScreen(tester);
+  browsed.clear();
   await tester.pumpWidget(
     // a new app each time (the same scope would be kept, and the app not opened again)
     ProviderScope(
@@ -103,6 +109,10 @@ Future<void> openWith(WidgetTester tester, FakePeople people, {Push? push, Memor
       overrides: [
         ...overridesFor(people, store: MemorySessionStore(token: 'kept'), popup: popup),
         pushProvider.overrideWithValue(push ?? const NoPush()),
+        linkOpenerProvider.overrideWithValue((uri) async {
+          browsed.add(uri);
+          return true;
+        }),
       ],
       child: const PeopleApp(),
     ),
@@ -136,11 +146,17 @@ void main() {
       expect(placeOf('/my-custody', 'custody_handover'), const ScreenPlace('/profile/assets'));
     });
 
-    test('nowhere for what the app has no screen for', () {
-      expect(placeOf('/app/payslips/l1', 'payslip_issued'), isNull);
-      expect(placeOf('/raise-requests?status=with_hr', 'raise_request_waiting'), isNull);
+    // owner, 10 November 2026, of a vacancy to approve: "i couldn't do it from the app"; "you can open it in a browser"
+    test('the website for what the app has no screen for; nowhere without a link', () {
+      expect(placeOf('/recruitment/vacancies/v1', 'vacancy_waiting'), WebsitePlace(Uri.parse('https://people.trendlix.com/recruitment/vacancies/v1')));
+      expect(placeOf('/my-hiring', 'shortlist_review'), WebsitePlace(Uri.parse('https://people.trendlix.com/my-hiring')));
+      expect(placeOf('/app/payslips/l1', 'payslip_issued'), WebsitePlace(Uri.parse('https://people.trendlix.com/app/payslips/l1')));
+      expect(placeOf('/raise-requests?status=with_hr', 'raise_request_waiting'), WebsitePlace(Uri.parse('https://people.trendlix.com/raise-requests?status=with_hr')));
       expect(placeOf('/leave/permissions', 'permission_waiting'), const ScreenPlace('/requests'));
       expect(placeOf('', 'hr_message'), isNull);
+      // never another site's
+      expect(placeOf('//evil.test/x', 'hr_message'), isNull);
+      expect(placeOf('https://evil.test/x', 'hr_message'), isNull);
     });
   });
 
@@ -229,9 +245,20 @@ void main() {
     setUp(() {
       people = requestsPeople()
         ..on('GET /api/me/notifications/unread-count', (req) => json({'unread': 2}))
-        ..on('GET /api/me/notifications', (req) => json({'items': [inboxRow('n1'), inboxRow('n2', kind: 'payslip_issued', title: 'Your payslip is ready', link: '/app/payslips/x')], 'unread': 2}))
+        ..on(
+          'GET /api/me/notifications',
+          (req) => json({
+            'items': [
+              inboxRow('n1'),
+              inboxRow('n2', kind: 'vacancy_waiting', title: 'A vacancy waits for your approval', link: '/recruitment/vacancies/v1'),
+              inboxRow('n3', kind: 'hr_message', title: 'A word from HR', link: null),
+            ],
+            'unread': 2,
+          }),
+        )
         ..on('POST /api/me/notifications/n1/read', (req) => http204())
         ..on('POST /api/me/notifications/n2/read', (req) => http204())
+        ..on('POST /api/me/notifications/n3/read', (req) => http204())
         ..on('GET /api/leave/requests/l9', (req) => json(leaveJson(id: 'l9', status: 'approved')));
     });
 
@@ -245,15 +272,28 @@ void main() {
       expect(find.byType(RequestPage), findsOneWidget);
     });
 
-    testWidgets('one with no screen in the app: marked read where it is', (tester) async {
+    testWidgets('one with no screen in the app: marked read, its page on the website in the browser', (tester) async {
       await openWith(tester, people);
       await tester.tap(find.byTooltip(ShellWords.unread(2)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Your payslip is ready'));
+      // marked with an arrow out, the others with a chevron
+      expect(find.byIcon(CupertinoIcons.arrow_up_right_square), findsOneWidget);
+      await tester.tap(find.text('A vacancy waits for your approval'));
       await tester.pumpAndSettle();
       expect(people.calls, contains('POST /api/me/notifications/n2/read'));
-      expect(find.text('Your payslip is ready'), findsOneWidget);
+      expect(browsed, [Uri.parse('https://people.trendlix.com/recruitment/vacancies/v1')]);
       expect(find.byType(RequestPage), findsNothing);
+    });
+
+    testWidgets('one without a link: marked read where it is', (tester) async {
+      await openWith(tester, people);
+      await tester.tap(find.byTooltip(ShellWords.unread(2)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('A word from HR'));
+      await tester.pumpAndSettle();
+      expect(people.calls, contains('POST /api/me/notifications/n3/read'));
+      expect(find.text('A word from HR'), findsOneWidget);
+      expect(browsed, isEmpty);
     });
   });
 
@@ -308,6 +348,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(RequestPage), findsOneWidget);
       expect(people.calls, contains('POST /api/me/notifications/n7/read'));
+    });
+
+    testWidgets('one tapped with no screen in the app: its page on the website', (tester) async {
+      final push = FakePush();
+      await openWith(tester, people, push: push);
+      push.openedNow.add(const PushMessage(id: 'n9', kind: 'vacancy_waiting', link: '/recruitment/vacancies/v1', title: 'A vacancy waits for your approval', body: ''));
+      await tester.pumpAndSettle();
+      expect(browsed, [Uri.parse('https://people.trendlix.com/recruitment/vacancies/v1')]);
+      expect(people.calls, contains('POST /api/me/notifications/n9/read'));
     });
 
     testWidgets('the one that opened the app: its page first, no popup over it', (tester) async {

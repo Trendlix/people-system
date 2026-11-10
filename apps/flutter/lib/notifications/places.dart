@@ -3,7 +3,10 @@ import '../models/requests.dart';
 // Where a notification opens in the app (owner, 8 November 2026: "notifications are not working correctly"): People
 // gives each one a link on the website (apps/api notices.service.ts REQUEST_LINKS, kpi-notices.service.ts,
 // timesheets); the app opens the same thing on its own screens: a request's page, a week of hours, a tab. What the app
-// has no screen for (a payslip, a raise, a home location's map) stays in the bell's list.
+// has no screen for (a vacancy waiting for the CEO's approval, a hiring manager's Final Review, a payslip, a raise) opens
+// on the website in the phone's browser (owner, 10 November 2026, of a vacancy to approve: "i couldn't do it from the
+// app"; "you can open it in a browser"), which signs them in first and comes back to it. One without a link stays in
+// the bell's list.
 
 sealed class NotificationPlace {
   const NotificationPlace();
@@ -59,6 +62,25 @@ class ScreenPlace extends NotificationPlace {
   String toString() => 'ScreenPlace($path)';
 }
 
+/// The website, where a notification the app has no screen for opens (in the phone's browser).
+const peopleWebsite = 'https://people.trendlix.com';
+
+/// Its page on the website, opened in the phone's browser (10 November 2026): what the app has no screen for.
+class WebsitePlace extends NotificationPlace {
+  const WebsitePlace(this.uri);
+
+  final Uri uri;
+
+  @override
+  bool operator ==(Object other) => other is WebsitePlace && other.uri == uri;
+
+  @override
+  int get hashCode => uri.hashCode;
+
+  @override
+  String toString() => 'WebsitePlace($uri)';
+}
+
 /// The kinds waiting for the person's decision that the app's To approve lists (approvals.dart; packages/shared
 /// WAITING_KINDS less raises, pay raises, home locations and KPIs, which are decided on the website): the "waiting for
 /// you" popup shows them.
@@ -87,7 +109,8 @@ final _requestLinks = <(RegExp, RequestKind)>[
   (RegExp(r'^/resignations/([^/]+)$'), RequestKind.resignation),
 ];
 
-/// Where a notification of [kind] with [link] opens; null: nowhere in the app (it stays in the bell's list).
+/// Where a notification of [kind] with [link] opens: a screen of the app, else its page on the website; null: no link
+/// (it stays in the bell's list).
 NotificationPlace? placeOf(String link, String kind) {
   final path = link.split(RegExp('[?#]')).first;
   for (final (pattern, requestKind) in _requestLinks) {
@@ -106,5 +129,13 @@ NotificationPlace? placeOf(String link, String kind) {
   if (path == '/approvals' || path == '/leave' || path == '/my-team' || path == '/my-requests' || path.startsWith('/leave/')) return const ScreenPlace('/requests');
   // something waiting for them in To approve, on the Requests tab
   if (popupKinds.contains(kind)) return const ScreenPlace('/requests');
-  return null;
+  return websitePlaceOf(link);
+}
+
+/// A notification's link on the website: one of its own paths ("/recruitment/vacancies/v1"), never another site's.
+WebsitePlace? websitePlaceOf(String link) {
+  final l = link.trim();
+  if (!l.startsWith('/') || l.startsWith('//')) return null;
+  final uri = Uri.tryParse('$peopleWebsite$l');
+  return uri == null ? null : WebsitePlace(uri);
 }

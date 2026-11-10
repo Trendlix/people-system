@@ -46,7 +46,8 @@ final inboxProvider = FutureProvider.autoDispose<List<InboxItem>>((ref) async {
 
 /// The inbox in the design's sheet: the newest first, the unread ones marked; Mark all as read. Each one opens its
 /// screen, marked read (owner, 8 November 2026: "opened notifications should be marked read"); one the app has no
-/// screen for (a payslip, a raise) is marked read where it is, as the website does.
+/// screen for (a vacancy to approve, a payslip, a raise) its page on the website in the phone's browser (10 November
+/// 2026), marked with an arrow out; one without a link is marked read where it is.
 Future<void> showNotifications(BuildContext context) => showDesignSheet<void>(
   context,
   eyebrow: ShellWords.account,
@@ -102,10 +103,12 @@ class _Inbox extends ConsumerWidget {
                           ],
                         ),
                       ),
-                      if (placeOf(i.link, i.kind) != null)
+                      if (placeOf(i.link, i.kind) case final place?)
                         Padding(
                           padding: const EdgeInsets.only(left: 8, top: 2),
-                          child: Icon(CupertinoIcons.chevron_right, size: 16, color: p.muted),
+                          child: place is WebsitePlace
+                              ? Icon(CupertinoIcons.arrow_up_right_square, size: 16, color: p.muted, semanticLabel: ShellWords.onWebsite)
+                              : Icon(CupertinoIcons.chevron_right, size: 16, color: p.muted),
                         ),
                     ],
                   ),
