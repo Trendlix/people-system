@@ -6,13 +6,20 @@
 #   TLX_WIA_DATATYPE  3, 2 or 0, and TLX_WIA_DEPTH 24, 8 or 1, for drivers
 #                     that don't take an intent
 #   TLX_WIA_DPI       resolution
-#   TLX_WIA_WIDTH     scan area in pixels at that resolution,
-#   TLX_WIA_HEIGHT    from the top left corner
+#   TLX_WIA_WIDTH     scan area in pixels at that resolution, from the top
+#   TLX_WIA_HEIGHT    left corner; made smaller when the driver takes less,
+#                     and worked out again if it took another resolution
+#   TLX_WIA_PAGE      the feeder's page size (0 A4, 1 Letter, 2 the width and
+#                     height below, 11 A5), or empty to leave it as it is
+#   TLX_WIA_PAGEWIDTH, TLX_WIA_PAGEHEIGHT  that page in 1/1000 inch, for 2
 #   TLX_WIA_MAXPAGES  stop after this many pages
 #   TLX_WIA_OUT       the folder to write the pages to
 # Each page is written as page-001.jpg (or .png or .bmp when the driver's
 # image can't be made a JPEG) and said at once, so the helper reads it and
 # knows the scan is moving. It says, a line each:
+#   PAGESIZE 1|0      the feeder's page size was set, or couldn't be (when asked)
+#   AREA <w> <h>      the area taken, in pixels; -1 for a side that couldn't be set
+#   SCANNING <n>      page n is being scanned
 #   PAGE <file>
 #   WARN <message>
 #   DONE <pages>
@@ -20,13 +27,44 @@
 #   END
 # Device properties: 3086 document handling capabilities (1 feeder, 2 glass),
 # 3087 its status (1 feeder ready), 3088 its choice (1 feeder, 2 glass, 4 both
-# sides), 3096 pages. Item properties: 4098 name, 4103 data type, 4104 bits a
-# pixel, 6146 intent, 6147 and 6148 resolution, 6149 and 6150 the top left
-# corner, 6151 and 6152 width and height.
+# sides), 3096 pages, 3097 page size, 3098 and 3099 the page's width and
+# height. Item properties: 4098 name, 4103 data type, 4104 bits a pixel, 6146
+# intent, 6147 and 6148 resolution, 6149 and 6150 the top left corner, 6151
+# and 6152 width and height.
 # WIA errors (0x8021...) that a second try in another format wouldn't change:
 # 2 paper jam, 3 feeder empty, 4 paper problem, 5 offline, 6 busy, 7 warming
 # up, 8 needs attention, A communication, D locked, F bad answer from the
 # driver, 15 no device, 16 cover open, 17 lamp off, 20 several pages at once.
+# Sets a property to exactly v, never a value near it (a page size is a code,
+# not an amount); $false when it can't be.
+function TlxSetIf($props, [int]$id, [int]$v) {
+  $p = TlxProp $props $id;
+  if ($null -eq $p) { return $false; };
+  try { $p.Value = $v; return $true; } catch { return $false; };
+};
+# An area in pixels at dpi, worked out again for the resolution the driver
+# took instead, if it took another.
+function TlxRescale([int]$v, $res, [int]$dpi) {
+  if ($null -eq $res -or $dpi -le 0) { return $v; };
+  $r = 0;
+  try { $r = [int]$res; } catch { return $v; };
+  if ($r -le 0 -or $r -eq $dpi) { return $v; };
+  return [int][Math]::Floor([double]$v * $r / $dpi);
+};
+# Sets a side of the area, made no larger than the most the driver says it
+# takes (the glass or the page at this resolution), and gives what it then
+# is, or -1 when it can't be set.
+function TlxExtent($props, [int]$id, [int]$v) {
+  $p = TlxProp $props $id;
+  if ($null -eq $p) { return -1; };
+  try {
+    if ($p.SubType -eq 1 -and [int]$p.SubTypeMax -gt 0 -and $v -gt [int]$p.SubTypeMax) { $v = [int]$p.SubTypeMax; };
+  } catch { };
+  if (-not (TlxSet $props $id $v)) { return -1; };
+  $got = TlxValue $props $id;
+  if ($null -eq $got) { return $v; };
+  try { return [int]$got; } catch { return $v; };
+};
 function TlxScan {
   $id = $env:TLX_WIA_DEVICE;
   $out = $env:TLX_WIA_OUT;
@@ -52,6 +90,18 @@ function TlxScan {
     $sel = 1;
     if ($duplex) { $sel = 5; };
     $null = TlxSet $dp 3088 $sel;
+    $page = $env:TLX_WIA_PAGE;
+    if ($page) {
+      $ps = 0;
+      if (TlxSetIf $dp 3097 ([int]$page)) {
+        $ps = 1;
+        if ([int]$page -eq 2) {
+          $null = TlxSet $dp 3098 ([int]$env:TLX_WIA_PAGEWIDTH);
+          $null = TlxSet $dp 3099 ([int]$env:TLX_WIA_PAGEHEIGHT);
+        };
+      };
+      TlxSay ('PAGESIZE ' + $ps);
+    };
   } else {
     if ($null -ne $hc -and ([int]$hc -band 2) -eq 0) { TlxSay 'ERR NOFLATBED'; return; };
     $null = TlxSet $dp 3088 2;
@@ -72,10 +122,14 @@ function TlxScan {
   };
   $null = TlxSet $ip 6147 $dpi;
   $null = TlxSet $ip 6148 $dpi;
+  $ip = $item.Properties;
+  $w = TlxRescale ([int]$env:TLX_WIA_WIDTH) (TlxValue $ip 6147) $dpi;
+  $h = TlxRescale ([int]$env:TLX_WIA_HEIGHT) (TlxValue $ip 6148) $dpi;
   $null = TlxSet $ip 6149 0;
   $null = TlxSet $ip 6150 0;
-  $null = TlxSet $ip 6151 ([int]$env:TLX_WIA_WIDTH);
-  $null = TlxSet $ip 6152 ([int]$env:TLX_WIA_HEIGHT);
+  $aw = TlxExtent $ip 6151 $w;
+  $ah = TlxExtent $ip 6152 $h;
+  TlxSay ('AREA ' + $aw + ' ' + $ah);
   $fmt = $jpeg;
   $n = 0;
   while ($n -lt $max) {
@@ -83,6 +137,7 @@ function TlxScan {
       $st = TlxValue $d.Properties 3087;
       if ($null -ne $st -and ([int]$st -band 1) -eq 0) { break; };
     };
+    TlxSay ('SCANNING ' + ($n + 1));
     $img = $null;
     try {
       $img = $item.Transfer($fmt);

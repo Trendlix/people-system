@@ -35,7 +35,7 @@ import (
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
-var version = "1.1.0"
+var version = "1.2.0"
 
 const statusURL = "http://127.0.0.1:47815"
 

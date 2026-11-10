@@ -8,10 +8,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"trendlix.com/scan-helper/internal/paper"
+	"trendlix.com/scan-helper/internal/progress"
 )
 
 // b64 writes text as the scripts do: base64, or - when empty.
@@ -364,10 +368,11 @@ func TestScan(t *testing.T) {
 	f := &fakeRunner{answer: writesPages(t, 3, 10*time.Millisecond, "jpg")}
 	l := &Local{Run: f.run, TempDir: tmp}
 	caps := &Caps{Sources: []string{"feeder"}, FeedWidth: 8500, FeedHeight: 14000}
-	pages, err := l.Scan(context.Background(), ads, Settings{Source: "feeder", Duplex: true, ColorMode: "grayscale", Resolution: 300}, caps, time.Second)
+	res, err := l.Scan(context.Background(), ads, Settings{Source: "feeder", Duplex: true, ColorMode: "grayscale", Resolution: 300}, caps, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
+	pages := res.Pages
 	if len(pages) != 3 || pages[0].ContentType != "image/jpeg" || string(pages[2].Data) != string(jpegBytes) {
 		t.Errorf("pages = %d %+v", len(pages), pages[0].ContentType)
 	}
@@ -375,6 +380,7 @@ func TestScan(t *testing.T) {
 		"TLX_WIA_DEVICE": ads, "TLX_WIA_SOURCE": "feeder", "TLX_WIA_DUPLEX": "1",
 		"TLX_WIA_INTENT": "2", "TLX_WIA_DATATYPE": "2", "TLX_WIA_DEPTH": "8", "TLX_WIA_DPI": "300",
 		"TLX_WIA_WIDTH": "2480", "TLX_WIA_HEIGHT": "3507", "TLX_WIA_MAXPAGES": "300",
+		"TLX_WIA_PAGE": "", "TLX_WIA_PAGEWIDTH": "0", "TLX_WIA_PAGEHEIGHT": "0",
 	}
 	for k, v := range want {
 		if f.env[k] != v {
@@ -414,8 +420,8 @@ func TestEnv(t *testing.T) {
 			t.Errorf("%s = %q, want %q", k, got, v)
 		}
 	}
-	if w, h := Area(&Caps{BedWidth: 8500, BedHeight: 14000}, "platen"); w != A4Width || h != A4Height {
-		t.Errorf("Area = %d x %d", w, h)
+	if w, h := Extent(&Caps{BedWidth: 8500, BedHeight: 14000}, Settings{Source: "platen", Resolution: 300}); w != 2480 || h != 3507 {
+		t.Errorf("Extent = %d x %d", w, h)
 	}
 	if got := Nearest([]int{75, 150, 300, 600}, 250); got != 300 {
 		t.Errorf("Nearest = %d", got)
@@ -469,9 +475,9 @@ func TestScanTimeoutRestartsWithEachPage(t *testing.T) {
 	// Five pages 60 ms apart take longer than the 200 ms without progress
 	// allowed, and pass: the time restarts with each page.
 	l := &Local{Run: (&fakeRunner{answer: writesPages(t, 5, 60*time.Millisecond, "png")}).run, TempDir: t.TempDir()}
-	pages, err := l.Scan(context.Background(), ads, Settings{Source: "feeder", Resolution: 300}, nil, 200*time.Millisecond)
-	if err != nil || len(pages) != 5 || pages[0].ContentType != "image/png" {
-		t.Fatalf("pages = %d, %v", len(pages), err)
+	res, err := l.Scan(context.Background(), ads, Settings{Source: "feeder", Resolution: 300}, nil, 200*time.Millisecond)
+	if err != nil || len(res.Pages) != 5 || res.Pages[0].ContentType != "image/png" {
+		t.Fatalf("pages = %d, %v", len(res.Pages), err)
 	}
 
 	// A scanner that never sends a page is stopped.
@@ -519,5 +525,170 @@ func TestDisplayName(t *testing.T) {
 		if got := d.DisplayName(); got != want {
 			t.Errorf("%+v: %q", d, got)
 		}
+	}
+}
+
+// ---------- the size asked ----------
+
+func envMap(env []string) map[string]string {
+	m := map[string]string{}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		m[k] = v
+	}
+	return m
+}
+
+func TestEnvSizes(t *testing.T) {
+	custom := paper.Size{W: 10000, H: 15000} // 100 x 150 mm
+	cases := []struct {
+		name               string
+		s                  Settings
+		caps               *Caps
+		w, h               string // pixels
+		page, pageW, pageH string
+	}{
+		{"A5 at 300 dpi", Settings{Source: "platen", Resolution: 300, Size: paper.A5}, nil, "1748", "2480", "", "0", "0"},
+		{"A5 at 600 dpi", Settings{Source: "platen", Resolution: 600, Size: paper.A5}, nil, "3496", "4960", "", "0", "0"},
+		{"A5 at 600 dpi on a glass of 5 x 7 inches", Settings{Source: "platen", Resolution: 600, Size: paper.A5}, &Caps{BedWidth: 5000, BedHeight: 7000}, "3000", "4200", "", "0", "0"},
+		{"A5 at 300 dpi on a usual glass", Settings{Source: "platen", Resolution: 300, Size: paper.A5}, &Caps{BedWidth: 8500, BedHeight: 11690}, "1748", "2480", "", "0", "0"},
+		{"no size: A4, as before", Settings{Source: "platen", Resolution: 300}, nil, "2480", "3507", "", "0", "0"},
+		{"Letter at 300 dpi", Settings{Source: "platen", Resolution: 300, Size: paper.Letter}, nil, "2550", "3300", "", "0", "0"},
+		{"100 x 150 mm at 300 dpi", Settings{Source: "platen", Resolution: 300, Size: custom}, nil, "1181", "1771", "", "0", "0"},
+		{"larger than the glass", Settings{Source: "platen", Resolution: 300, Size: paper.Size{W: 50000, H: 60000}}, &Caps{BedWidth: 8500, BedHeight: 11690}, "2550", "3507", "", "0", "0"},
+		{"feeder, A5", Settings{Source: "feeder", Resolution: 300, Size: paper.A5}, &Caps{FeedWidth: 8500, FeedHeight: 14000}, "1748", "2480", "11", "0", "0"},
+		{"feeder, A4", Settings{Source: "feeder", Resolution: 300, Size: paper.A4}, nil, "2480", "3507", "0", "0", "0"},
+		{"feeder, Letter", Settings{Source: "feeder", Resolution: 300, Size: paper.Letter}, nil, "2550", "3300", "1", "0", "0"},
+		{"feeder, 100 x 150 mm", Settings{Source: "feeder", Resolution: 300, Size: custom}, nil, "1181", "1771", "2", "3937", "5905"},
+		{"feeder, no size: left as it is", Settings{Source: "feeder", Resolution: 300}, nil, "2480", "3507", "", "0", "0"},
+	}
+	for _, c := range cases {
+		env := envMap(Env(lide, "d", c.s, c.caps))
+		for k, v := range map[string]string{"TLX_WIA_WIDTH": c.w, "TLX_WIA_HEIGHT": c.h, "TLX_WIA_PAGE": c.page, "TLX_WIA_PAGEWIDTH": c.pageW, "TLX_WIA_PAGEHEIGHT": c.pageH} {
+			if got, ok := env[k]; !ok || got != v {
+				t.Errorf("%s: %s = %q, want %q", c.name, k, got, v)
+			}
+		}
+	}
+	for _, c := range []struct {
+		caps *Caps
+		want []string
+	}{
+		{nil, []string{"A4", "A5", "Letter"}},
+		{&Caps{Sources: []string{"platen"}}, []string{"A4", "A5", "Letter"}},
+		{&Caps{Sources: []string{"platen", "feeder"}, BedWidth: 8500, BedHeight: 11690, FeedWidth: 6000, FeedHeight: 9000}, []string{"A4", "A5", "Letter"}},
+		{&Caps{Sources: []string{"platen"}, BedWidth: 8500, BedHeight: 11000}, []string{"A5", "Letter"}},
+		{&Caps{Sources: []string{"feeder"}, FeedWidth: 6000, FeedHeight: 9000}, []string{"A5"}},
+	} {
+		if got := c.caps.Sizes(); !slices.Equal(got, c.want) {
+			t.Errorf("Sizes of %+v = %v, want %v", c.caps, got, c.want)
+		}
+	}
+}
+
+// The script reduces the area to the most the driver takes, works it out
+// again for a resolution the driver took instead, sets the feeder's page size
+// only to the exact code, and says what it did.
+func TestScriptSetsTheArea(t *testing.T) {
+	s := Script("scan")
+	for _, want := range []string{
+		"[int]$p.SubTypeMax -gt 0 -and $v -gt [int]$p.SubTypeMax",
+		"$w = TlxRescale ([int]$env:TLX_WIA_WIDTH) (TlxValue $ip 6147) $dpi;",
+		"$h = TlxRescale ([int]$env:TLX_WIA_HEIGHT) (TlxValue $ip 6148) $dpi;",
+		"$aw = TlxExtent $ip 6151 $w;",
+		"$ah = TlxExtent $ip 6152 $h;",
+		"TlxSay ('AREA ' + $aw + ' ' + $ah);",
+		"if (TlxSetIf $dp 3097 ([int]$page)) {",
+		"TlxSay ('SCANNING ' + ($n + 1));",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("the scan script lacks %q", want)
+		}
+	}
+	// The resolution is set before the area, and the area read again after it.
+	if i, j, k := strings.Index(s, "TlxSet $ip 6147 $dpi"), strings.Index(s, "$ip = $item.Properties;\n$w = "), strings.Index(s, "TlxExtent $ip 6151"); i < 0 || j < i || k < j {
+		t.Errorf("order: resolution %d, properties read again %d, area %d", i, j, k)
+	}
+}
+
+func TestScanSaysTheArea(t *testing.T) {
+	scan := func(t *testing.T, s Settings, said ...string) Result {
+		t.Helper()
+		answer := func(_ context.Context, env map[string]string, say func(string)) error {
+			for _, l := range said {
+				say(l)
+			}
+			if err := os.WriteFile(filepath.Join(env["TLX_WIA_OUT"], "page-001.jpg"), jpegBytes, 0o600); err != nil {
+				t.Error(err)
+			}
+			say("PAGE page-001.jpg")
+			say("DONE 1")
+			say("END")
+			return nil
+		}
+		l := &Local{Run: (&fakeRunner{answer: answer}).run, TempDir: t.TempDir()}
+		res, err := l.Scan(context.Background(), lide, s, nil, time.Second)
+		if err != nil || len(res.Pages) != 1 {
+			t.Fatalf("scan = %+v, %v", res, err)
+		}
+		return res
+	}
+	a5 := Settings{Source: "platen", Resolution: 300, Size: paper.A5}
+	if r := scan(t, a5, "AREA 1748 2480", "SCANNING 1"); r.Width != 1748 || r.Height != 2480 || r.SizeIgnored {
+		t.Errorf("area set = %+v", r)
+	}
+	if r := scan(t, a5, "AREA -1 -1"); r.Width != 0 || !r.SizeIgnored {
+		t.Errorf("area not set = %+v", r)
+	}
+	if r := scan(t, a5, "AREA 1748 -1"); !r.SizeIgnored {
+		t.Errorf("height not set = %+v", r)
+	}
+	// No size asked: as before, nothing to say.
+	if r := scan(t, Settings{Source: "platen", Resolution: 300}, "AREA -1 -1"); r.SizeIgnored {
+		t.Errorf("no size asked = %+v", r)
+	}
+	// A script that said nothing of the area: nothing known.
+	if r := scan(t, a5); r.SizeIgnored || r.Width != 0 {
+		t.Errorf("nothing said = %+v", r)
+	}
+	// The feeder: its page size stands in for an area it doesn't take.
+	feeder := Settings{Source: "feeder", Resolution: 300, Size: paper.A5}
+	if r := scan(t, feeder, "PAGESIZE 1", "AREA -1 -1"); r.SizeIgnored {
+		t.Errorf("feeder with its page size set = %+v", r)
+	}
+	if r := scan(t, feeder, "PAGESIZE 0", "AREA -1 2480"); !r.SizeIgnored {
+		t.Errorf("feeder with neither = %+v", r)
+	}
+	if r := scan(t, feeder, "PAGESIZE 0", "AREA 1748 2480"); r.SizeIgnored {
+		t.Errorf("feeder with its area set = %+v", r)
+	}
+}
+
+func TestScanReportsProgress(t *testing.T) {
+	var got []string
+	ctx := progress.With(context.Background(), func(stage string, page int) {
+		got = append(got, stage+" "+strconv.Itoa(page))
+	})
+	answer := func(ctx context.Context, env map[string]string, say func(string)) error {
+		say("AREA 2480 3507")
+		for i := 1; i <= 2; i++ {
+			say("SCANNING " + strconv.Itoa(i))
+			name := "page-00" + strconv.Itoa(i) + ".jpg"
+			os.WriteFile(filepath.Join(env["TLX_WIA_OUT"], name), jpegBytes, 0o600)
+			say("PAGE " + name)
+		}
+		say("SCANNING 3")
+		say("SCANNING x")
+		say("DONE 2")
+		say("END")
+		return nil
+	}
+	l := &Local{Run: (&fakeRunner{answer: answer}).run, TempDir: t.TempDir()}
+	res, err := l.Scan(ctx, ads, Settings{Source: "feeder", Resolution: 300}, nil, time.Second)
+	if err != nil || len(res.Pages) != 2 {
+		t.Fatalf("scan = %+v, %v", res, err)
+	}
+	if want := []string{"connecting 0", "scanning 1", "scanning 2", "scanning 3"}; !slices.Equal(got, want) {
+		t.Errorf("progress = %v, want %v", got, want)
 	}
 }

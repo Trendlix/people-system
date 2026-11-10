@@ -20,6 +20,7 @@ import (
 	"trendlix.com/scan-helper/internal/escl"
 	"trendlix.com/scan-helper/internal/escltest"
 	"trendlix.com/scan-helper/internal/pdf"
+	"trendlix.com/scan-helper/internal/progress"
 	"trendlix.com/scan-helper/internal/wia"
 )
 
@@ -57,8 +58,11 @@ type fakeLocal struct {
 	calls     []scanCall
 	pages     int
 	scanErr   error
-	hold      chan struct{} // a scan waits for it
-	started   chan struct{} // closed when a scan starts
+	// sizeIgnored: the scanner doesn't let the area be chosen (a size asked
+	// comes back ignored).
+	sizeIgnored bool
+	hold        chan struct{} // a scan waits for it
+	started     chan struct{} // closed when a scan starts
 }
 
 func (f *fakeLocal) Available() bool { return !f.off }
@@ -78,11 +82,13 @@ func (f *fakeLocal) List(ctx context.Context, known []string) ([]wia.Device, err
 	return out, f.listErr
 }
 
-func (f *fakeLocal) Scan(ctx context.Context, id string, s wia.Settings, caps *wia.Caps, idle time.Duration) ([]wia.Page, error) {
+func (f *fakeLocal) Scan(ctx context.Context, id string, s wia.Settings, caps *wia.Caps, idle time.Duration) (wia.Result, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, scanCall{id, s, caps})
-	hold, started, n, err := f.hold, f.started, f.pages, f.scanErr
+	hold, started, n, err, ignored := f.hold, f.started, f.pages, f.scanErr, f.sizeIgnored
 	f.mu.Unlock()
+	progress.Report(ctx, progress.Connecting, 0)
+	progress.Report(ctx, progress.Scanning, 1)
 	if started != nil {
 		close(started)
 	}
@@ -90,11 +96,11 @@ func (f *fakeLocal) Scan(ctx context.Context, id string, s wia.Settings, caps *w
 		select {
 		case <-hold:
 		case <-ctx.Done():
-			return nil, &wia.Error{Kind: wia.KindCanceled}
+			return wia.Result{}, &wia.Error{Kind: wia.KindCanceled}
 		}
 	}
 	if err != nil {
-		return nil, err
+		return wia.Result{}, err
 	}
 	if n == 0 {
 		n = 1
@@ -106,7 +112,7 @@ func (f *fakeLocal) Scan(ctx context.Context, id string, s wia.Settings, caps *w
 	for range n {
 		pages = append(pages, wia.Page{ContentType: "image/jpeg", Data: escltest.JPEG(248, 350, color.RGBA{R: 200, G: 60, B: 40, A: 255})})
 	}
-	return pages, nil
+	return wia.Result{Pages: pages, SizeIgnored: ignored && !s.Size.IsZero()}, nil
 }
 
 func (f *fakeLocal) lastCall(t *testing.T) scanCall {
@@ -158,7 +164,7 @@ func TestLocalScannersBesideNetworkOnes(t *testing.T) {
 	lide, _ := byName(list, "Canon LiDE 300")
 	got, _ := json.Marshal(lide)
 	want := `{"id":"` + LocalScannerID(lideID) + `","name":"Canon LiDE 300","url":"wia://this-computer","secure":false,"sources":["platen"],"duplex":false,` +
-		`"colorModes":["color","grayscale"],"resolutions":[75,150,300,600],"formats":["image/jpeg"],"manual":false,"kind":"wia"}`
+		`"colorModes":["color","grayscale"],"resolutions":[75,150,300,600],"formats":["image/jpeg"],"sizes":["A4","A5","Letter"],"manual":false,"kind":"wia"}`
 	if string(got) != want {
 		t.Errorf("scanner =\n%s\nwant\n%s", got, want)
 	}

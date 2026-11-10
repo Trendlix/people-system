@@ -223,7 +223,7 @@ func TestListScanners(t *testing.T) {
 		ID: ScannerID(f.BaseURL()), Name: "HP LaserJet MFP M428fdw", URL: f.BaseURL(), Secure: false,
 		Sources: []string{"platen", "feeder"}, Duplex: true, ColorModes: []string{"color", "grayscale", "bw"},
 		Resolutions: []int{75, 100, 200, 300, 600}, Formats: []string{"application/octet-stream", "image/jpeg", "application/pdf"},
-		Manual: false, Kind: "escl",
+		Sizes: []string{"A4", "A5", "Letter"}, Manual: false, Kind: "escl",
 	}
 	got, _ := json.Marshal(sc)
 	exp, _ := json.Marshal(want)

@@ -31,6 +31,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"trendlix.com/scan-helper/internal/paper"
+	"trendlix.com/scan-helper/internal/progress"
 )
 
 // Limits that keep a misbehaving driver from filling the memory (as for
@@ -38,13 +41,6 @@ import (
 const (
 	MaxPageSize = 200 << 20
 	MaxPages    = 300
-)
-
-// A4 in thousandths of an inch (210 x 297 mm): the area scanned, or less
-// when the glass or the feeder is smaller.
-const (
-	A4Width  = 8268
-	A4Height = 11693
 )
 
 // Device is a scanner installed in Windows.
@@ -86,6 +82,20 @@ type Caps struct {
 	FeedWidth, FeedHeight int
 }
 
+// Sizes lists the named sizes (paper.Named) that fit the glass, or the
+// document feeder of a scanner that has no glass (all of them when its size
+// is unknown).
+func (c *Caps) Sizes() []string {
+	if c == nil {
+		return paper.NamesThatFit(0, 0)
+	}
+	w, h := c.BedWidth, c.BedHeight
+	if !slices.Contains(c.Sources, "platen") {
+		w, h = c.FeedWidth, c.FeedHeight
+	}
+	return paper.NamesThatFit(paper.FromInches(w, 1000), paper.FromInches(h, 1000))
+}
+
 // Settings is one scan.
 type Settings struct {
 	Source     string // "platen" or "feeder"
@@ -93,6 +103,21 @@ type Settings struct {
 	ColorMode  string // "color", "grayscale" or "bw"
 	Resolution int
 	MaxPages   int // 0 means MaxPages
+	// Size is the area to scan from the top left corner; the zero Size is
+	// A4, as before a size could be asked, and the feeder's page size is then
+	// left as the scanner has it.
+	Size paper.Size
+}
+
+// Result is what a scan gave.
+type Result struct {
+	Pages []Page
+	// Width and Height are the area the scanner took, in pixels, as it said
+	// after it was set; 0 when it didn't say.
+	Width, Height int
+	// SizeIgnored: a size was asked, and the scanner doesn't let it be used
+	// (neither the area nor, for the feeder, the page size could be set).
+	SizeIgnored bool
 }
 
 // Page is one scanned page as the driver gave it (made a JPEG when Windows
@@ -171,8 +196,9 @@ type Backend interface {
 	List(ctx context.Context, known []string) ([]Device, error)
 	// Scan scans with the scanner id. caps, when known, gives the size of
 	// the glass or the feeder. idle limits how long the scan may go without
-	// a page; it restarts with each page.
-	Scan(ctx context.Context, id string, s Settings, caps *Caps, idle time.Duration) ([]Page, error)
+	// a page; it restarts with each page. Where the scan stands is reported
+	// to the watcher ctx carries (package progress), if any.
+	Scan(ctx context.Context, id string, s Settings, caps *Caps, idle time.Duration) (Result, error)
 }
 
 // Runner runs a PowerShell script with the environment variables env added,
@@ -635,24 +661,46 @@ func parseErr(f []string) *Error {
 
 // ---------- scanning ----------
 
-// Area is the area to scan, in thousandths of an inch: A4, or less when the
-// glass or the feeder is smaller.
-func Area(caps *Caps, source string) (width, height int) {
-	width, height = A4Width, A4Height
+// Extent is the area to scan, in pixels at the scan's resolution, from the
+// top left corner: the size asked (A4 when none is), reduced to the glass or
+// the feeder when it is smaller. The script reduces it again to what the
+// driver says is the most it takes.
+func Extent(caps *Caps, s Settings) (width, height int) {
+	width, height = s.Size.OrA4().Pixels(s.Resolution)
 	if caps == nil {
 		return width, height
 	}
 	w, h := caps.BedWidth, caps.BedHeight
-	if source == "feeder" {
+	if s.Source == "feeder" {
 		w, h = caps.FeedWidth, caps.FeedHeight
 	}
 	if w > 0 {
-		width = min(width, w)
+		width = min(width, w*s.Resolution/1000)
 	}
 	if h > 0 {
-		height = min(height, h)
+		height = min(height, h*s.Resolution/1000)
 	}
 	return width, height
+}
+
+// WIA's page sizes (WIA_DPS_PAGE_SIZE, wiadef.h): A4 0, Letter 1, a page of
+// the width and height given 2, ISO A5 11.
+var pageSizes = map[string]int{"A4": 0, "Letter": 1, "A5": 11}
+
+const pageCustom = 2
+
+// pageSize is what the feeder's page size is set to: the WIA page size and,
+// for one given in millimetres, its width and height in thousandths of an
+// inch; "" when it is left as the scanner has it (no size asked, or the
+// glass).
+func pageSize(s Settings) (page string, width, height int) {
+	if s.Source != "feeder" || s.Size.IsZero() {
+		return "", 0, 0
+	}
+	if n, ok := pageSizes[s.Size.Name]; ok {
+		return strconv.Itoa(n), 0, 0
+	}
+	return strconv.Itoa(pageCustom), s.Size.W * 1000 / 2540, s.Size.H * 1000 / 2540
 }
 
 // Nearest picks the resolution in offered closest to want (the higher one
@@ -723,7 +771,8 @@ func Env(id, dir string, s Settings, caps *Caps) []string {
 	if source == "platen" {
 		maxPages = 1
 	}
-	w, h := Area(caps, source)
+	w, h := Extent(caps, Settings{Source: source, Resolution: s.Resolution, Size: s.Size})
+	page, pw, ph := pageSize(Settings{Source: source, Size: s.Size})
 	return []string{
 		"TLX_WIA_DEVICE=" + id,
 		"TLX_WIA_OUT=" + dir,
@@ -733,28 +782,32 @@ func Env(id, dir string, s Settings, caps *Caps) []string {
 		"TLX_WIA_DATATYPE=" + strconv.Itoa(dataType),
 		"TLX_WIA_DEPTH=" + strconv.Itoa(depth),
 		"TLX_WIA_DPI=" + strconv.Itoa(s.Resolution),
-		"TLX_WIA_WIDTH=" + strconv.Itoa(w*s.Resolution/1000),
-		"TLX_WIA_HEIGHT=" + strconv.Itoa(h*s.Resolution/1000),
+		"TLX_WIA_WIDTH=" + strconv.Itoa(w),
+		"TLX_WIA_HEIGHT=" + strconv.Itoa(h),
 		"TLX_WIA_MAXPAGES=" + strconv.Itoa(maxPages),
+		"TLX_WIA_PAGE=" + page,
+		"TLX_WIA_PAGEWIDTH=" + strconv.Itoa(pw),
+		"TLX_WIA_PAGEHEIGHT=" + strconv.Itoa(ph),
 	}
 }
 
 var pageName = regexp.MustCompile(`^page-\d{3,4}\.(jpg|jpeg|png|bmp)$`)
 
 // Scan scans with the scanner id and returns its pages.
-func (l *Local) Scan(parent context.Context, id string, s Settings, caps *Caps, idle time.Duration) ([]Page, error) {
+func (l *Local) Scan(parent context.Context, id string, s Settings, caps *Caps, idle time.Duration) (Result, error) {
 	if !l.Available() {
-		return nil, &Error{Kind: KindNoWIA, Detail: "this computer isn't running Windows"}
+		return Result{}, &Error{Kind: KindNoWIA, Detail: "this computer isn't running Windows"}
 	}
 	base, err := l.tempDir()
 	if err != nil {
-		return nil, &Error{Kind: KindDevice, Detail: "the helper couldn't make a folder for the scan", Err: err}
+		return Result{}, &Error{Kind: KindDevice, Detail: "the helper couldn't make a folder for the scan", Err: err}
 	}
 	dir, err := os.MkdirTemp(base, "scan-")
 	if err != nil {
-		return nil, &Error{Kind: KindDevice, Detail: "the helper couldn't make a folder for the scan", Err: err}
+		return Result{}, &Error{Kind: KindDevice, Detail: "the helper couldn't make a folder for the scan", Err: err}
 	}
 	defer os.RemoveAll(dir)
+	progress.Report(parent, progress.Connecting, 0)
 
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
@@ -763,10 +816,13 @@ func (l *Local) Scan(parent context.Context, id string, s Settings, caps *Caps, 
 	defer timer.Stop()
 
 	var (
-		pages   []Page
-		scanErr *Error
-		readErr error
-		ended   bool
+		pages    []Page
+		scanErr  *Error
+		readErr  error
+		ended    bool
+		area     = [2]int{0, 0} // as the script said it; -1 a side it couldn't set
+		areaSaid bool
+		pageSet  string // the feeder's page size: "1" set, "0" not, "" not asked
 	)
 	runErr := l.Run(ctx, Script("scan"), Env(id, dir, s, caps), func(line string) {
 		f := strings.Fields(line)
@@ -785,6 +841,24 @@ func (l *Local) Scan(parent context.Context, id string, s Settings, caps *Caps, 
 				return
 			}
 			pages = append(pages, pg)
+		case "SCANNING":
+			if len(f) > 1 {
+				if n, err := strconv.Atoi(f[1]); err == nil && n > 0 {
+					progress.Report(parent, progress.Scanning, n)
+				}
+			}
+		case "AREA":
+			if len(f) > 2 {
+				w, err1 := strconv.Atoi(f[1])
+				h, err2 := strconv.Atoi(f[2])
+				if err1 == nil && err2 == nil {
+					area, areaSaid = [2]int{w, h}, true
+				}
+			}
+		case "PAGESIZE":
+			if len(f) > 1 {
+				pageSet = f[1]
+			}
 		case "ERR":
 			scanErr = parseErr(f[1:])
 		case "WARN":
@@ -797,19 +871,34 @@ func (l *Local) Scan(parent context.Context, id string, s Settings, caps *Caps, 
 	})
 	switch {
 	case timedOut.Load():
-		return nil, &Error{Kind: KindTimeout, Err: runErr}
+		return Result{}, &Error{Kind: KindTimeout, Err: runErr}
 	case parent.Err() != nil:
-		return nil, &Error{Kind: KindCanceled, Err: parent.Err()}
+		return Result{}, &Error{Kind: KindCanceled, Err: parent.Err()}
 	case scanErr != nil:
-		return nil, scanErr
+		return Result{}, scanErr
 	case readErr != nil:
-		return nil, &Error{Kind: KindDevice, Detail: "the helper couldn't read the scanned page", Err: readErr}
+		return Result{}, &Error{Kind: KindDevice, Detail: "the helper couldn't read the scanned page", Err: readErr}
 	case len(pages) == 0 && runErr != nil && !ended:
-		return nil, &Error{Kind: KindNoWIA, Detail: "Windows PowerShell didn't run", Err: runErr}
+		return Result{}, &Error{Kind: KindNoWIA, Detail: "Windows PowerShell didn't run", Err: runErr}
 	case len(pages) == 0:
-		return nil, &Error{Kind: KindDevice, Detail: "it finished without sending a page"}
+		return Result{}, &Error{Kind: KindDevice, Detail: "it finished without sending a page"}
 	}
-	return pages, nil
+	return resultOf(pages, s, area, areaSaid, pageSet), nil
+}
+
+// resultOf puts together what a scan gave and what the script said of its
+// area: the area it took, and whether the size asked couldn't be used.
+func resultOf(pages []Page, s Settings, area [2]int, areaSaid bool, pageSet string) Result {
+	res := Result{Pages: pages}
+	areaSet := areaSaid && area[0] > 0 && area[1] > 0
+	if areaSet {
+		res.Width, res.Height = area[0], area[1]
+	}
+	if !s.Size.IsZero() && areaSaid && !areaSet {
+		// The feeder's page also follows its page size, when that was set.
+		res.SizeIgnored = !(s.Source == "feeder" && pageSet == "1")
+	}
+	return res
 }
 
 // readPage reads a page the script wrote and deletes it at once.

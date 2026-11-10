@@ -21,7 +21,9 @@ import (
 
 	"trendlix.com/scan-helper/internal/config"
 	"trendlix.com/scan-helper/internal/escl"
+	"trendlix.com/scan-helper/internal/paper"
 	"trendlix.com/scan-helper/internal/pdf"
+	"trendlix.com/scan-helper/internal/progress"
 	"trendlix.com/scan-helper/internal/wia"
 )
 
@@ -60,6 +62,11 @@ const (
 	msgLocalWarmingUp   = "The scanner is warming up. Try again in a moment."
 	msgLocalUnreachable = "The scanner didn't answer. Check that it is switched on and connected to this computer (its USB cable, or the network for a network scanner), then try again."
 	msgNoWIA            = "Windows' scanning (Windows Image Acquisition) isn't working on this computer. Restart the computer and try again."
+
+	msgSizeUnknown   = "The scan size isn't one the helper knows. Choose A4, A5 or Letter, or give its width and height in millimetres."
+	msgSizeBad       = "The scan size isn't possible. Give its width and height in millimetres, each from 10 to 1000."
+	msgGlassAreaUsed = "This scanner doesn't let the helper choose the area to scan, so the whole glass was scanned."
+	msgFeederSize    = "This scanner's document feeder doesn't let the helper choose the page size, so the pages were scanned at the size the scanner chose."
 )
 
 // Listen opens the helper's port on 127.0.0.1 only, never on other
@@ -106,6 +113,9 @@ type Server struct {
 	busyMu  sync.Mutex
 	busy    map[string]bool
 	now     func() time.Time
+
+	watchMu sync.Mutex
+	watches map[string][]*scanWatch // the scans under way, by the web app's origin
 }
 
 // New makes a Server. The allowed origins are read from the config once.
@@ -113,7 +123,7 @@ func New(opts Options) *Server {
 	if opts.ScanTimeout <= 0 {
 		opts.ScanTimeout = DefaultScanTimeout
 	}
-	s := &Server{opts: opts, origins: map[string]bool{}, busy: map[string]bool{}, now: time.Now}
+	s := &Server{opts: opts, origins: map[string]bool{}, busy: map[string]bool{}, now: time.Now, watches: map[string][]*scanWatch{}}
 	for _, o := range DefaultOrigins {
 		s.origins[o] = true
 	}
@@ -131,6 +141,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/scanners", s.handleScanners)
 	mux.HandleFunc("/v1/scanners/{id}", s.handleScanner)
 	mux.HandleFunc("/v1/scan", s.handleScan)
+	mux.HandleFunc("/v1/scan/state", s.handleScanState)
 	return s.guard(mux)
 }
 
@@ -292,6 +303,9 @@ type scanRequest struct {
 	// Output is "pdf" (the default): one PDF with every page; or "images":
 	// the pages as JPEG pictures in JSON (see writeImages).
 	Output string `json:"output"`
+	// Size is the area to scan from the scanner's origin corner: "A4" (the
+	// default), "A5", "Letter", or { "widthMm", "heightMm" } (package paper).
+	Size json.RawMessage `json:"size"`
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
@@ -336,6 +350,15 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "The scan was asked for in a form the helper can't give. Reload the page and try again.")
 		return
 	}
+	size, err := paper.Parse(req.Size)
+	if err != nil {
+		if errors.Is(err, paper.ErrBadMm) {
+			writeError(w, http.StatusBadRequest, msgSizeBad)
+		} else {
+			writeError(w, http.StatusBadRequest, msgSizeUnknown)
+		}
+		return
+	}
 	if strings.TrimSpace(req.ScannerID) == "" {
 		writeError(w, http.StatusBadRequest, "Choose a scanner first.")
 		return
@@ -345,8 +368,13 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "That scanner isn't available any more. Refresh the list of scanners and try again.")
 		return
 	}
+	// Where the scan stands, for GET /v1/scan/state from the same web app.
+	origin := config.NormalizeOrigin(r.Header.Get("Origin"))
+	sw := s.watch(origin, req.ScannerID)
+	defer s.unwatch(origin, sw)
+	ctx := progress.With(r.Context(), sw.set)
 	if tg.Local {
-		s.scanLocal(w, r, tg, source, req.Duplex, mode, dpi, output)
+		s.scanLocal(ctx, w, tg, source, req.Duplex, mode, dpi, output, size)
 		return
 	}
 
@@ -388,7 +416,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		}
 		format = "image/png"
 	}
-	width, height := escl.Region(in)
+	width, height := escl.Region(in, size)
 	settings := escl.ScanSettings{
 		Version:    caps.Version,
 		Source:     map[string]string{"platen": escl.SourcePlaten, "feeder": escl.SourceFeeder}[source],
@@ -411,20 +439,22 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	if duplex {
 		sides = ", both sides"
 	}
-	s.opts.Log.Printf("scan started on %q (%s): %s%s, %s, %d dpi, %s", tg.Name, tg.URL, source, sides, settings.ColorMode, settings.Resolution, format)
-	docs, err := s.opts.Client.Scan(r.Context(), tg.URL, settings, s.opts.ScanTimeout)
+	s.opts.Log.Printf("scan started on %q (%s): %s%s, %s, %d dpi, %s, %s (%d x %d)", tg.Name, tg.URL, source, sides, settings.ColorMode, settings.Resolution, format,
+		size.OrA4(), width, height)
+	docs, err := s.opts.Client.Scan(ctx, tg.URL, settings, s.opts.ScanTimeout)
 	if err != nil {
 		s.writeScanError(w, err, tg)
 		return
 	}
-	s.writeScan(w, docs, settings.Resolution, output, tg, started)
+	progress.Report(ctx, progress.Transferring, len(docs))
+	s.writeScan(w, docs, settings.Resolution, output, tg, started, "")
 }
 
 // scanLocal scans with a scanner installed in Windows (WIA).
-func (s *Server) scanLocal(w http.ResponseWriter, r *http.Request, tg target, source string, duplex bool, mode string, dpi int, output string) {
+func (s *Server) scanLocal(ctx context.Context, w http.ResponseWriter, tg target, source string, duplex bool, mode string, dpi int, output string, size paper.Size) {
 	caps := tg.LocalCaps
 	duplex = duplex && source == "feeder"
-	settings := wia.Settings{Source: source, Duplex: duplex, ColorMode: mode, Resolution: dpi}
+	settings := wia.Settings{Source: source, Duplex: duplex, ColorMode: mode, Resolution: dpi, Size: size}
 	if caps != nil {
 		if !slices.Contains(caps.Sources, source) {
 			if source == "feeder" {
@@ -455,26 +485,50 @@ func (s *Server) scanLocal(w http.ResponseWriter, r *http.Request, tg target, so
 	if duplex {
 		sides = ", both sides"
 	}
-	s.opts.Log.Printf("scan started on %q (installed in Windows): %s%s, %s, %d dpi", tg.Name, source, sides, settings.ColorMode, settings.Resolution)
-	pages, err := s.opts.Registry.Local.Scan(r.Context(), tg.DeviceID, settings, caps, s.opts.ScanTimeout)
+	s.opts.Log.Printf("scan started on %q (installed in Windows): %s%s, %s, %d dpi, %s", tg.Name, source, sides, settings.ColorMode, settings.Resolution, size.OrA4())
+	res, err := s.opts.Registry.Local.Scan(ctx, tg.DeviceID, settings, caps, s.opts.ScanTimeout)
 	if err != nil {
 		s.writeLocalError(w, err, tg)
 		return
 	}
-	docs := make([]escl.Document, len(pages))
-	for i, p := range pages {
+	warning := ""
+	if res.SizeIgnored {
+		warning = msgGlassAreaUsed
+		if source == "feeder" {
+			warning = msgFeederSize
+		}
+	}
+	if res.Width > 0 && res.Height > 0 {
+		s.opts.Log.Printf("scan area on %q: %d x %d pixels", tg.Name, res.Width, res.Height)
+	}
+	docs := make([]escl.Document, len(res.Pages))
+	for i, p := range res.Pages {
 		docs[i] = escl.Document{ContentType: p.ContentType, Data: p.Data}
 	}
-	s.writeScan(w, docs, settings.Resolution, output, tg, started)
+	progress.Report(ctx, progress.Transferring, len(docs))
+	s.writeScan(w, docs, settings.Resolution, output, tg, started, warning)
 }
 
-// writeScan answers a scan: one PDF, or the pages as pictures.
-func (s *Server) writeScan(w http.ResponseWriter, docs []escl.Document, dpi int, output string, tg target, started time.Time) {
+// joinWarnings puts warnings together, leaving out empty ones.
+func joinWarnings(ws ...string) string {
+	var out []string
+	for _, w := range ws {
+		if w != "" {
+			out = append(out, w)
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+// writeScan answers a scan: one PDF, or the pages as pictures. warning is
+// what the scan itself has to say (the size asked couldn't be used).
+func (s *Server) writeScan(w http.ResponseWriter, docs []escl.Document, dpi int, output string, tg target, started time.Time, warning string) {
 	if output == "images" {
-		s.writeImages(w, docs, dpi, tg, started)
+		s.writeImages(w, docs, dpi, tg, started, warning)
 		return
 	}
-	data, pages, warning, err := assemble(docs, dpi, "TrendLIX Scan Helper "+s.opts.Version, s.now())
+	data, pages, pdfWarning, err := assemble(docs, dpi, "TrendLIX Scan Helper "+s.opts.Version, s.now())
+	warning = joinWarnings(warning, pdfWarning)
 	if err != nil {
 		s.opts.Log.Printf("scan on %q failed: %v", tg.Name, err)
 		writeError(w, http.StatusBadGateway, "The scanner reported an error: "+err.Error()+".")
@@ -514,13 +568,14 @@ type ImagesAnswer struct {
 
 // writeImages answers the pages as JPEG pictures in JSON, for a web page
 // that works on the picture itself (an ID card, a photo).
-func (s *Server) writeImages(w http.ResponseWriter, docs []escl.Document, dpi int, tg target, started time.Time) {
+func (s *Server) writeImages(w http.ResponseWriter, docs []escl.Document, dpi int, tg target, started time.Time, warning string) {
 	ans, err := images(docs, dpi)
 	if err != nil {
 		s.opts.Log.Printf("scan on %q failed: %v", tg.Name, err)
 		writeError(w, http.StatusBadGateway, "The scanner reported an error: "+err.Error()+".")
 		return
 	}
+	ans.Warning = joinWarnings(warning, ans.Warning)
 	data, _ := json.Marshal(ans)
 	h := w.Header()
 	h.Set("Content-Type", "application/json; charset=utf-8")
@@ -577,6 +632,82 @@ func images(docs []escl.Document, dpi int) (ImagesAnswer, error) {
 		})
 	}
 	return ans, nil
+}
+
+// scanWatch is where a scan under way stands, for GET /v1/scan/state.
+type scanWatch struct {
+	scannerID string
+	started   time.Time
+
+	mu    sync.Mutex
+	stage string
+	page  int
+}
+
+func (sw *scanWatch) set(stage string, page int) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	sw.stage, sw.page = stage, page
+}
+
+// ScanState is the answer of GET /v1/scan/state.
+type ScanState struct {
+	// State is "connecting", "scanning", "transferring" or "idle".
+	State string `json:"state"`
+	// Page is the page being scanned or on its way (1 for the first; the
+	// number of pages once they are all on their way to the web page); 0
+	// while connecting, or idle.
+	Page      int    `json:"page"`
+	ScannerID string `json:"scannerId,omitempty"`
+	StartedAt string `json:"startedAt,omitempty"` // RFC 3339, UTC
+}
+
+// watch starts following a scan asked by origin.
+func (s *Server) watch(origin, scannerID string) *scanWatch {
+	sw := &scanWatch{scannerID: scannerID, started: s.now(), stage: progress.Connecting}
+	s.watchMu.Lock()
+	defer s.watchMu.Unlock()
+	s.watches[origin] = append(s.watches[origin], sw)
+	return sw
+}
+
+// unwatch stops following a scan, which has ended.
+func (s *Server) unwatch(origin string, sw *scanWatch) {
+	s.watchMu.Lock()
+	defer s.watchMu.Unlock()
+	list := slices.DeleteFunc(s.watches[origin], func(x *scanWatch) bool { return x == sw })
+	if len(list) == 0 {
+		delete(s.watches, origin)
+		return
+	}
+	s.watches[origin] = list
+}
+
+// handleScanState answers where the scan the same web app started last, and
+// is still under way, stands; "idle" when there is none. A request without
+// an Origin (another program, the address bar) is told "idle": it can't see
+// a web app's scans.
+func (s *Server) handleScanState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		methodNotAllowed(w)
+		return
+	}
+	st := ScanState{State: progress.Idle}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		s.watchMu.Lock()
+		list := s.watches[config.NormalizeOrigin(origin)]
+		var sw *scanWatch
+		if len(list) > 0 {
+			sw = list[len(list)-1]
+		}
+		s.watchMu.Unlock()
+		if sw != nil {
+			sw.mu.Lock()
+			st = ScanState{State: sw.stage, Page: sw.page, ScannerID: sw.scannerID, StartedAt: sw.started.UTC().Format(time.RFC3339)}
+			sw.mu.Unlock()
+		}
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 func (s *Server) claim(u string) bool {

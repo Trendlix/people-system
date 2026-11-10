@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"trendlix.com/scan-helper/internal/progress"
 )
 
 // Limits that keep a misbehaving scanner from filling the memory.
@@ -28,7 +30,7 @@ type ScanSettings struct {
 	ColorMode  string // RGB24, Grayscale8, BlackAndWhite1
 	Resolution int    // dpi, both directions
 	Format     string // MIME type to ask for
-	Width      int    // scan area, 1/300 inch
+	Width      int    // scan area, 1/300 inch, from the origin corner
 	Height     int
 }
 
@@ -74,7 +76,8 @@ type Document struct {
 //
 // The platen gives one document; the feeder is read until the scanner says
 // there are no more. idle limits how long the scanner may go without
-// delivering a page; the timer restarts with each page.
+// delivering a page; the timer restarts with each page. Where the scan stands
+// is reported to the watcher ctx carries (package progress), if any.
 func (c *Client) Scan(parent context.Context, base string, s ScanSettings, idle time.Duration) (docs []Document, err error) {
 	feeder := s.Source == SourceFeeder
 	if feeder && c.feederEmpty(parent, base) {
@@ -100,6 +103,7 @@ func (c *Client) Scan(parent context.Context, base string, s ScanSettings, idle 
 		return &Error{Kind: KindUnreachable, Err: e}
 	}
 
+	progress.Report(parent, progress.Connecting, 0)
 	job, err := c.createJob(ctx, base, s)
 	if err != nil {
 		var se *Error
@@ -119,8 +123,9 @@ func (c *Client) Scan(parent context.Context, base string, s ScanSettings, idle 
 		}
 	}()
 
+	progress.Report(parent, progress.Scanning, 1)
 	for {
-		doc, status, wait, rerr := c.nextDocument(ctx, job)
+		doc, status, wait, rerr := c.nextDocument(ctx, job, len(docs)+1)
 		if rerr != nil {
 			return nil, transportErr(rerr)
 		}
@@ -135,6 +140,7 @@ func (c *Client) Scan(parent context.Context, base string, s ScanSettings, idle 
 				c.cancelJob(job)
 				return docs, nil
 			}
+			progress.Report(parent, progress.Scanning, len(docs)+1)
 		case status == http.StatusNotFound:
 			if len(docs) > 0 {
 				return docs, nil
@@ -243,7 +249,8 @@ func JobURL(base, location string) (string, error) {
 	return strings.TrimRight(u.String(), "/"), nil
 }
 
-func (c *Client) nextDocument(ctx context.Context, job string) (Document, int, time.Duration, error) {
+// nextDocument asks for the next page (page, 1 for the first).
+func (c *Client) nextDocument(ctx context.Context, job string, page int) (Document, int, time.Duration, error) {
 	resp, err := c.request(ctx, http.MethodGet, job+"/NextDocument", nil)
 	if err != nil {
 		return Document{}, 0, 0, err
@@ -252,6 +259,7 @@ func (c *Client) nextDocument(ctx context.Context, job string) (Document, int, t
 	if resp.StatusCode != http.StatusOK {
 		return Document{}, resp.StatusCode, retryAfter(resp), nil
 	}
+	progress.Report(ctx, progress.Transferring, page)
 	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxDocumentSize+1))
 	if err != nil {
 		return Document{}, 0, 0, err

@@ -17,6 +17,7 @@ import (
 	"trendlix.com/scan-helper/internal/config"
 	"trendlix.com/scan-helper/internal/discovery"
 	"trendlix.com/scan-helper/internal/escl"
+	"trendlix.com/scan-helper/internal/paper"
 	"trendlix.com/scan-helper/internal/wia"
 )
 
@@ -31,7 +32,12 @@ type Scanner struct {
 	ColorModes  []string `json:"colorModes"`
 	Resolutions []int    `json:"resolutions"`
 	Formats     []string `json:"formats"`
-	Manual      bool     `json:"manual"`
+	// Sizes are the named scan sizes (A4, A5, Letter) that fit the glass,
+	// or the feeder of a scanner without one: all of them while the scanner
+	// hasn't said how big it is. Any of them, or a size in millimetres, may
+	// be asked; a larger one is reduced to the glass.
+	Sizes  []string `json:"sizes"`
+	Manual bool     `json:"manual"`
 	// Kind is KindESCL for a network scanner the helper talks to itself, or
 	// KindWIA for a scanner installed in Windows on this computer (a USB
 	// scanner, or a network scanner added in Windows).
@@ -569,6 +575,7 @@ func (r *Registry) scannerLocked(u, name, instance string, txt map[string]string
 		sc.ColorModes = caps.ColorModes()
 		sc.Resolutions = caps.Resolutions()
 		sc.Formats = caps.Formats()
+		sc.Sizes = caps.Sizes()
 	} else {
 		sc.Sources, sc.ColorModes, sc.Duplex, sc.Formats = fromTXT(txt)
 	}
@@ -583,6 +590,9 @@ func (r *Registry) scannerLocked(u, name, instance string, txt map[string]string
 	}
 	if len(sc.Formats) == 0 {
 		sc.Formats = []string{"image/jpeg"}
+	}
+	if len(sc.Sizes) == 0 {
+		sc.Sizes = paper.NamesThatFit(0, 0)
 	}
 	return sc
 }
@@ -603,6 +613,7 @@ func (r *Registry) localScannerLocked(d wia.Device) Scanner {
 		sc.Duplex = c.caps.Duplex
 		sc.ColorModes = slices.Clone(c.caps.ColorModes)
 		sc.Resolutions = slices.Clone(c.caps.Resolutions)
+		sc.Sizes = c.caps.Sizes()
 	}
 	if len(sc.Sources) == 0 {
 		sc.Sources = []string{"platen"}
@@ -612,6 +623,9 @@ func (r *Registry) localScannerLocked(d wia.Device) Scanner {
 	}
 	if len(sc.Resolutions) == 0 {
 		sc.Resolutions = []int{300}
+	}
+	if len(sc.Sizes) == 0 {
+		sc.Sizes = paper.NamesThatFit(0, 0)
 	}
 	return sc
 }

@@ -6,12 +6,15 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"trendlix.com/scan-helper/internal/escl"
 	"trendlix.com/scan-helper/internal/escltest"
+	"trendlix.com/scan-helper/internal/paper"
+	"trendlix.com/scan-helper/internal/progress"
 )
 
 func TestParseCapabilitiesPlatenAndDuplexFeeder(t *testing.T) {
@@ -68,7 +71,7 @@ func TestParseCapabilitiesRangeAndProfileRef(t *testing.T) {
 	if f, ok := escl.ChooseFormat(c.Platen); !ok || f != "application/pdf" {
 		t.Errorf("format = %q %v", f, ok)
 	}
-	if w, h := escl.Region(c.Platen); w != 2480 || h != 3295 {
+	if w, h := escl.Region(c.Platen, paper.Size{}); w != 2480 || h != 3295 {
 		t.Errorf("region = %dx%d, want A4 width clamped to max height", w, h)
 	}
 }
@@ -226,5 +229,90 @@ func TestIsLANAddress(t *testing.T) {
 		if got := escl.IsLANAddress(net.ParseIP(ip)); got != want {
 			t.Errorf("IsLANAddress(%s) = %v, want %v", ip, got, want)
 		}
+	}
+}
+
+// The area asked is sent as the scan region, in 1/300 inch from the origin
+// corner, reduced to the glass (or the feeder) and raised to its minimum.
+func TestScanRegionFromSize(t *testing.T) {
+	c, err := escl.ParseCapabilities([]byte(escltest.HPCapabilities)) // glass 2550 x 3508, feeder 2550 x 4200 (591 at least)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, h := paper.A4.In300ths(); w != escl.A4Width || h != escl.A4Height {
+		t.Errorf("A4 = %d x %d, want %d x %d", w, h, escl.A4Width, escl.A4Height)
+	}
+	cases := []struct {
+		name string
+		in   *escl.InputCaps
+		size paper.Size
+		w, h int
+	}{
+		{"no size: A4, as before", c.Platen, paper.Size{}, 2480, 3508},
+		{"A4", c.Platen, paper.A4, 2480, 3508},
+		{"A5", c.Platen, paper.A5, 1748, 2480},
+		{"Letter", c.Platen, paper.Letter, 2550, 3300},
+		{"100 x 150 mm", c.Platen, paper.Size{W: 10000, H: 15000}, 1181, 1772},
+		{"larger than the glass", c.Platen, paper.Size{W: 40000, H: 50000}, 2550, 3508},
+		{"feeder, A5", c.Feeder, paper.A5, 1748, 2480},
+		{"feeder, larger", c.Feeder, paper.Size{W: 30000, H: 40000}, 2550, 4200},
+		{"feeder, smaller than its smallest page", c.Feeder, paper.Size{W: 2000, H: 2000}, 591, 591},
+		{"unknown source", nil, paper.A5, 1748, 2480},
+	}
+	for _, cs := range cases {
+		w, h := escl.Region(cs.in, cs.size)
+		if w != cs.w || h != cs.h {
+			t.Errorf("%s: region = %d x %d, want %d x %d", cs.name, w, h, cs.w, cs.h)
+			continue
+		}
+		// As the scanner reads it.
+		s := escl.ScanSettings{Version: "2.63", Source: escl.SourcePlaten, ColorMode: "RGB24", Resolution: 300, Format: "image/jpeg", Width: w, Height: h}
+		var x struct {
+			Units   string `xml:"ScanRegions>ScanRegion>ContentRegionUnits"`
+			Width   int    `xml:"ScanRegions>ScanRegion>Width"`
+			Height  int    `xml:"ScanRegions>ScanRegion>Height"`
+			XOffset int    `xml:"ScanRegions>ScanRegion>XOffset"`
+			YOffset int    `xml:"ScanRegions>ScanRegion>YOffset"`
+			XRes    int    `xml:"XResolution"`
+		}
+		if err := xml.Unmarshal(s.XML(), &x); err != nil {
+			t.Fatalf("%s: %v", cs.name, err)
+		}
+		if x.Units != "escl:ThreeHundredthsOfInches" || x.Width != cs.w || x.Height != cs.h || x.XOffset != 0 || x.YOffset != 0 || x.XRes != 300 {
+			t.Errorf("%s: ScanSettings say %+v", cs.name, x)
+		}
+	}
+	if got := c.Sizes(); !slices.Equal(got, []string{"A4", "A5", "Letter"}) {
+		t.Errorf("sizes = %v", got)
+	}
+	pdfOnly, _ := escl.ParseCapabilities([]byte(escltest.PlatenPDFCapabilities)) // glass 279 mm long
+	if got := pdfOnly.Sizes(); !slices.Equal(got, []string{"A5", "Letter"}) {
+		t.Errorf("sizes of a Letter glass = %v", got)
+	}
+	if got := (&escl.Capabilities{Feeder: &escl.InputCaps{MaxWidth: 2550, MaxHeight: 2600}}).Sizes(); !slices.Equal(got, []string{"A5"}) {
+		t.Errorf("sizes of a feeder-only scanner = %v", got)
+	}
+}
+
+// A scan says where it stands: connecting, then each page scanned and on its
+// way.
+func TestScanReportsProgress(t *testing.T) {
+	f := &escltest.Scanner{FeederPages: 2}
+	f.Start(false)
+	defer f.Close()
+	var got []string
+	ctx := progress.With(context.Background(), func(stage string, page int) {
+		got = append(got, stage+" "+strconv.Itoa(page))
+	})
+	docs, err := escl.NewClient("test").Scan(ctx, f.BaseURL(), escl.ScanSettings{Source: escl.SourceFeeder, ColorMode: "RGB24", Resolution: 300, Format: "image/jpeg", Width: 1748, Height: 2480}, 5*time.Second)
+	if err != nil || len(docs) != 2 {
+		t.Fatalf("scan = %d pages, %v", len(docs), err)
+	}
+	want := []string{"connecting 0", "scanning 1", "transferring 1", "scanning 2", "transferring 2", "scanning 3"}
+	if !slices.Equal(got, want) {
+		t.Errorf("progress = %v, want %v", got, want)
+	}
+	if s := f.Settings()[0]; !strings.Contains(s, "<pwg:Width>1748</pwg:Width>") || !strings.Contains(s, "<pwg:Height>2480</pwg:Height>") {
+		t.Errorf("the scanner was asked\n%s", s)
 	}
 }

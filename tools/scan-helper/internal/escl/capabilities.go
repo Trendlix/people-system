@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"trendlix.com/scan-helper/internal/paper"
 )
 
 // Input sources as eSCL names them in ScanSettings.
@@ -19,7 +21,8 @@ const (
 	SourceFeeder = "Feeder"
 )
 
-// A4 in 1/300 inch, the scan area we ask for unless the scanner is smaller.
+// A4 in 1/300 inch, the scan area asked for when no size is (and the scanner
+// isn't smaller).
 const (
 	A4Width  = 2480
 	A4Height = 3508
@@ -39,6 +42,8 @@ type Capabilities struct {
 type InputCaps struct {
 	MaxWidth    int      // in 1/300 inch, 0 when unknown
 	MaxHeight   int      // in 1/300 inch, 0 when unknown
+	MinWidth    int      // in 1/300 inch, 0 when unknown
+	MinHeight   int      // in 1/300 inch, 0 when unknown
 	ColorModes  []string // eSCL names: RGB24, Grayscale8, BlackAndWhite1, ...
 	Resolutions []int    // dpi, ascending
 	Formats     []string // MIME types, e.g. image/jpeg, application/pdf
@@ -67,6 +72,8 @@ type xmlCapabilities struct {
 type xmlInputCaps struct {
 	MaxWidth  string       `xml:"MaxWidth"`
 	MaxHeight string       `xml:"MaxHeight"`
+	MinWidth  string       `xml:"MinWidth"`
+	MinHeight string       `xml:"MinHeight"`
 	Profiles  []xmlProfile `xml:"SettingProfiles>SettingProfile"`
 }
 
@@ -145,6 +152,8 @@ func convertInput(in *xmlInputCaps, named map[string]xmlProfile) *InputCaps {
 	ic := &InputCaps{
 		MaxWidth:    atoi(in.MaxWidth),
 		MaxHeight:   atoi(in.MaxHeight),
+		MinWidth:    atoi(in.MinWidth),
+		MinHeight:   atoi(in.MinHeight),
 		ColorModes:  []string{},
 		Resolutions: []int{},
 		Formats:     []string{},
@@ -358,17 +367,42 @@ func ChooseFormat(in *InputCaps) (string, bool) {
 	return "", false
 }
 
-// Region returns the scan area in 1/300 inch: A4, or less when the source is
-// smaller.
-func Region(in *InputCaps) (width, height int) {
-	width, height = A4Width, A4Height
+// Region returns the scan area in 1/300 inch, from the scanner's origin
+// corner: the size asked (A4 when none is), reduced to the source's maximum
+// and raised to its minimum.
+func Region(in *InputCaps, size paper.Size) (width, height int) {
+	width, height = size.OrA4().In300ths()
 	if in != nil {
-		if in.MaxWidth > 0 {
-			width = min(width, in.MaxWidth)
-		}
-		if in.MaxHeight > 0 {
-			height = min(height, in.MaxHeight)
-		}
+		width = fit(width, in.MinWidth, in.MaxWidth)
+		height = fit(height, in.MinHeight, in.MaxHeight)
 	}
 	return width, height
+}
+
+func fit(v, lo, hi int) int {
+	if hi > 0 {
+		v = min(v, hi)
+	}
+	if lo > 0 && (hi <= 0 || lo <= hi) {
+		v = max(v, lo)
+	}
+	return v
+}
+
+// Sizes lists the named sizes that fit the source (all of them when its size
+// is unknown).
+func (in *InputCaps) Sizes() []string {
+	if in == nil {
+		return paper.NamesThatFit(0, 0)
+	}
+	return paper.NamesThatFit(paper.FromInches(in.MaxWidth, 300), paper.FromInches(in.MaxHeight, 300))
+}
+
+// Sizes lists the named sizes that fit the glass, or the document feeder of
+// a scanner that has no glass.
+func (c *Capabilities) Sizes() []string {
+	if c.Platen != nil {
+		return c.Platen.Sizes()
+	}
+	return c.Feeder.Sizes()
 }
