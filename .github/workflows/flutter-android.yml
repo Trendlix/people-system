@@ -353,6 +353,9 @@ jobs:
     timeout-minutes: 45
     env:
       SIGNED: ${{ secrets.APPLE_SIGNING_BASE64 != '' }}
+      # App Store Connect uploads paused (owner, 10 November 2026: "dont push anything to the app store now, i need to
+      # pass the current build first"): the iPhone app is still built and signed, never uploaded, until this says on
+      APP_STORE_UPLOADS: paused
       APP_VERSION_NAME: ${{ needs.build.outputs.version }}
       APP_VERSION_CODE: ${{ needs.build.outputs.code }}
     defaults:
@@ -500,10 +503,14 @@ jobs:
       # To App Store Connect (TestFlight), signed in with the API key. Apple checks the build for some minutes; then it
       # can be tried on TestFlight and chosen for the App Store version sent for review (docs/app-store.md).
       - name: Upload to App Store Connect
-        if: github.ref == 'refs/heads/main' && env.SIGNED == 'true'
+        if: github.ref == 'refs/heads/main' && env.SIGNED == 'true' && env.APP_STORE_UPLOADS == 'on'
         run: |
           xcrun altool --upload-app -f "$IPA" -t ios --apiKey "$APPLE_KEY_ID" --apiIssuer "$APPLE_ISSUER_ID"
           echo "- Uploaded to App Store Connect: TestFlight shows it once Apple has processed it" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: App Store Connect uploads paused
+        if: github.ref == 'refs/heads/main' && env.SIGNED == 'true' && env.APP_STORE_UPLOADS != 'on'
+        run: echo "- Not uploaded: App Store Connect uploads are paused (APP_STORE_UPLOADS in the workflow)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove the signing
         if: always() && env.SIGNED == 'true'
