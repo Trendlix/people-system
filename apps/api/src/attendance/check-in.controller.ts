@@ -11,8 +11,8 @@ import { CheckInService } from './check-in.service.js';
 
 // Checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location
 // check, or a device) to replace Zoho"): the caller's own today, and a press of Check in or Check out. Anyone signed in
-// with an employee profile and a current employment under a shift, not a freelancer (the service says why not to the
-// others). A press carries the session's kind (inside the app a location is needed: owner, 20 October 2026, "App only")
+// with an employee profile and a current employment under a shift, a freelancer too since 10 November 2026 (the service
+// says why not to the others). A press carries the session's kind (inside the app a location is needed: owner, 20 October 2026, "App only")
 // and the visitor's address as the website signed it (check-ins locked to the office network, the same day), or inside
 // the Flutter app, which talks to the API itself, the connection's own (signed-ip.ts checkInIp), read for the decision
 // and never kept. Open to an account on Hold (owner, 23 October 2026: "Check-in/out only"), so its

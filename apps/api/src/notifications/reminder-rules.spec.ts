@@ -266,3 +266,19 @@ describe('a flexible days shift', () => {
     expect(due([flexible('f')], facts({ punches }), at(DAY, '17:20'))).toEqual([`check_out_reminder:u-f:${DAY}`]);
   });
 });
+
+// a freelancer checks in to have their hours counted (owner, 10 November 2026: "allow freelancer to check in to track
+// hi[s hours]"): no working hours, never absent, so no "You haven't checked in"; "Still checked in?" as for anyone
+describe('a freelancer', () => {
+  const free = person('free', { employmentType: 'freelance' });
+
+  it('isn’t reminded to check in, on the bell or as the popup', () => {
+    expect(due([free], facts(), at(DAY, '09:00'))).toEqual([]);
+    expect(checkInReminderNow(free, facts(), at(DAY, '09:30'))).toBeNull();
+  });
+
+  it('is asked "Still checked in?"', () => {
+    const punches = { [dayKey('e-free', DAY)]: [{ kind: 'in' as const, at: at(DAY, '10:00') }] };
+    expect(due([free], facts({ punches }), at(DAY, '17:20'))).toEqual([`check_out_reminder:u-free:${DAY}`]);
+  });
+});

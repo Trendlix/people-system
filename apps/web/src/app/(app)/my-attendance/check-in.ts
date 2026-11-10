@@ -186,7 +186,7 @@ export function buttonLabel(next: PunchKind, phase: PunchPhase): string {
 }
 
 /**
- * Whether the panel shows: the button (they check in), their reason quietly (a freelancer, no shift yet), or nothing at
+ * Whether the panel shows: the button (they check in), their reason quietly (no shift yet, on timesheets), or nothing at
  * all (no employee profile, no current employment: there is nothing to check in to).
  */
 export function checkInShows(view: Pick<CheckInTodayView, 'refusal'>): 'panel' | 'refusal' | 'hidden' {

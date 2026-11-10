@@ -193,7 +193,8 @@ describe('the panel', () => {
     expect(checkInShows({ refusal: null })).toBe('panel');
     expect(checkInShows({ refusal: checkInRefusal(false, null) })).toBe('hidden');
     expect(checkInShows({ refusal: checkInRefusal(true, null) })).toBe('hidden');
-    expect(checkInShows({ refusal: checkInRefusal(true, { employmentType: 'freelance', shiftId: 's1' }) })).toBe('refusal');
+    // a freelancer checks in since 10 November 2026
+    expect(checkInShows({ refusal: checkInRefusal(true, { employmentType: 'freelance', shiftId: 's1' }) })).toBe('panel');
     expect(checkInShows({ refusal: checkInRefusal(true, { employmentType: 'full_time', shiftId: null }) })).toBe('refusal');
   });
 

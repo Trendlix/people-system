@@ -542,8 +542,9 @@ export function withNoRecordDays<D extends SourcedDay>(days: readonly D[], ctx: 
 /**
  * A freelancer's days (owner, 31 October 2026, of a freelancer whose October showed 16 absent days kept from Zoho People:
  * "if no checkin required, why is it showing him absent?"): freelance work is outside the labour law and its working
- * hours, and a freelancer doesn't check in (check-in.ts checkInRefusal), so no day of theirs is an absence: a day kept as
- * absent is not counted (status rest, notCounted), never a no-show on the payroll. Their days worked stay as kept, but
+ * hours, so no day of theirs is an absence, whether they check in or not (they may since 10 November 2026, to have their
+ * hours counted: check-in.ts checkInRefusal): a day kept as absent is not counted (status rest, notCounted), never a
+ * no-show on the payroll. Their days worked stay as kept, but
  * for a long day on a shift with the rule (owner, 3 November 2026: "if more than N Hours Count as Y Hours"; `longDay`,
  * long-days.ts): counted more than its hours, the hours it counts as (`longDay` marked).
  */

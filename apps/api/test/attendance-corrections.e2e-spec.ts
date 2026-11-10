@@ -208,14 +208,13 @@ describe('Attendance corrections (e2e)', () => {
   });
 
   describe('asking', () => {
-    it('refuses a day still to come, no reason, a month whose payroll is approved, a freelancer, a day not employed', async () => {
+    it('refuses a day still to come, no reason, a month whose payroll is approved, a day not employed', async () => {
       const tomorrow = addDays(TODAY, 1);
       expect(said(await ask('rami', { date: tomorrow, kind: 'forgot_check_in', checkIn: '09:00', reason: 'Forgot' }).expect(400))[0]).toContain('is still to come');
       expect(said(await ask('rami', { date: work[PAST][0], kind: 'forgot_check_out', checkOut: '18:30' }).expect(400))).toEqual([
         'Write why the day needs correcting, e.g. I left for a client meeting and forgot to check out.',
       ]);
       expect(said(await ask('rami', { date: work[LOCKED][0], kind: 'forgot_check_in', checkIn: '09:00', reason: 'Forgot' }).expect(400))[0]).toContain('payroll is approved');
-      expect(said(await ask('fay', { date: work[PAST][0], kind: 'forgot_check_in', checkIn: '09:00', reason: 'Forgot' }).expect(400))[0]).toContain('You work freelance');
       expect(said(await ask('rami', { date: '2020-01-05', kind: 'forgot_check_in', checkIn: '09:00', reason: 'Forgot' }).expect(400))[0]).toContain('You had no employment on that day');
       expect(said(await ask('rami', { date: work[PAST][0], kind: 'forgot_check_out', checkOut: '6:30 PM', reason: 'Forgot' }).expect(400))).toEqual([
         'Enter the time of the check-out as HH:MM, e.g. 18:30.',
@@ -397,6 +396,20 @@ describe('Attendance corrections (e2e)', () => {
       });
       // once only
       expect(said(await cancel(superAdmin, 'Again').expect(409))[0]).toContain('only approved corrections are cancelled here');
+    });
+
+    // a freelancer checks in since 10 November 2026 (owner: "allow freelancer to check in to track hi[s hours]"), so
+    // their day is corrected too
+    it('a freelancer’s day too', async () => {
+      const date = work[PAST][6];
+      try {
+        const res = (await direct(superAdmin, { employeeId: ids.fay, date, kind: 'forgot_check_out', checkIn: '09:00', checkOut: '15:00', reason: 'Left for a shoot' }).expect(201)).body as Correction;
+        expect(res).toMatchObject({ status: 'approved' });
+        expect((await personMonth('fay', PAST)).person.days.find((d) => d.date === date)).toMatchObject({ source: 'correction', status: 'worked', hoursCounted: 6 });
+      } finally {
+        await prisma.attendanceCorrection.deleteMany({ where: { employeeId: ids.fay } });
+        await prisma.attendanceDay.deleteMany({ where: { employeeId: ids.fay } });
+      }
     });
 
     it('never their own day; a C-level person’s too', async () => {

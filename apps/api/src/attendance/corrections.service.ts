@@ -86,8 +86,8 @@ export interface MonthCorrectable {
 // was wrong, the right times and why (packages/shared correctionProblems: a day gone by or today, a month whose payroll
 // isn't approved, asked within 2 working days of the day (owner, 31 October 2026: "locked after 2 working days";
 // correction-window.ts), no correction of the day already being decided, not a day of leave, what each kind needs), under the
-// employment the day is in (not a freelancer's). Decided exactly as leave is (leave/access.ts): their direct manager, else
-// their team lead, else their department's head, never themself, then HR; nobody in charge: straight to HR; a C-level
+// employment the day is in (a freelancer's too since 10 November 2026, as they check in). Decided exactly as leave is
+// (leave/access.ts): their direct manager, else their team lead, else their department's head, never themself, then HR; nobody in charge: straight to HR; a C-level
 // person's HR stage by the CEO (owner, 19 October 2026: "make C level Employees details not visible to HR"). The employee
 // cancels theirs while it is being decided. Approved at its last stage, the day is changed (CorrectionDaysService: kept as
 // source 'correction' over the day it corrects, which stays as it was, its hours counted again), the month's draft payroll
@@ -348,14 +348,11 @@ export class AttendanceCorrectionsService {
     const employment = await this.prisma.employment.findFirst({
       where: { employeeId, joinDate: { lte: toDateOnly(dto.date) }, OR: [{ endDate: null }, { endDate: { gte: toDateOnly(dto.date) } }] },
       orderBy: { joinDate: 'desc' },
-      select: { id: true, employmentType: true, worksOnTimesheets: true, managerId: true, departmentId: true, employee: { select: { fullNameEn: true } }, shift: { select: { workingDays: true } } },
+      select: { id: true, worksOnTimesheets: true, managerId: true, departmentId: true, employee: { select: { fullNameEn: true } }, shift: { select: { workingDays: true } } },
     });
     const name = byHr ? (employment?.employee.fullNameEn ?? null) : null;
     if (!employment) {
       throw new BadRequestException([byHr ? 'Choose a day within one of their employments.' : 'You had no employment on that day, so there is no attendance of yours to correct.']);
-    }
-    if (employment.employmentType === 'freelance') {
-      throw new BadRequestException([`${name ? `${name} works` : 'You work'} freelance: freelance work is outside the labour law and its working hours, so there is no attendance to correct.`]);
     }
     // someone HR switched to timesheets (4 November 2026): their hours are on their timesheet, not checked in
     if (employment.worksOnTimesheets) {

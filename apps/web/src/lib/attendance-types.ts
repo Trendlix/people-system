@@ -454,6 +454,8 @@ export interface LinkedPersonView {
 export interface LinkablePersonView extends LinkedPersonView {
   department: string | null;
   suggestedFrom?: SuggestedExemptionStart | null;
+  /** A freelancer (10 November 2026): checks in and may be linked, never exempted; left out by an API from before it. */
+  freelance?: boolean;
 }
 
 /** GET /employees/:id/check-in-places: the sub-locations a person is linked to, by name (their profile). */

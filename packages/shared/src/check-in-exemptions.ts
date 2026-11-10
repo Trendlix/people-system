@@ -17,8 +17,8 @@
 // paid months never change; a run with the CEO would miss it). Adding or ending one refills the drafts of its months.
 // Claude's defaults where the owner was silent: periods of one person never overlap; "End now" ends it today (today
 // still exempt), and cancels one that hasn't started (kept, never read: only a Super Admin deletes records); someone
-// never exempts themself (a Super Admin may); only someone with a current employment, not a freelancer (they don't check
-// in), is exempted. Pure: the API enforces these and the web shows the same words. Dates YYYY-MM-DD (Cairo).
+// never exempts themself (a Super Admin may); only someone with a current employment, not a freelancer (only the hours
+// they check in count: there are no working hours to count in full), is exempted. Pure: the API enforces these and the web shows the same words. Dates YYYY-MM-DD (Cairo).
 
 import type { SourcedDay } from './attendance-days.js';
 

@@ -62,6 +62,8 @@ export interface LinkedPersonView {
 export interface LinkablePersonView extends LinkedPersonView {
   department: string | null;
   suggestedFrom: SuggestedExemptionStart | null;
+  /** A freelancer (10 November 2026): checks in and may be linked, never exempted. */
+  freelance: boolean;
 }
 
 /** A check-in location as the API sends it: the main office (isMain) or a sub-location with its people. */
@@ -473,16 +475,17 @@ export class CheckInSetupService {
 
   /**
    * Who HR may link (owner, 20 October 2026: "shown with their name and linked users"): everyone with a current
-   * employment who checks in (not a freelancer, nor someone on timesheets: packages/shared checkInRefusal) and the caller may see (a C-level person
-   * only for the CEO and the Super Admin), by name. Also whom "Exempt From Check-in" offers, each with the first day their
-   * exemption starts with (26 October 2026: their contract's start, else their join date).
+   * employment who checks in (not someone on timesheets: packages/shared checkInRefusal; a freelancer too since 10
+   * November 2026) and the caller may see (a C-level person only for the CEO and the Super Admin), by name. Also whom
+   * "Exempt From Check-in" offers (not a freelancer: `freelance`), each with the first day their exemption starts with
+   * (26 October 2026: their contract's start, else their join date).
    */
   async linkable(user: SessionUser): Promise<LinkablePersonView[]> {
     const today = todayInCairo();
     const rows = await this.prisma.employee.findMany({
-      where: { AND: [await this.confidential.employeeWhere(user), { employments: { some: { endDate: null, employmentType: { not: 'freelance' }, worksOnTimesheets: false } } }] },
+      where: { AND: [await this.confidential.employeeWhere(user), { employments: { some: { endDate: null, worksOnTimesheets: false } } }] },
       orderBy: { fullNameEn: 'asc' },
-      select: { ...PERSON, employments: { ...START_EMPLOYMENT, select: { ...START_EMPLOYMENT.select, department: { select: { nameEn: true } } } } },
+      select: { ...PERSON, employments: { ...START_EMPLOYMENT, select: { ...START_EMPLOYMENT.select, employmentType: true, department: { select: { nameEn: true } } } } },
     });
     return rows.map((e) => ({
       id: e.id,
@@ -490,6 +493,7 @@ export class CheckInSetupService {
       employeeCode: e.employeeCode,
       department: e.employments[0]?.department?.nameEn ?? null,
       suggestedFrom: startOf(e.employments[0], today),
+      freelance: e.employments[0]?.employmentType === 'freelance',
     }));
   }
 

@@ -213,19 +213,20 @@ describe('a day from its punches', () => {
 });
 
 describe('who checks in', () => {
-  it('is someone with a profile and a current employment under a shift, not a freelancer', () => {
+  it('is someone with a profile and a current employment under a shift, a freelancer too (10 November 2026)', () => {
     expect(checkInRefusal(true, { employmentType: 'full_time', shiftId: 's1' })).toBeNull();
     expect(checkInRefusal(true, { employmentType: 'intern', shiftId: 's1' })).toBeNull();
     expect(checkInRefusal(false, null)).toContain('no employee profile');
     expect(checkInRefusal(true, null)).toContain('no current employment');
-    expect(checkInRefusal(true, { employmentType: 'freelance', shiftId: 's1' })).toContain('A freelancer doesn’t check in');
+    expect(checkInRefusal(true, { employmentType: 'freelance', shiftId: 's1' })).toBeNull();
     expect(checkInRefusal(true, { employmentType: 'part_time', shiftId: null })).toContain('no shift yet');
+    expect(checkInRefusal(true, { employmentType: 'freelance', shiftId: null })).toContain('no shift yet');
   });
 
   it('sends someone on timesheets to their timesheet, a freelancer too (4 November 2026)', () => {
     expect(checkInRefusal(true, { employmentType: 'full_time', shiftId: 's1', worksOnTimesheets: true })).toBe(TIMESHEET_CHECK_IN_REFUSAL);
     expect(checkInRefusal(true, { employmentType: 'freelance', shiftId: null, worksOnTimesheets: true })).toBe(TIMESHEET_CHECK_IN_REFUSAL);
-    expect(checkInRefusal(true, { employmentType: 'freelance', shiftId: null, worksOnTimesheets: false })).toContain('A freelancer doesn’t check in');
+    expect(checkInRefusal(true, { employmentType: 'freelance', shiftId: 's1', worksOnTimesheets: false })).toBeNull();
   });
 });
 

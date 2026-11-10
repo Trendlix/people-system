@@ -173,8 +173,8 @@ export interface PunchContext {
 
 // Checking in on the system (owner, 19 October 2026, "Proceed with those": "Check-in through the system (phone or web
 // with the office location check, or a device) to replace Zoho"). Someone with an employee profile and a current
-// employment under a shift, not a freelancer (packages/shared checkInRefusal), presses Check in or Check out on their
-// Dashboard or My Attendance: one press, at the server's time (Cairo), counted on the working day it is in (shiftDayOf:
+// employment under a shift, a freelancer too (10 November 2026; packages/shared checkInRefusal), presses Check in or
+// Check out on their Dashboard or My Attendance: one press, at the server's time (Cairo), counted on the working day it is in (shiftDayOf:
 // a night shift's check-out after midnight on the night before). The browser's location, asked each time, is read
 // against the office's point and radius (Payroll Setup → Your Rules): office within it, remote outside it, unknown when
 // refused or unavailable or the office's point isn't set; that, the accuracy and (since 20 October 2026, below) the

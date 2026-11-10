@@ -137,6 +137,8 @@ describe('the list and the profile', () => {
     // each with the first day theirs starts with, as the API sent it (26 October 2026)
     const from = { date: '2025-07-30', source: 'contract' as const, contractNumber: 'CON-2025-0012' };
     expect(exemptionCandidates([{ ...candidates[0], suggestedFrom: from }], [])).toEqual([{ value: 'e2', label: 'Omar Khaled · EMP-0182 · Sales', from }]);
+    // a freelancer checks in and is linked to a sub-location, never exempted (10 November 2026)
+    expect(exemptionCandidates([{ ...candidates[0], freelance: true }, { ...candidates[1], freelance: false }], []).map((o) => o.value)).toEqual(['e1']);
   });
 
   it('asks before ending: one started ends today, one not started is removed; and says what happened', () => {

@@ -176,11 +176,18 @@ describe('Checking in on the system (e2e)', () => {
   });
 
   describe('who checks in', () => {
-    it('is someone with a current employment under a shift, not a freelancer', async () => {
+    it('is someone with a current employment under a shift, a freelancer too (10 November 2026)', async () => {
       expect((await today('olga')).refusal).toBeNull();
-      const fred = await today('fred');
-      expect(fred.refusal).toContain('A freelancer doesn’t check in');
-      expect(said(await punch('fred', { kind: 'in', ...NEAR }).expect(403))[0]).toContain('A freelancer doesn’t check in');
+      // a freelancer checks in to have their hours counted (owner, 10 November 2026: "allow freelancer to check in")
+      expect((await today('fred')).refusal).toBeNull();
+      try {
+        await punch('fred', { kind: 'in', ...NEAR }).expect(200);
+        await punch('fred', { kind: 'out', ...NEAR }).expect(200);
+        expect((await prisma.attendancePunch.findMany({ where: { employeeId: ids.fred }, select: { kind: true } })).map((p) => p.kind).sort()).toEqual(['in', 'out']);
+      } finally {
+        await prisma.attendanceDay.deleteMany({ where: { employeeId: ids.fred } });
+        await prisma.attendancePunch.deleteMany({ where: { employeeId: ids.fred } });
+      }
       expect((await today('nash')).refusal).toContain('no shift yet');
       await punch('nash', { kind: 'in', ...NEAR }).expect(403);
       // a sign-in with no employee profile

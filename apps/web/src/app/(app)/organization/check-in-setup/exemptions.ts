@@ -134,15 +134,16 @@ export const endedExemptionText = (name: string, removed: boolean): string => (r
 
 /**
  * Whom "Add people" offers: everyone the caller may see who has no current or upcoming exemption, by name, each with the
- * first day theirs starts with (null: none sent).
+ * first day theirs starts with (null: none sent); not a freelancer (10 November 2026: they check in, only the hours they
+ * check in count).
  */
-export function exemptionCandidates<C extends { id: string; fullNameEn: string; employeeCode: string; department: string | null; suggestedFrom?: SuggestedExemptionStart | null }>(
+export function exemptionCandidates<C extends { id: string; fullNameEn: string; employeeCode: string; department: string | null; suggestedFrom?: SuggestedExemptionStart | null; freelance?: boolean }>(
   candidates: readonly C[],
   listed: readonly Pick<CheckInExemptionView, 'employee' | 'state'>[],
 ): { value: string; label: string; from: SuggestedExemptionStart | null }[] {
   const exempt = new Set(listed.filter((e) => e.state !== 'ended').map((e) => e.employee.id));
   return candidates
-    .filter((c) => !exempt.has(c.id))
+    .filter((c) => !exempt.has(c.id) && !c.freelance)
     .map((c) => ({ value: c.id, label: joinShown([c.fullNameEn, c.employeeCode, c.department]), from: c.suggestedFrom ?? null }))
     .sort((a, b) => a.label.localeCompare(b.label, 'en'));
 }

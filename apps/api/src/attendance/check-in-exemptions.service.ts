@@ -162,7 +162,8 @@ export class CheckInExemptionsService {
       if (!mayManage(user, { self: p.id === me, confidential: all.has(p.id) })) throw new ForbiddenException(refusalFor(user, { self: p.id === me, confidential: all.has(p.id), name: p.fullNameEn }));
       const job = p.employments[0];
       if (!job) throw new BadRequestException([`${p.fullNameEn} has no current employment, so there is no check-in to exempt them from.`]);
-      if (job.employmentType === 'freelance') throw new BadRequestException([`${p.fullNameEn} works freelance and doesn't check in: freelance work is outside the labour law and its working hours.`]);
+      // a freelancer checks in to have their hours counted (10 November 2026): no working hours to count in full
+      if (job.employmentType === 'freelance') throw new BadRequestException([`${p.fullNameEn} works freelance: only the hours they check in count, so there are no working hours to exempt them from.`]);
     }
     // each one's first day: the one sent, else their own (their contract's start, else their join date), else today
     const starts = new Map(people.map((p) => [p.id, typed ?? (own ? startOf(p.employments[0], today).date : today)]));

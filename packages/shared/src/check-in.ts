@@ -1,9 +1,9 @@
 // Checking in on the system (owner, 19 October 2026, pasting the list and writing "Proceed with those": "Check-in through
 // the system (phone or web with the office location check, or a device) to replace Zoho"). An employee with a current
-// employment under a shift (not a freelancer) presses Check in and Check out on their Dashboard or My Attendance: the
-// time is the server's (Cairo), never the device's; the place is the browser's location, asked each time, against the
-// office's point and radius HR sets in Payroll Setup → Your Rules (150 metres to start with): within it the office,
-// outside it remote, refused or unavailable "location unknown". At first only office, remote or unknown and the
+// employment under a shift (a freelancer too since 10 November 2026: their hours counted) presses Check in and Check
+// out on their Dashboard or My Attendance: the time is the server's (Cairo), never the device's; the place is the
+// browser's location, asked each time, against the office's point and radius HR sets in Payroll Setup → Your Rules (150
+// metres to start with): within it the office, outside it remote, refused or unavailable "location unknown". At first only office, remote or unknown and the
 // reading's accuracy in metres were kept, never the coordinates; since 20 October 2026 (owner: "Yes, keep the spot") the
 // point where each press was made is kept too, read only then, and seen by HR, the CEO, the Super Admin and the
 // employee (punch-location.ts). The work
@@ -646,16 +646,16 @@ export const TIMESHEET_CHECK_IN_REFUSAL = 'You log your hours on your timesheet 
 
 /**
  * Why someone can't check in on the system (null: they can; owner's brief, 19 October 2026: "Employees (with an employee
- * profile and a current employment under a shift; not freelancers)"): no profile, no current employment, a freelancer,
- * or no shift.
+ * profile and a current employment under a shift; not freelancers)"): no profile, no current employment, on timesheets,
+ * or no shift. A freelancer under a shift checks in since 10 November 2026 (owner: "allow freelancer to check in to
+ * track hi[s hours] instead of adding on duty"): their hours are counted, never an absence (attendance-days.ts
+ * freelanceDays).
  */
 export function checkInRefusal(profile: boolean, employment: CheckInEmployment | null): string | null {
   if (!profile) return 'Your sign-in has no employee profile, so there is nothing to check in to. Ask HR to add your work email to your profile.';
   if (!employment) return 'You have no current employment, so there is nothing to check in to.';
-  // those HR switched to timesheets (owner, 4 November 2026: "Only those HR switches on"), freelancers among them: said
-  // before the freelancer's reason, as they log hours rather than doing nothing
+  // those HR switched to timesheets (owner, 4 November 2026: "Only those HR switches on"), freelancers among them
   if (employment.worksOnTimesheets) return TIMESHEET_CHECK_IN_REFUSAL;
-  if (employment.employmentType === 'freelance') return 'A freelancer doesn’t check in: freelance work is outside the labour law and its working hours.';
   if (!employment.shiftId) return 'Your employment has no shift yet, so checking in isn’t on for you. Ask HR to set your shift.';
   return null;
 }

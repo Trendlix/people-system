@@ -24,9 +24,11 @@ import { addDays, weekday } from '../common/date-only.js';
 //   10-minute step goes once (the reminders_sent row's last_sent_at is before the step's start), whatever the switch says.
 // - "Still checked in?": checked in and not out by the time hours stop counting (the shift's "Count hours until" when
 //   set, else its end and grace: shiftWindowOn); sent within 4 hours of it, once a day, unless switched off.
-// Only for someone with an active user account and a current employment under a shift (not a freelancer: they don't
-// check in; nor someone HR switched to timesheets, 4 November 2026: they log hours instead); never on a day kept from Zoho People's import, nor on a day they are exempt from check-in (owner, 25 October
-// 2026: "Optional check-in": no check-in or check-out reminder, on the bell, the phone or WhatsApp). A night shift's day
+// Only for someone with an active user account and a current employment under a shift (not someone HR switched to
+// timesheets, 4 November 2026: they log hours instead); a freelancer (who checks in since 10 November 2026, to have their
+// hours counted) only "Still checked in?": they have no working hours to be reminded of, never absent. Never on a day
+// kept from Zoho People's import, nor on a day they are exempt from check-in (owner, 25 October 2026: "Optional
+// check-in": no check-in or check-out reminder, on the bell, the phone or WhatsApp). A night shift's day
 // is the day it starts, so the day before today is looked at too. On a flexible days shift (owner, 31 October 2026: any N
 // of its days a week) the person chooses their days, so "You haven't checked in" isn't sent: a day only counts as absent
 // once their week can no longer have its days (packages/shared flexibleWeeks); "Still checked in?" still is. Pure,
@@ -142,20 +144,21 @@ export function permissionCoversStart(spans: readonly PermissionSpan[] | undefin
   });
 }
 
-/** The employment covering a day that checks in (a freelancer never does; nor someone on timesheets, 4 November 2026). */
+/** The employment covering a day that checks in (not someone on timesheets, 4 November 2026; a freelancer's since 10 November 2026). */
 function employmentOn(employments: readonly ReminderEmployment[], day: string): ReminderEmployment | null {
-  return employments.find((e) => e.joinDate <= day && (e.endDate === null || e.endDate >= day) && e.employmentType !== 'freelance' && !e.worksOnTimesheets) ?? null;
+  return employments.find((e) => e.joinDate <= day && (e.endDate === null || e.endDate >= day) && !e.worksOnTimesheets) ?? null;
 }
 
 /** A working day of the person's shift, as the reminders take it: the shift, its window, the day's key; else null. */
 function workingDay(person: ReminderPerson, facts: ReminderFacts, day: string) {
   if (facts.holidays.has(day)) return null;
-  const shift = employmentOn(person.employments, day)?.shift;
-  if (!shift || !shift.workingDays.includes(weekday(day))) return null;
+  const employment = employmentOn(person.employments, day);
+  if (!employment?.shift || !employment.shift.workingDays.includes(weekday(day))) return null;
+  const shift = employment.shift;
   const key = dayKey(person.employeeId, day);
   if (facts.leave.has(key) || facts.zoho.has(key) || facts.exempt?.has(key)) return null;
   const window = shiftWindowOn(day, shift);
-  return window ? { shift, window, key } : null;
+  return window ? { shift, window, key, freelance: employment.employmentType === 'freelance' } : null;
 }
 
 /**
@@ -164,8 +167,8 @@ function workingDay(person: ReminderPerson, facts: ReminderFacts, day: string) {
  */
 function checkInDue(person: ReminderPerson, facts: ReminderFacts, day: string, at: number): { step: number; stepAt: number; shiftStart: string } | null {
   const d = workingDay(person, facts, day);
-  // they choose their days on a flexible days shift (31 October 2026)
-  if (!d || isFlexibleDays(d.shift)) return null;
+  // they choose their days on a flexible days shift (31 October 2026); a freelancer has no working hours (10 November 2026)
+  if (!d || d.freelance || isFlexibleDays(d.shift)) return null;
   const shiftStart = d.shift.startTime.slice(0, 5);
   if ((facts.punches.get(d.key) ?? []).some((p) => p.kind === 'in')) return null;
   if (permissionCoversStart(facts.permission.get(d.key), shiftStart)) return null;
