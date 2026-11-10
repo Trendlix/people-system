@@ -349,6 +349,10 @@ jobs:
   iphone:
     name: Build the iPhone app
     needs: build
+    # iPhone builds held (owner, 10 November 2026: "hold pushing any new build till the app store approval", then "can we
+    # push the android only?"): Android only until Apple approves the build in review; then remove this line and set
+    # APP_STORE_UPLOADS on
+    if: false
     runs-on: macos-26
     timeout-minutes: 45
     env:
