@@ -1,4 +1,5 @@
 import 'server-only';
+import type { DayPingsView } from '@trendlix/shared';
 import type { AttendanceImportRow, AttendanceMonthView, PersonAttendanceView, AttendanceSummaryView } from '@/lib/attendance-types';
 import type { PayrollRunSummary } from '@/lib/types';
 import { loadJson, type Loaded } from '../payroll/load';
@@ -17,5 +18,8 @@ export const loadMine = (month: string): Promise<Loaded<PersonAttendanceView>> =
 export const loadSummary = (period: { from: string; to: string }): Promise<Loaded<AttendanceSummaryView>> => loadJson(apiSummaryPath(period));
 
 export const loadImportHistory = (month?: string | null): Promise<Loaded<AttendanceImportRow[]>> => loadJson(apiImportsPath(month));
+
+/** A day's hourly location for everyone (10 November 2026; hourly-location.ts). */
+export const loadDayPings = (date: string): Promise<Loaded<DayPingsView>> => loadJson(`/attendance/pings?date=${encodeURIComponent(date)}`);
 
 export const loadRuns = (): Promise<Loaded<PayrollRunSummary[]>> => loadJson('/payroll/runs');

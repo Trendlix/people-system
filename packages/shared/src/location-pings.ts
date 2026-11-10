@@ -77,3 +77,69 @@ export interface PingView {
   latitude: number | null;
   longitude: number | null;
 }
+
+// ---------- a day's hourly location for everyone, on Daily Attendance ----------
+// (owner, 10 November 2026: "the hourly ping is not working too, i cant find it in the system", then "can it be embeded
+// in the attendance page?"): everyone checked in on the system that day, with their pings (the flagged first), and for
+// someone with none, why: iPhones don't send it yet (the location only at check-in and check-out, docs/app-store.md),
+// the website can't, an hour hasn't passed, or none came from their Android phone.
+
+/** Why someone checked in that day has no pings. */
+export const NO_PING_REASONS = ['iphone', 'no_app', 'too_soon', 'none_received'] as const;
+export type NoPingReason = (typeof NO_PING_REASONS)[number];
+
+export const NO_PING_REASON_LABELS: Record<NoPingReason, string> = {
+  iphone: 'iPhone: hourly location not on iPhones yet',
+  no_app: 'Doesn’t use the app: the website can’t send it',
+  too_soon: 'Checked in for less than an hour',
+  none_received: 'None received from their Android phone',
+};
+
+/** The phone of someone's app from its sign-in's user agent ("Trendlix People/0.6.52 (iOS) TrendLIXPeople"): other when it says neither. */
+export function appPhoneOf(userAgent: string | null | undefined): 'ios' | 'android' | 'other' {
+  const ua = userAgent ?? '';
+  if (/\(ios\)|iPhone|iPad/i.test(ua)) return 'ios';
+  if (/\(android\)|Android/i.test(ua)) return 'android';
+  return 'other';
+}
+
+/**
+ * Why someone checked in has no pings: the first ping comes an hour after the check-in, so a check-in (or a stay) of
+ * less than an hour has none yet; else their phone (null: no sign-in in the app by then): an iPhone's app doesn't send
+ * it, without the app the website can't, any other phone's should have.
+ */
+export function noPingReason(p: { phone: 'ios' | 'android' | 'other' | null; checkIn: string | null; checkOut: string | null }, now: Date): NoPingReason {
+  const start = p.checkIn ? Date.parse(p.checkIn) : NaN;
+  const end = p.checkOut ? Date.parse(p.checkOut) : now.getTime();
+  if (Number.isFinite(start) && end - start < PING_EVERY_MINUTES * 60_000) return 'too_soon';
+  if (p.phone === 'ios') return 'iphone';
+  if (p.phone === null) return 'no_app';
+  return 'none_received';
+}
+
+/** Someone's day: their check-in and check-out, where they checked in, their pings and, with none, why. */
+export interface DayPingsPerson {
+  employee: { id: string; fullNameEn: string; employeeCode: string; department: string | null };
+  /** The day's first check-in, and its last check-out when it came after it (null: still checked in). */
+  checkIn: string | null;
+  checkOut: string | null;
+  /** Where they checked in: Office, Home, a place's name, Remote, Location unknown. */
+  checkInPlace: string | null;
+  pings: PingView[];
+  /** Away, or the location off. */
+  flagged: number;
+  noPings: NoPingReason | null;
+}
+
+/** GET /attendance/pings?date=: the day, whether the company has it switched on, and everyone's. */
+export interface DayPingsView {
+  date: string;
+  enabled: boolean;
+  people: DayPingsPerson[];
+}
+
+/** The order shown: the flagged first (most first), then those with pings, then those without; by name within each. */
+export function dayPingsOrder<P extends Pick<DayPingsPerson, 'flagged' | 'pings'> & { employee: { fullNameEn: string } }>(people: readonly P[]): P[] {
+  const rank = (p: P) => (p.flagged > 0 ? 0 : p.pings.length > 0 ? 1 : 2);
+  return [...people].sort((a, b) => rank(a) - rank(b) || b.flagged - a.flagged || a.employee.fullNameEn.localeCompare(b.employee.fullNameEn, 'en'));
+}

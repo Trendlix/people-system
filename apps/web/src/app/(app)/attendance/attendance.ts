@@ -112,6 +112,8 @@ export interface AttendanceFilters {
   q?: string;
   /** The issue whose days are listed (a figure card clicked); none: no list. */
   issue?: IssueKind;
+  /** The day the hourly location shows (YYYY-MM-DD, 10 November 2026; hourly-location.ts); none: today, or the month's last day. */
+  day?: string;
 }
 
 /** The filters in the address (?department=&employee=&only=); one it can't read is left out. */
@@ -121,12 +123,14 @@ export function readFilters(query: Query): AttendanceFilters {
   const only = one(query.only);
   const q = searchOf(query.q);
   const issue = one(query.issue);
+  const day = one(query.day);
   return {
     departmentId: UUID.test(department) ? department : null,
     employeeId: UUID.test(employee) ? employee : null,
     only: isAttendanceFilter(only) ? only : null,
     ...(q && { q }),
     ...(isIssueKind(issue) && { issue }),
+    ...(/^\d{4}-\d{2}-\d{2}$/.test(day) && { day }),
   };
 }
 
@@ -248,7 +252,7 @@ function withParams(path: string, params: Record<string, string | null | undefin
 
 /** Daily Attendance for a month and filters. */
 export const dailyHref = (month: string, f: Partial<AttendanceFilters> = {}) =>
-  withParams(ATTENDANCE_PATH, { month, department: f.departmentId, employee: f.employeeId, only: f.only, q: f.q, issue: f.issue });
+  withParams(ATTENDANCE_PATH, { month, department: f.departmentId, employee: f.employeeId, only: f.only, q: f.q, issue: f.issue, day: f.day });
 
 /** A person's month (HR, the CEO, Finance). */
 export const personHref = (employeeId: string, month: string) => withParams(`${ATTENDANCE_PATH}/${encodeURIComponent(employeeId)}`, { month });

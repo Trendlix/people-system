@@ -131,6 +131,41 @@ describe('Location pings (e2e)', () => {
     expect((await api().get(`/api/attendance/employees/${employeeId}/records?date=${day}`).set('Cookie', sessions.web).expect(200)).body.pings).toHaveLength(3);
   });
 
+  // owner, 10 November 2026: "the hourly ping is not working too, i cant find it in the system"; "can it be embeded in
+  // the attendance page?"
+  it('a day’s for everyone, on Daily Attendance: the flagged first; with none, why; HR’s, not an employee’s', async () => {
+    // someone on an iPhone, checked in two hours ago: no pings, as iPhones don't send them yet
+    const iphone = await prisma.employee.create({
+      data: {
+        employeeCode: `LQ-${RUN}`,
+        fullNameEn: `Ian Iphone ${RUN}`,
+        fullNameAr: 'موظف تجريبي',
+        workEmail: emails.hr,
+        employments: { create: { employmentType: 'full_time', status: 'active', joinDate: toDateOnly('2024-01-01'), workArrangement: 'office' } },
+      },
+      select: { id: true },
+    });
+    try {
+      await signIn(app, emails.hr, 'Trendlix People/0.6.52 (iOS) TrendLIXPeople');
+      await prisma.attendancePunch.create({ data: { employeeId: iphone.id, date: toDateOnly(day), kind: 'in', at: new Date(Date.now() - 2 * 3600_000), place: 'office', expected: 'office' } });
+      const view = (await api().get(`/api/attendance/pings?date=${day}`).set('Cookie', sessions.hr).expect(200)).body;
+      expect(view.enabled).toBe(true);
+      const lina = view.people.find((p: { employee: { id: string } }) => p.employee.id === employeeId);
+      expect(lina).toMatchObject({ flagged: 2, noPings: null, checkInPlace: expect.any(String) });
+      expect(lina.pings.map((p: { status: string }) => p.status)).toEqual(['at_place', 'away', 'off']);
+      const ian = view.people.find((p: { employee: { id: string } }) => p.employee.id === iphone.id);
+      expect(ian).toMatchObject({ pings: [], flagged: 0, noPings: 'iphone', checkInPlace: 'Office', checkOut: null });
+      // the flagged before those without
+      const ids = view.people.map((p: { employee: { id: string } }) => p.employee.id);
+      expect(ids.indexOf(employeeId)).toBeLessThan(ids.indexOf(iphone.id));
+      await api().get(`/api/attendance/pings?date=${day}`).set('Cookie', sessions.web).expect(403);
+      await api().get('/api/attendance/pings?date=10/11/2026').set('Cookie', sessions.hr).expect(400);
+    } finally {
+      await prisma.attendancePunch.deleteMany({ where: { employeeId: iphone.id } });
+      await prisma.employee.deleteMany({ where: { id: iphone.id } });
+    }
+  });
+
   it('stops once checked out', async () => {
     await api().post('/api/me/attendance/punches').set('Cookie', sessions.phone).send({ kind: 'out', ...SPOT, accuracy: 15 }).expect(200);
     await later();

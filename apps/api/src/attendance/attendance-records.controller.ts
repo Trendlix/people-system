@@ -3,6 +3,7 @@ import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ChooseDaySourceDto, DayRecordsQueryDto, RemoveRecordDto } from './attendance-records.dto.js';
 import { AttendanceRecordsService } from './attendance-records.service.js';
+import { LocationPingsService } from './location-pings.service.js';
 
 // A person's attendance records (owner, 31 October 2026: "is there a way to check the checkin records? even if imported
 // from zoho and delete one of them?" — "as a super admin"; "zoho or system"): a day's records for those who see the
@@ -10,7 +11,21 @@ import { AttendanceRecordsService } from './attendance-records.service.js';
 // deletion is), with a reason, never in a month whose payroll is with the CEO, approved or paid.
 @Controller('attendance')
 export class AttendanceRecordsController {
-  constructor(private readonly records: AttendanceRecordsService) {}
+  constructor(
+    private readonly records: AttendanceRecordsService,
+    private readonly pings: LocationPingsService,
+  ) {}
+
+  /**
+   * A day's hourly location for everyone (?date=; owner, 10 November 2026: "can it be embeded in the attendance page?"):
+   * those who see everyone's attendance (HR, the CEO, Finance) and a Super Admin, a C-level person only the CEO's and the
+   * Super Admin's (the service: 403 for anyone else).
+   */
+  @Get('pings')
+  @Header('Cache-Control', 'private, no-store')
+  dayPings(@Query() query: DayRecordsQueryDto, @CurrentUser() user: SessionUser) {
+    return this.pings.day(query.date, user);
+  }
 
   /** A day's records (?date=), the system's and Zoho's, and which source counts; the removed ones a Super Admin's. */
   @Get('employees/:employeeId/records')

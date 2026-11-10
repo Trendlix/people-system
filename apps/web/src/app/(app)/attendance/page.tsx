@@ -29,7 +29,10 @@ import {
   searchedMonth,
 } from './attendance';
 import { SEARCH_MAX } from '@/lib/name-search';
-import { loadMonth } from './data';
+import { loadDayPings, loadMonth } from './data';
+import { hourlyDayOf, hourlyPeople } from './hourly-location';
+import { HOURLY_LOCATION_ID, HourlyLocation } from './hourly-location-ui';
+import { SETUP_PATHS } from '../organization/setup-pages';
 import { notLoaded } from './not-loaded';
 import { PeopleTable } from './people-table';
 import { ATTENDANCE_PATH } from './sections';
@@ -52,7 +55,9 @@ import { shownCode, withCode } from '@/lib/hidden';
 // device) to replace Zoho"): the days of those who check in come from their check-ins (a working day gone by without
 // one absent), with the flagged ones for HR to see ("Only with flagged check-ins"). Working from home (owner, 21 October
 // 2026: "think about how should we handle the working from home in out erp"): a day worked from home shows so, and HR
-// and the CEO reach every request and day from Work from home.
+// and the CEO reach every request and day from Work from home. The hourly location (owner, 10 November 2026: "can it be
+// embeded in the attendance page?"): a day's pings for everyone checked in, under the month's figures
+// (hourly-location.ts).
 
 export const metadata: Metadata = { title: 'Daily Attendance · People System' };
 
@@ -132,7 +137,10 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
   const query = await searchParams;
   const month = readAttendanceMonth(query, todayInCairo());
   const chosen = readFilters(query);
-  const [all, places] = await Promise.all([loadMonth(month), loadPlaces()]);
+  const today = todayInCairo();
+  // the hourly location's day: the one asked, else today in this month, or the month's last day
+  const hourlyDay = hourlyDayOf(month, chosen.day, today);
+  const [all, places, pings] = await Promise.all([loadMonth(month), loadPlaces(), hourlyDay ? loadDayPings(hourlyDay) : null]);
   if (all.kind !== 'ok') return <Empty>{notLoaded(all, 'attendance')}</Empty>;
   // the API's filters (the search is the page's own, below)
   const asked = { departmentId: chosen.departmentId, employeeId: chosen.employeeId, only: chosen.only };
@@ -148,7 +156,7 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <MonthNav month={month} hrefFor={(m) => dailyHref(m, chosen)} />
+        <MonthNav month={month} hrefFor={(m) => dailyHref(m, { ...chosen, day: undefined })} />
         <div className="flex flex-wrap gap-2">
           {seesAllWfh(user) && (
             <Link href={WFH_PATH} className="btn btn-secondary no-underline">
@@ -196,6 +204,18 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
             })}
           />
           {chosen.issue && <IssueList kind={chosen.issue} rows={issueDays(view.people, chosen.issue)} month={month} closeHref={dailyHref(month, { ...chosen, issue: undefined })} />}
+          {/* the hourly location (10 November 2026), the page's filters keeping to the people they list */}
+          {hourlyDay && pings?.kind === 'ok' && (
+            <HourlyLocation
+              view={pings.value}
+              people={hourlyPeople(pings.value, filtered(chosen) ? new Set(view.people.map((p) => p.employee.id)) : null)}
+              month={month}
+              day={hourlyDay}
+              today={today}
+              hrefFor={(d) => `${dailyHref(month, { ...chosen, day: d })}#${HOURLY_LOCATION_ID}`}
+              setupHref={user.roles.includes('hr') ? SETUP_PATHS.checkInSetup : null}
+            />
+          )}
           {view.people.length === 0 && !view.hidden ? (
             <div className="card px-6 py-8 text-center text-sm text-muted">Nobody matches these filters in {monthName(month)}.</div>
           ) : (
