@@ -8,7 +8,8 @@ Internal only: no sign-in, and reachable only on People System's Docker network,
             "box": [x_min, y_min, x_max, y_max]}]}], "text": lines joined by \\n, pages separated by \\f}
   POST /cards             multipart field "file": JPEG, PNG, WebP or PDF (its first 2 pages), up to 15 MB
        200 {"pages": [{"width", "height", "image"}], "cards": [{"page", "box": {"cx", "cy", "w", "h", "angle"},
-            "frame": [left, top, right, bottom], "image", "side", "confidence"}]}  (see app/cards.py, README.md)
+            "frame": [left, top, right, bottom], "image", "side", "confidence", and "quad": [[x, y] x 4] for a card
+            photographed at an angle and flattened}]}  (see app/cards.py, README.md)
   POST /pages             multipart field "file": JPEG, PNG, WebP or PDF (every page, up to 20), up to 15 MB
        200 {"pages": [{"width", "height", "image"}]}: the pages as pictures, for cropping and adjusting by hand; nothing
             is read and no card is looked for. A PDF of more than 20 pages: 400 {"detail": "...", "pages": its pages}
@@ -190,7 +191,11 @@ def create_app(make_engine: Callable = _default_engine, on_load_failure: Callabl
             len(data),
             len(result["pages"]),
             len(found),
-            "".join(f", {card.side or 'side unknown'}{' (whole picture)' if card.whole else ''}" for card in found),
+            "".join(
+                f", {card.side or 'side unknown'}{' (whole picture)' if card.whole else ''}"
+                f"{' (flattened)' if card.quad is not None else ''}"
+                for card in found
+            ),
             seconds,
         )
         return result
@@ -310,7 +315,7 @@ def _jpeg_within(image, budget: int):
 
 def _card_json(card: "id_cards.Card") -> dict:
     box = card.box
-    return {
+    out = {
         "page": card.page,
         # pixel indices to distances from the page's top-left corner: a pixel's centre is half a pixel in
         "box": {
@@ -325,6 +330,9 @@ def _card_json(card: "id_cards.Card") -> dict:
         "side": card.side,
         "confidence": round(card.confidence, 3),
     }
+    if card.quad is not None:  # flattened from its corners: top left, top right, bottom right, bottom left as it reads
+        out["quad"] = [[round(float(x) + 0.5, 2), round(float(y) + 0.5, 2)] for x, y in card.quad]
+    return out
 
 
 def _jpeg(image, quality: int) -> str:

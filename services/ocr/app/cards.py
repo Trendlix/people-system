@@ -21,7 +21,9 @@ also be a card cut out already.
      stands out a little from the background; failing that, on both sides, and the cut keeps as much again to spare.
   4. Cut out: the box, straightened, with a margin of 1.2 mm above and below the card and 1.9 mm at its sides (in the
      card's own millimetres), never past the edge of the picture (what falls outside it at a corner is white). A
-     picture that is a card cut out already is not cut again.
+     picture that is a card cut out already is not cut again. A card photographed at an angle, whose four corners show
+     it slanted (its far side shorter than its near one), is cut out flattened from them instead (see "A card
+     photographed at an angle" below).
   5. Which way up: the card is read both ways up with the Arabic recogniser and kept the way that reads as more
      confident Arabic letters (digits do not count: ١ ٠ ٨ ٧ look like digits upside down too). When the first reading
      already finds the words printed on one side of the card, the second is skipped.
@@ -56,6 +58,20 @@ CARD_WIDTH = 1000  # a card is cut out this wide (its margin adds about 44 px)
 READ_WIDTH = 800  # and read this wide to tell which way up it goes and which side it is
 SIDE_THRESHOLD = 0.6  # below this confidence, the side is not given
 WHOLE_ASPECT = (1.48, 1.72)  # a picture this shape may be a card cut out already (an A4 page, at 1.41, is not one)
+# A card photographed at an angle (see "A card photographed at an angle" below). When four corners are taken to show a
+# card slanted: opposite sides that differ by more than 2%, or a corner more than 1.5 degrees from square; and no more
+# than a phone held over a card gives (40%, 30 degrees). A card the finder sees straight differs from square by far
+# less: its edges are found to a fraction of a pixel.
+SLANT = {"sides": 0.02, "corner": 1.5, "most_sides": 0.4, "most_corner": 30.0}
+CORNER_NEAR = 0.12  # how far each corner may lie from the card first found, as a share of its width
+# A phone's main camera: a focal length of about 26 mm as on 35 mm film, 0.6 of the picture's diagonal (`focal`); one
+# worked out from the corners is taken between 0.3 and 3 of it; and how clearly a pair of sides must run together for
+# it to be worked out at all (`runs`: about a hundredth over the card).
+CAMERA = {"focal": 0.6, "least": 0.3, "most": 3.0, "runs": 0.01}
+FLAT_ASPECT = (1.35, 1.9)  # a card or a passport page, flattened
+# How near a card's proportions, flattened, must be to an ID card's to be laid on its shape: as near as they can be
+# told, with the camera's own focal length or with a phone's taken for it.
+SNAP = {"sure": 0.02, "guessed": 0.06}
 
 
 @dataclass(frozen=True)
@@ -103,13 +119,27 @@ class Box:
         return Box(float(cx), float(cy), float(w), float(h), _wrap(angle, 180))
 
 
+@dataclass(frozen=True)
+class Flat:
+    """A card photographed at an angle: its four corners (TL, TR, BR, BL as it reads, 4 x 2, pixel indices), and its
+    width over its height once flattened, as the corners tell it; `sure`: told with the camera's own focal length,
+    worked out from the corners, not a phone's taken for it."""
+
+    quad: np.ndarray
+    ratio: float
+    sure: bool
+
+
 @dataclass
 class Found:
     """A card on a page: the whole card (landscape, angle in (-90, 90]), and how much more to keep beyond each side
-    along its width and its height, where a strip of it may be and it cannot be told on which side."""
+    along its width and its height, where a strip of it may be and it cannot be told on which side. `flat`: the card is
+    slanted on the picture, a photo taken at an angle, and is cut out flattened from its corners; `box` is then the
+    rectangle the corners make on the whole."""
 
     box: Box
     spare: tuple[float, float] = (0.0, 0.0)
+    flat: Flat | None = None
 
 
 @dataclass
@@ -129,6 +159,7 @@ class Card:
     side: str | None
     confidence: float
     whole: bool = False  # the picture is the card: it was not cut
+    quad: np.ndarray | None = None  # flattened from these corners (TL, TR, BR, BL of the upright card, on the page)
 
 
 def _wrap(angle: float, half_turn: float) -> float:
@@ -228,20 +259,40 @@ def find_cards(page: np.ndarray) -> list[Found]:
     candidates = []
     for background in _backgrounds(page, scale):
         small = _resized(background.distance, scale)
-        candidates += [(box, score, background) for box, score in _candidates(small, background.noise)]
+        candidates += [(box, score, background, seen) for box, score, seen in _candidates(small, background.noise)]
     to_page = np.array([page.shape[1] / small.shape[1], page.shape[0] / small.shape[0]])
 
+    # a card photographed at an angle only where nothing was found as a card seen straight, and after those: a card
+    # seen straight is found and cut out exactly as before
+    straight = [c for c in candidates if c[3] is None]
+    slanted_cards = [
+        c for c in candidates
+        if c[3] is not None and all(_overlap(c[0], s[0]) < 0.2 and _overlap(s[0], c[0]) < 0.2 for s in straight)
+    ]
+    picked = _pick(straight)
+    picked += _pick(slanted_cards)[: MAX_CARDS - len(picked)]
+
     cards = []
-    for box, _, background in _pick(candidates):
-        quad = (box.corners() + 0.5) * to_page - 0.5
-        refined = _landscape(Box.from_corners(_refine(background.distance, quad, background.noise)))
+    for box, _, background, seen in picked:
+        # the corners to refine: the rectangle's, or those of a card seen slanted (photographed at an angle)
+        quad = ((box.corners() if seen is None else seen) + 0.5) * to_page - 0.5
+        corners = _refine(background.distance, quad, background.noise)
+        refined = _landscape(Box.from_corners(corners))
+        # a card photographed at an angle keeps its corners and is cut out flattened from them: they are the whole card
+        was = _reading_order(quad, refined)
+        flat = flat_of(corners, was, box.w * float(to_page[0]), page.shape[1], page.shape[0])
+        if flat is not None:
+            cards.append(Found(box=refined, flat=flat))
+            continue
         whole, spare = _whole_card(refined, background, page.shape)
         cards.append(Found(box=whole, spare=spare))
     return cards
 
 
 def _candidates(distance: np.ndarray, noise: float):
-    """(box, score) of card-shaped outlines in several masks of the (small) distance map."""
+    """(box, score, corners) of card-shaped outlines in several masks of the (small) distance map. `corners` is None
+    for a card found by its rectangle; a card photographed at an angle, a four-sided shape whose sides are not parallel,
+    does not fill its rectangle and is found by its four corners instead (_slanted_card)."""
     page_area = distance.shape[0] * distance.shape[1]
     low = max(8.0, 2.5 * noise)  # anything unlike the background
     d8 = np.clip(distance, 0, 255).astype(np.uint8)
@@ -267,16 +318,16 @@ def _candidates(distance: np.ndarray, noise: float):
             if not (MIN_AREA_SHARE <= area / page_area <= MAX_AREA_SHARE):
                 continue
             aspect = box.w / box.h
-            if not MIN_ASPECT <= aspect <= MAX_ASPECT:
-                continue
             fill = cv2.contourArea(hull) / area
-            if fill < 0.9:
-                continue
-            support = _support(distance, box, low)
-            if support < 0.6:
-                continue
-            fit = math.exp(-(((aspect - CARD_ASPECT) / 0.2) ** 2))
-            yield box, support * fill * (0.5 + 0.5 * fit)
+            if MIN_ASPECT <= aspect <= MAX_ASPECT and fill >= 0.9:
+                support = _support(distance, box, low)
+                if support >= 0.6:
+                    fit = math.exp(-(((aspect - CARD_ASPECT) / 0.2) ** 2))
+                    yield box, support * fill * (0.5 + 0.5 * fit), None
+                    continue
+            seen = _slanted_card(distance, contour, hull, box, low)  # not a card seen straight: one at an angle?
+            if seen is not None:
+                yield box, seen[1], seen[0]
 
 
 def _pick(candidates: list) -> list:
@@ -303,6 +354,96 @@ def _pick(candidates: list) -> list:
     kept = [i for i in range(len(distinct)) if i not in sheets]
     kept = [i for i in kept if not any(i in inside[k] for k in kept)]
     return [distinct[i] for i in kept][:MAX_CARDS]
+
+
+def _slanted_card(
+    distance: np.ndarray, contour: np.ndarray, hull: np.ndarray, box: Box, low: float
+) -> tuple[np.ndarray, float] | None:
+    """(corners, score) of a card photographed at an angle, from an outline that does not fill its rectangle as a card
+    seen straight does: its hull is a four-sided shape (four of its points cover nine tenths of it), each side of the
+    outline a straight line and the corners where they meet; clearly slanted, and no more than a phone held over a card
+    gives (SLANT); whose proportions, flattened, are a card's (true_ratio, as for a card seen straight: MIN_ASPECT to
+    MAX_ASPECT); with background along most of its outline. None for anything else. The corners are TL, TR, BR, BL as
+    `box` reads, in pixel indices of `distance`."""
+    perimeter = cv2.arcLength(hull, True)
+    rough = None
+    for share in (0.01, 0.02, 0.03, 0.04, 0.05):
+        approx = cv2.approxPolyDP(hull, share * perimeter, True)
+        if len(approx) <= 4:
+            rough = approx.reshape(-1, 2).astype(np.float64) if len(approx) == 4 else None
+            break
+    if rough is None or cv2.contourArea(rough.astype(np.float32)) < 0.9 * cv2.contourArea(hull):
+        return None
+    # clockwise on screen (y down), from the corner nearest the top left of the rectangle as it reads
+    middle = rough.mean(axis=0)
+    rough = rough[np.argsort(np.arctan2(rough[:, 1] - middle[1], rough[:, 0] - middle[0]))]
+    rough = np.roll(rough, -int(np.argmin(np.linalg.norm(rough - box.corners()[0], axis=1))), axis=0)
+    # each side a straight line through the outline's points along its middle; the corners where they meet (a card's
+    # corners are rounded, so the points of the hull lie inside them)
+    points = _outline(contour)
+    lines = []
+    for i in range(4):
+        a, b = rough[i], rough[(i + 1) % 4]
+        length = max(float(np.linalg.norm(b - a)), 1e-6)
+        along = (b - a) / length
+        normal = np.array([along[1], -along[0]])
+        t, off = (points - a) @ along / length, np.abs((points - a) @ normal)
+        side = points[(t > 0.15) & (t < 0.85) & (off <= max(3.0, 0.02 * perimeter))]
+        if len(side) < 5:
+            return None
+        vx, vy, x0, y0 = cv2.fitLine(side.astype(np.float32), cv2.DIST_HUBER, 0, 0.01, 0.01).ravel()
+        lines.append((np.array([x0, y0], dtype=np.float64), np.array([vx, vy], dtype=np.float64)))
+    corners = [_intersect(lines[i - 1], lines[i]) for i in range(4)]
+    if any(corner is None for corner in corners):
+        return None
+    quad = np.array(corners)
+    if not convex(quad):
+        return None
+    sides, corner = slant_of(quad)
+    if not slanted(quad) or sides > SLANT["most_sides"] or corner > SLANT["most_corner"]:
+        return None
+    if not corners_near(quad, rough, 0.1 * max(_sides(quad))):
+        return None
+    told = true_ratio(quad, distance.shape[1], distance.shape[0])
+    if told is None or not MIN_ASPECT <= told[0] <= MAX_ASPECT:
+        return None
+    support = _quad_support(distance, quad, low)
+    if support < 0.6:
+        return None
+    covers = min(1.0, cv2.contourArea(hull) / max(cv2.contourArea(quad.astype(np.float32)), 1e-6))
+    fit = math.exp(-(((told[0] - CARD_ASPECT) / 0.2) ** 2))
+    return quad, support * covers * (0.5 + 0.5 * fit)
+
+
+def _outline(contour: np.ndarray) -> np.ndarray:
+    """Every point along an outline (N x 2): findContours keeps only the ends of each straight run of it."""
+    ends = contour.reshape(-1, 2).astype(np.float64)
+    following = np.roll(ends, -1, axis=0)
+    runs = np.maximum(np.abs(following - ends).max(axis=1), 1).astype(int)
+    steps = np.concatenate([np.arange(n) / n for n in runs])
+    starts = np.repeat(ends, runs, axis=0)
+    return starts + steps[:, None] * np.repeat(following - ends, runs, axis=0)
+
+
+def _quad_support(distance: np.ndarray, quad: np.ndarray, threshold: float) -> float:
+    """_support for four corners: the share of the outline with background just outside it and something else inside."""
+    centre = quad.mean(axis=0)
+    t = np.linspace(0.08, 0.92, 24)
+    points, normals = [], []
+    for i in range(4):
+        a, b = quad[i], quad[(i + 1) % 4]
+        along = (b - a) / max(np.linalg.norm(b - a), 1e-6)
+        normal = np.array([along[1], -along[0]])
+        if np.dot(normal, (a + b) / 2 - centre) < 0:
+            normal = -normal  # pointing out of the card
+        points.append(a[None] + t[:, None] * (b - a)[None])
+        normals.append(np.repeat(normal[None], len(t), axis=0))
+    points, normals = np.concatenate(points), np.concatenate(normals)
+    top, right, bottom, left = _sides(quad)
+    reach = max(2.0, 0.015 * min(top + bottom, left + right) / 2)
+    outside = _sample(distance, points + normals * reach)
+    inside = np.maximum(_sample(distance, points - normals * reach), _sample(distance, points - normals * 2 * reach))
+    return float(np.mean((outside < threshold) & (inside >= threshold)))
 
 
 def _box_from_points(points: np.ndarray) -> Box:
@@ -360,7 +501,9 @@ def _reading_order(quad: np.ndarray, box: Box) -> np.ndarray:
 
 
 def _refine(distance: np.ndarray, quad: np.ndarray, noise: float) -> np.ndarray:
-    """The four corners, moved to where the card's edges really are: twice, the second time looking closer."""
+    """The four corners, moved to where the card's edges really are: twice, the second time looking closer. A card
+    slanted on the photo (taken at an angle) makes a rectangle on the whole that turns with how its sides lean, so its
+    corners are compared instead: each within CORNER_NEAR of the card's width of where it was."""
     box = _landscape(Box.from_corners(quad))
     quad = _reading_order(quad, box)
     for reach in (max(6.0, 0.06 * box.h), max(3.0, 0.02 * box.h)):
@@ -368,7 +511,7 @@ def _refine(distance: np.ndarray, quad: np.ndarray, noise: float) -> np.ndarray:
         if refined is None:
             break
         new = _landscape(Box.from_corners(refined))
-        if not _close(new, box):
+        if not _close(new, box) and not (slanted(refined) and corners_near(refined, quad, CORNER_NEAR * box.w)):
             break
         quad, box = _reading_order(refined, new), new
     return quad
@@ -553,6 +696,196 @@ def cut_out(image: np.ndarray, box: Box, reach: list[float], card_width: int = C
     )
 
 
+# A card photographed at an angle
+#
+# From Prime ERP's reader (Trendlix, production/web/src/scan/flatten.ts, 10 November 2026; its owner: "if the id is
+# captured from mobile camera, can it be adjusted automatically?"), taken here as an add-on: a scan, or a photo taken
+# from straight above, is found and cut out exactly as before. A phone held over a card but not straight above it
+# shows the card as a four-sided shape whose sides are not parallel: the side further from the lens is shorter. Turned
+# straight and cut out as a rectangle, such a card still slants, and the small print along its far edge is narrow.
+# Step 2 already finds each of the card's four edges as a straight line; its corners are where they meet. When they
+# show the card clearly slanted and make the shape of a card, what is cut out is the card flattened to an upright
+# rectangle, as phone scanner apps do: through the perspective transform that takes the corners to the corners of a
+# rectangle.
+
+
+def _sides(q: np.ndarray) -> tuple[float, float, float, float]:
+    """The four sides of a card from its corners (TL, TR, BR, BL): top, right, bottom, left."""
+    tl, tr, br, bl = q
+    n = np.linalg.norm
+    return float(n(tr - tl)), float(n(br - tr)), float(n(br - bl)), float(n(bl - tl))
+
+
+def convex(q: np.ndarray) -> bool:
+    """The four corners turn the same way all round: a shape with no corner pushed in, and no sides that cross."""
+    sign = 0.0
+    for i in range(4):
+        a, b, c = q[i], q[(i + 1) % 4], q[(i + 2) % 4]
+        turn = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+        if not abs(turn) > 1e-9:
+            return False
+        if sign and math.copysign(1.0, turn) != sign:
+            return False
+        sign = math.copysign(1.0, turn)
+    return True
+
+
+def slant_of(q: np.ndarray) -> tuple[float, float]:
+    """How slanted four corners show a card: by how much its opposite sides differ (the most of either pair, as a share
+    of the longer), and by how many degrees its corners are furthest from square."""
+    top, right, bottom, left = _sides(q)
+    sides = max(abs(top - bottom) / max(top, bottom, 1e-9), abs(left - right) / max(left, right, 1e-9))
+    corner = 0.0
+    for i in range(4):
+        u, v = q[(i + 3) % 4] - q[i], q[(i + 1) % 4] - q[i]
+        cos = float(np.dot(u, v) / max(np.linalg.norm(u) * np.linalg.norm(v), 1e-12))
+        corner = max(corner, abs(math.degrees(math.acos(max(-1.0, min(1.0, cos)))) - 90))
+    return sides, corner
+
+
+def slanted(q: np.ndarray) -> bool:
+    """The corners show a card slanted: opposite sides that differ by more than 2%, or a corner more than 1.5 degrees
+    from square."""
+    sides, corner = slant_of(q)
+    return sides > SLANT["sides"] or corner > SLANT["corner"]
+
+
+def corners_near(q: np.ndarray, was: np.ndarray, by: float) -> bool:
+    """Each corner within `by` pixels of the one in the same place of `was`."""
+    return bool(np.all(np.linalg.norm(np.asarray(q) - np.asarray(was), axis=1) <= by))
+
+
+def true_ratio(q: np.ndarray, width: int, height: int) -> tuple[float, bool] | None:
+    """(width over height of a card as it lies flat, sure) from its four corners on a picture `width` x `height`. A
+    rectangle seen at an angle keeps its proportions in where its sides meet if drawn on: the two points the pairs of
+    opposite sides run towards, with the focal length of the camera, give them back (Z. Zhang and L. He, "Whiteboard
+    scanning and image enhancement", 2007). The lens is taken to look at the middle of the picture. Its focal length is
+    worked out from the corners when both pairs of sides run together clearly enough (`sure`), and is a phone's
+    (CAMERA) when they do not or what it gives is not one a camera has: a phone tipped only forwards or backwards over a
+    card makes one pair of sides run together, and the proportions are then told to a few hundredths. With neither pair
+    running together they need no focal length. None when the corners give no proportions."""
+    middle = np.array([(width - 1) / 2, (height - 1) / 2])
+
+    def at(p):
+        return np.array([p[0] - middle[0], p[1] - middle[1], 1.0])
+
+    m1, m2, m4, m3 = at(q[0]), at(q[1]), at(q[2]), at(q[3])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        k2 = float(np.dot(np.cross(m1, m4), m3) / np.dot(np.cross(m2, m4), m3))
+        k3 = float(np.dot(np.cross(m1, m4), m2) / np.dot(np.cross(m3, m4), m2))
+    if not (k2 > 0 and k3 > 0 and math.isfinite(k2) and math.isfinite(k3)):
+        return None
+    n2, n3, diag = k2 * m2 - m1, k3 * m3 - m1, math.hypot(width, height)
+    f2 = (CAMERA["focal"] * diag) ** 2
+    sure = abs(n2[2]) <= CAMERA["runs"] / 10 and abs(n3[2]) <= CAMERA["runs"] / 10
+    if abs(n2[2]) > CAMERA["runs"] and abs(n3[2]) > CAMERA["runs"]:
+        got = -(n2[0] * n3[0] + n2[1] * n3[1]) / (n2[2] * n3[2])
+        if (CAMERA["least"] * diag) ** 2 <= got <= (CAMERA["most"] * diag) ** 2:
+            f2, sure = got, True
+    r2 = (n2[0] ** 2 + n2[1] ** 2 + f2 * n2[2] ** 2) / (n3[0] ** 2 + n3[1] ** 2 + f2 * n3[2] ** 2)
+    return (math.sqrt(r2), bool(sure)) if r2 > 0 and math.isfinite(r2) else None
+
+
+def flat_of(q: np.ndarray, was: np.ndarray, w: float, width: int, height: int) -> Flat | None:
+    """The card the four corners `q` (TL, TR, BR, BL) show, flattened, when they show a card slanted on a picture
+    `width` x `height`. None, and the card is cut out as before, unless:
+      - each corner lies on the picture, two pixels inside its edge at least (a card the picture cuts off is made whole
+        as before);
+      - they make a shape with no corner pushed in;
+      - they show the card slanted, and by no more than a phone held over a card gives (SLANT);
+      - each lies near the corner of the card first found, `was` (its corners), `w` wide (CORNER_NEAR);
+      - flattened, the card has the proportions of a card or a passport page (FLAT_ASPECT)."""
+    q = np.asarray(q, dtype=np.float64)
+    if q.shape != (4, 2) or not np.all(np.isfinite(q)):
+        return None
+    xs, ys = q[:, 0] + 0.5, q[:, 1] + 0.5  # distances from the picture's top-left corner
+    if not (np.all(xs >= 2) and np.all(ys >= 2) and np.all(xs <= width - 2) and np.all(ys <= height - 2)):
+        return None
+    if not convex(q):
+        return None
+    sides, corner = slant_of(q)
+    if not slanted(q) or sides > SLANT["most_sides"] or corner > SLANT["most_corner"]:
+        return None
+    if not corners_near(q, was, CORNER_NEAR * w):
+        return None
+    told = true_ratio(q, width, height)
+    if told is None or not FLAT_ASPECT[0] <= told[0] <= FLAT_ASPECT[1]:
+        return None
+    return Flat(quad=q.copy(), ratio=told[0], sure=told[1])
+
+
+def flat_plan(flat: Flat, card_width: int = CARD_WIDTH) -> tuple[int, int, np.ndarray, list[float]]:
+    """What is cut out for a card flattened, as cut_out cuts a card: (width, height, where its corners go on the cut in
+    its pixel indices (TL, TR, BR, BL), where the card lies on the cut as shares of it). The card `card_width` pixels
+    wide, with the margin of MARGIN_MM around it. What is cut out holds the whole card, and never less:
+      - proportions as near an ID card's as they can be told (SNAP): an ID card, the corners laid on a card's shape,
+        stretched but never shrunk, and as much as it was stretched kept beyond either side, past the margin, in case
+        that much of the card did not stand out;
+      - shorter than a card by no more than a strip (MAX_STRIP): made up for as _whole_card makes it up where it cannot
+        tell on which side, with half the strip more kept to spare on both sides;
+      - a passport page: cut out with its own proportions."""
+    top, right, bottom, left = _sides(flat.quad)
+    r = flat.ratio
+    w = max(top, bottom, r * max(left, right))
+    h = w / r
+    cw, ch, vw, vh, sx, sy = w, h, w, h, 0.0, 0.0  # the card on the cut, the card the corners show on it, to spare
+    if abs(r / CARD_ASPECT - 1) <= (SNAP["sure"] if flat.sure else SNAP["guessed"]):
+        if r >= CARD_ASPECT:
+            ch = vh = w / CARD_ASPECT
+            sy = ch - h
+        else:
+            cw = vw = h * CARD_ASPECT
+            sx = cw - w
+    else:
+        short_h = r > CARD_ASPECT  # a strip along a long side is missing: the card is not tall enough
+        want = w / CARD_ASPECT if short_h else h * CARD_ASPECT
+        need = want - (h if short_h else w)
+        if 0.5 <= need <= want * MAX_STRIP["h" if short_h else "w"]:
+            if short_h:
+                ch, sy = want, need / 2
+            else:
+                cw, sx = want, need / 2
+    mm = cw / CARD_MM[0]
+    mx, my = MARGIN_MM[0] * mm + sx, MARGIN_MM[1] * mm + sy
+    total_w, total_h = cw + 2 * mx, ch + 2 * my
+    k = card_width / cw
+    out_w, out_h = max(1, round(total_w * k)), max(1, round(total_h * k))
+    kx, ky = out_w / total_w, out_h / total_h
+    # the corners found go where the card they show lies on the cut, in the middle of the card; then from distances to
+    # pixel indices
+    x0, x1 = (mx + (cw - vw) / 2) * kx - 0.5, (mx + (cw + vw) / 2) * kx - 0.5
+    y0, y1 = (my + (ch - vh) / 2) * ky - 0.5, (my + (ch + vh) / 2) * ky - 0.5
+    corners = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
+    frame = [mx / total_w, my / total_h, (mx + cw) / total_w, (my + ch) / total_h]
+    return out_w, out_h, corners, frame
+
+
+def cut_flat(image: np.ndarray, flat: Flat, card_width: int = CARD_WIDTH) -> tuple[np.ndarray, list[float]]:
+    """The card flattened from its corners (in pixel indices of `image`, BGR), and where it lies on the cut (flat_plan):
+    each pixel of the cut taken from where the perspective transform from the corners sends it. Past the picture, white.
+    A much larger card is first shrunk smoothly, as cut_out shrinks it, as far as its farthest side allows."""
+    out_w, out_h, corners, frame = flat_plan(flat, card_width)
+    quad = np.asarray(flat.quad, dtype=np.float64)
+    # pixels of the cut per pixel of the image, along the side where that is most: the side furthest from the lens
+    k = max(
+        float(np.linalg.norm(corners[(i + 1) % 4] - corners[i]))
+        / max(float(np.linalg.norm(quad[(i + 1) % 4] - quad[i])), 1e-6)
+        for i in range(4)
+    )
+    shrink = min(1.0, 1.5 * k)
+    if shrink < 1:
+        small = _resized(image, shrink)
+        fx, fy = small.shape[1] / image.shape[1], small.shape[0] / image.shape[0]
+        quad = (quad + 0.5) * np.array([fx, fy]) - 0.5
+        image = small
+    matrix = cv2.getPerspectiveTransform(corners.astype(np.float32), quad.astype(np.float32))
+    cut = cv2.warpPerspective(
+        image, matrix, (out_w, out_h), flags=cv2.INTER_CUBIC | cv2.WARP_INVERSE_MAP,
+        borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255),
+    )
+    return cut, frame
+
+
 # 5 and 6. Which way up, which side
 
 _DIACRITICS = re.compile("[ـً-ٰٟ]")
@@ -712,8 +1045,8 @@ def judge(engine, card: np.ndarray) -> Verdict:
 
 def _cut_already(found: Found, width: int, height: int) -> bool:
     """The picture is what cutting this card out of it would give: a card cut out already, square to the picture
-    (lying or standing), with its margin."""
-    if abs(_wrap(found.box.angle, 45)) >= 0.5:
+    (lying or standing), with its margin. Never a card photographed at an angle."""
+    if found.flat is not None or abs(_wrap(found.box.angle, 45)) >= 0.5:
         return False
     reach, _ = cut_plan(found.box, found.spare, width, height)
     along, across = reach[0] + reach[2], reach[1] + reach[3]
@@ -741,15 +1074,22 @@ def find_on_page(engine, page: np.ndarray, full: np.ndarray, page_index: int) ->
     cards = []
     to_full = np.array([full.shape[1] / width, full.shape[0] / height])
     for item in found:
-        box = _scaled(item.box, to_full)
-        spare = (item.spare[0] * to_full[0], item.spare[1] * to_full[1])
-        reach, frame = cut_plan(box, spare, full.shape[1], full.shape[0])
-        image = cut_out(full, box, reach)
+        quad = None
+        if item.flat is not None:  # photographed at an angle: flattened from its corners
+            quad = item.flat.quad
+            image, frame = cut_flat(full, replace(item.flat, quad=(quad + 0.5) * to_full - 0.5))
+        else:
+            box = _scaled(item.box, to_full)
+            spare = (item.spare[0] * to_full[0], item.spare[1] * to_full[1])
+            reach, frame = cut_plan(box, spare, full.shape[1], full.shape[0])
+            image = cut_out(full, box, reach)
         verdict = judge(engine, image)
         box = item.box
         if verdict.flip:
             image, box, frame = cv2.rotate(image, cv2.ROTATE_180), box.turned(180), _turned_frame(frame)
-        cards.append(Card(page_index, box, image, tuple(frame), verdict.side, verdict.confidence))
+            if quad is not None:
+                quad = np.roll(quad, 2, axis=0)  # the upright card's top left is the bottom right of the box
+        cards.append(Card(page_index, box, image, tuple(frame), verdict.side, verdict.confidence, quad=quad))
     return cards
 
 

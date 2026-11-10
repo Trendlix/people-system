@@ -12,6 +12,7 @@ from app.main import create_app
 from .conftest import wait_ready
 from .synthetic_cards import arabic_font_path, card_picture, encode, pdf_of, scanned_page
 from .test_cards import decode, looks_like, send, turn
+from .test_flatten import DESK, taken, world
 
 _models = Path(os.environ.get("PADDLE_PDX_CACHE_HOME", "/nonexistent")) / "official_models"
 pytestmark = pytest.mark.skipif(
@@ -57,3 +58,15 @@ def test_a_picture_that_is_a_card_standing_on_its_end(client, quarter, angle):
     [card] = body["cards"]
     assert card["frame"] == [0.0, 0.0, 1.0, 1.0]
     check(card, "back", angle)
+
+
+@pytest.mark.parametrize("side, angle", [("front", 0), ("back", 180)])
+def test_a_card_photographed_at_an_angle_is_flattened_turned_upright_and_told(client, side, angle):
+    scene, [box] = world([(side, 750, 550, angle)])
+    picture, _ = taken(scene, [box], 1600, 1200, 1250, DESK, tilt=24, yaw=10, roll=4, size=0.95)
+    body = send(client, encode(picture[:, :, ::-1].copy(), "PNG"), filename="photo.png").json()
+    [card] = body["cards"]
+    assert len(card["quad"]) == 4  # flattened from its corners
+    assert card["side"] == side and card["confidence"] >= 0.9
+    likeness, looks, flipped = looks_like(decode(card["image"]))
+    assert (looks, flipped) == (side, False) and likeness > 0.8

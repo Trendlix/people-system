@@ -38,8 +38,9 @@ page, at most 20 pages).
 `POST /cards`, multipart field `file`: JPEG, PNG, WebP or PDF, up to 15 MB. A PDF's first 2 pages are looked at; later
 pages are ignored, and a longer PDF is not refused. A flatbed scan with both sides of the card on one page (each
 anywhere, tilted, on the dark of an open lid or the white of a closed one), one side per file, a phone photo of a card on
-a desk, or a photo of a photocopy: the service finds each card, cuts it out along its edges, straightens it, turns it
-the right way up and says which side it is. See `app/cards.py` for how.
+a desk (also taken with the phone held at an angle), or a photo of a photocopy: the service finds each card, cuts it out
+along its edges, straightens it (flattens it, when photographed at an angle), turns it the right way up and says which
+side it is. See `app/cards.py` for how.
 
 ```json
 { "pages": [ { "width": 1414, "height": 2000, "image": "<base64 JPEG>" } ],
@@ -86,6 +87,24 @@ the right way up and says which side it is. See `app/cards.py` for how.
   Which way up is decided by reading the card both ways; the numbers and the serial count only towards which side it is.
 - `cards` holds the front first, when one is known; then the others page by page, top to bottom, left to right. At
   most 4. No card: `"cards": []`, still 200.
+- **A card photographed at an angle is flattened** (from Prime ERP's reader, 10 November 2026, taken here as an
+  add-on). A phone held over a card but not straight above it shows the card with sides that are not parallel, its far
+  side shorter. Where the four edges found meet in corners that show the card slanted (opposite sides that differ by more
+  than 2%, or a corner more than 1.5° off square, and no more than 40% and 30°, as far over as a phone held above a card
+  goes), lie on the picture 2 px inside its edge, make a shape with no corner pushed in, lie within 12% of the card's
+  width of the card first found, and give it, flattened, the proportions of a card or a passport page (1.35 to 1.9, told
+  from where its pairs of sides run to, with the camera's focal length worked out from them, or a phone's, 0.6 of the
+  photo's diagonal, taken for it when one pair of sides stays parallel), the card is cut out flattened to an upright
+  rectangle through the perspective transform from its corners, the card 1000 px wide with its margin as above.
+  Proportions as near an ID card's as they can be told (2%, or 6% with a phone's focal length taken) are laid on an ID
+  card's shape, stretched and never shrunk, and as much as was stretched is kept beyond either side; a card short by a
+  strip is made up for as above; a passport page keeps its own. Such a card has `quad`, its four corners on the page:
+  `[[x, y], …]`, top left, top right, bottom right, bottom left of the upright card, measured as `box` is; and its `box`
+  is the rectangle the corners make on the whole, not in a card's proportions. Every other card has no `quad`, and is
+  found and cut out exactly as before: a slanted card is looked for only where no card seen straight was found (an
+  outline that does not fill its rectangle, whose four sides are straight lines), and a card seen straight whose
+  corners show no slant is cut out as a rectangle. Each card of a page is flattened on its own. The log says
+  "(flattened)" beside such a card.
 - A picture that is a card cut out already (a picture shaped like a card, 1.48 to 1.72, with the card filling it, level)
   is not cut again: one card whose `box` is the whole picture (`cx` = `width` / 2, `cy` = `height` / 2, `w` x `h` the
   picture, `angle` 0, 90, 180 or -90 to stand it upright), `frame` [0, 0, 1, 1], and `image` the picture turned
@@ -93,7 +112,8 @@ the right way up and says which side it is. See `app/cards.py` for how.
 - Refusals are as for `/read`: `400 {"detail": "…"}` for an unsupported or unreadable file, `413` over 15 MB, `503`
   while the models load.
 - About 0.55 s on a laptop (2 threads) for an A4 scan with both sides on it or a two-page PDF, 0.4 s for a 12-megapixel
-  phone photo, 0.2 s for a card cut out already and 0.1 s for a page with no card. The response is about 0.5 MB.
+  phone photo (flattened, it is found and cut out in about 0.07 s in the tests, the reader stood in for), 0.2 s for a
+  card cut out already and 0.1 s for a page with no card. The response is about 0.5 MB.
 
 ### Pages to adjust
 
@@ -162,8 +182,9 @@ curl -F file=@scan.pdf http://127.0.0.1:8000/cards
 curl -F file=@contract.pdf http://127.0.0.1:8000/pages
 ```
 
-The tests draw made-up cards (`tests/synthetic_cards.py`), never real ones; the card tests with the real models also
-need a font with Arabic letters (found on macOS and with DejaVu or Noto on Linux; or set `OCR_TEST_ARABIC_FONT`).
+The tests draw made-up cards (`tests/synthetic_cards.py`), never real ones, and photograph them at an angle through a
+lens drawn for them (`tests/camera.py`); the card tests with the real models also need a font with Arabic letters
+(found on macOS and with DejaVu or Noto on Linux; or set `OCR_TEST_ARABIC_FONT`).
 
 ## Changing a dependency
 
