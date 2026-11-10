@@ -28,6 +28,11 @@ export interface OcrCard {
   image: string; // base64 JPEG
   side: 'front' | 'back' | null;
   confidence: number;
+  /**
+   * A card photographed at an angle, flattened from its corners: the four corners on the page image, top left, top
+   * right, bottom right, bottom left of the upright card, measured as `box` is. Absent for any other card.
+   */
+  quad?: [number, number][];
 }
 
 /** A page as the service analysed it (base64 JPEG), for framing a card by hand. */
@@ -183,6 +188,13 @@ function notRunning(err: unknown): boolean {
 
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+/** A card's four corners as the service gives them, or undefined when it gives none or not four pairs of numbers. */
+function quadOf(quad: unknown): [number, number][] | undefined {
+  if (!Array.isArray(quad) || quad.length !== 4) return undefined;
+  const ok = quad.every((p: unknown) => Array.isArray(p) && p.length === 2 && p.every(isNumber));
+  return ok ? (quad as [number, number][]).map(([x, y]) => [x, y]) : undefined;
+}
+
 /** The pages of a well-formed answer (each a picture with its size), in order; null for anything else. */
 function pagesOf(pages: unknown): OcrPage[] | null {
   if (!Array.isArray(pages)) return null;
@@ -207,12 +219,18 @@ function cardsOf(body: unknown): { pages: OcrPage[]; cards: OcrCard[] } | null {
   if (!okCards) return null;
   return {
     pages,
-    cards: (cards as OcrCard[]).map(({ page, box, image, side, confidence }) => ({
-      page,
-      box: { cx: box.cx, cy: box.cy, w: box.w, h: box.h, angle: box.angle },
-      image,
-      side,
-      confidence,
-    })),
+    // the corners of a card flattened are an extra: an answer whose corners are not four pairs of numbers is still
+    // taken, the card without them
+    cards: (cards as OcrCard[]).map(({ page, box, image, side, confidence, quad }) => {
+      const corners = quadOf(quad);
+      return {
+        page,
+        box: { cx: box.cx, cy: box.cy, w: box.w, h: box.h, angle: box.angle },
+        image,
+        side,
+        confidence,
+        ...(corners ? { quad: corners } : {}),
+      };
+    }),
   };
 }

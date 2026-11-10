@@ -114,7 +114,18 @@ async function fakeOcr(texts: Record<string, string>): Promise<FakeOcr> {
 }
 
 const box = (cy: number, angle: number) => ({ cx: 500, cy, w: 704, h: 444, angle });
-/** The fake /cards: MARK:TWOCARDS is a page with the back above the front, MARK:NOCARD a page without a card. */
+/** The corners of a card photographed at an angle, as the service gives them for a card it flattened. */
+const SLANTED: [number, number][] = [
+  [160.5, 480.25],
+  [842.75, 455],
+  [801, 921.5],
+  [205.25, 902],
+];
+/**
+ * The fake /cards: MARK:TWOCARDS is a page with the back above the front, MARK:NOCARD a page without a card,
+ * MARK:SLANTED a card photographed at an angle and flattened (with its corners), MARK:BADQUAD one whose corners are not
+ * four pairs of numbers.
+ */
 function cardsAnswer(body: Buffer, res: ServerResponse) {
   const mark = /MARK:(\w+)/.exec(body.toString('latin1'))?.[1] ?? '';
   if (mark === 'FAIL') {
@@ -130,7 +141,16 @@ function cardsAnswer(body: Buffer, res: ServerResponse) {
         ]
       : mark === 'NOCARD'
         ? []
-        : [{ page: 0, box: box(700, 0.4), image: Buffer.from(`CARD:${mark}`).toString('base64'), side: null, confidence: 0.5 }];
+        : [
+            {
+              page: 0,
+              box: box(700, 0.4),
+              image: Buffer.from(`CARD:${mark}`).toString('base64'),
+              side: null,
+              confidence: 0.5,
+              ...(mark === 'SLANTED' ? { quad: SLANTED } : mark === 'BADQUAD' ? { quad: [[1, 2], [3, 'x'], [5, 6]] } : {}),
+            },
+          ];
   res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ pages: [page], cards }));
 }
 
@@ -758,6 +778,25 @@ describe('Paperwork (e2e)', () => {
 
       const none = await prepare().attach('front', jpeg('NOCARD'), 'a.jpg').expect(200);
       expect(none.body).toMatchObject({ front: null, back: null, found: 0 });
+    });
+
+    it('gives the corners of a card photographed at an angle, which the service flattened, and only well-formed ones', async () => {
+      const slanted = await prepare().attach('front', jpeg('SLANTED'), 'a.jpg').expect(200);
+      expect(slanted.body.front).toEqual({
+        image: Buffer.from('CARD:SLANTED').toString('base64'),
+        page: 0,
+        box: box(700, 0.4),
+        recognised: null,
+        confidence: 0.5,
+        quad: SLANTED,
+      });
+      // corners that are not four pairs of numbers are left out; the card is still taken
+      const bad = await prepare().attach('front', jpeg('BADQUAD'), 'a.jpg').expect(200);
+      expect(bad.body.front).toMatchObject({ image: Buffer.from('CARD:BADQUAD').toString('base64'), page: 0 });
+      expect(bad.body.front).not.toHaveProperty('quad');
+      // a card seen straight has none
+      const straight = await prepare().attach('front', jpeg('ONE'), 'a.jpg').expect(200);
+      expect(straight.body.front).not.toHaveProperty('quad');
     });
 
     it('is for HR only', async () => {

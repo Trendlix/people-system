@@ -13,7 +13,7 @@ import { readIdCardWithNotes, withoutReligion, type CardLine, type IdCardSuggest
 import { CorrectionsService } from './corrections.service.js';
 import { roughNote, spellingsOnFile, spellName } from './english-name.js';
 import { assignSides } from './id-card-sides.js';
-import { OCR_CARDS_PDF_PAGES, OcrClient, type OcrPage, type OcrPageRead, type OcrRead, type OcrShownPages } from './ocr.client.js';
+import { OCR_CARDS_PDF_PAGES, OcrClient, type OcrCard, type OcrPage, type OcrPageRead, type OcrRead, type OcrShownPages } from './ocr.client.js';
 import { detectPaperworkType, PAPERWORK_MAX_BYTES, PAPERWORK_MAX_MB, replacementName, safeFileName, type PaperworkType } from './paperwork-file.js';
 import type { UpdatePaperworkDto, UploadPaperworkDto } from './paperwork.dto.js';
 import { countPdfPages } from './pdf-pages.js';
@@ -471,7 +471,7 @@ export class PaperworkService {
     }
 
     const pages: { width: number; height: number; image: string }[] = [];
-    const cards: { page: number; box: { cx: number; cy: number; w: number; h: number; angle: number }; image: string; side: 'front' | 'back' | null; confidence: number; file: number }[] = [];
+    const cards: (OcrCard & { file: number })[] = [];
     results.forEach((r, file) => {
       if (r.status !== 'done') return;
       const offset = pages.length;
@@ -479,7 +479,9 @@ export class PaperworkService {
       cards.push(...r.cards.map((c) => ({ ...c, page: c.page + offset, file })));
     });
     const [frontCard, backCard] = assignSides(cards, uploads.length);
-    const side = (c: (typeof cards)[number] | null) => c && { image: c.image, page: c.page, box: c.box, recognised: c.side, confidence: c.confidence };
+    // a card photographed at an angle and flattened also gives its corners, for framing it by hand by them
+    const side = (c: (typeof cards)[number] | null) =>
+      c && { image: c.image, page: c.page, box: c.box, recognised: c.side, confidence: c.confidence, ...(c.quad ? { quad: c.quad } : {}) };
     return { pages, front: side(frontCard), back: side(backCard), found: cards.length };
   }
 
