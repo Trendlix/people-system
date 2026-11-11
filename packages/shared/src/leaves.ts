@@ -14,7 +14,7 @@
 
 import { daysBetween } from './payroll-adjustments.js';
 import { reimbursementPayMonth } from './reimbursements.js';
-import { pastDateAllowed } from './past-dates.js';
+import { pastDateAllowed, pastDatesOpen } from './past-dates.js';
 
 // ---------- the kinds of leave ----------
 
@@ -581,8 +581,8 @@ export interface LeaveHistory {
 /**
  * Why a request can't be sent, in the order to fix them (none: it can): the dates, the half day, the days counted, who
  * may take the type (gender, service), the times in service, the days a request, the type's days a year, the annual
- * balance and when it may be used, the notice (an employee's request only: HR records on their behalf without), and the
- * document. An overlap with another request is the API's to find.
+ * balance and when it may be used (HR records before then until the end of 2026), the notice (an employee's request
+ * only: HR records on their behalf without), and the document. An overlap with another request is the API's to find.
  */
 export function leaveRequestProblems(input: LeaveRequestInput, type: LeaveTypeRules, balance: LeaveRequestBalance, history: LeaveHistory): string[] {
   const problems: string[] = [];
@@ -623,7 +623,9 @@ export function leaveRequestProblems(input: LeaveRequestInput, type: LeaveTypeRu
     if (input.days > left) problems.push(`Only ${daysText(left)} left of ${type.nameEn.toLowerCase()}'s ${daysText(type.daysPerYear)} a year.`);
   }
   if (takesFromAnnual(type.balance)) {
-    if (type.balance === 'annual' && input.startDate < balance.usableFrom) {
+    // HR records annual leave before the six months were served until the end of 2026 (owner, 11 November 2026, moving
+    // leave from the old system: "override it for HR till the end of the year only"; past-dates.ts); the balance holds
+    if (type.balance === 'annual' && input.startDate < balance.usableFrom && !(input.byHr && pastDatesOpen(input.today))) {
       problems.push(`Annual leave can be used from ${shown(balance.usableFrom)}, six months after joining.`);
     }
     if (!balance.allowNegative && input.days > balance.available) {

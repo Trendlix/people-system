@@ -293,3 +293,18 @@ describe('casual leave’s days a year are a share in the year someone joins (ow
     expect(leaveFormProblems(typed({ typeId: 'casual', startDate: '25/10/2026' }), CASUAL, [], ctx())).toEqual([]);
   });
 });
+
+// owner, 11 November 2026, moving leave from the old system: "override it for HR till the end of the year only", "but
+// for employees, keep the rule"
+describe('annual leave before the six months after joining', () => {
+  const early = ctx({ joinDate: '2026-02-05', today: '2026-11-11', balances: { ...balances, annual: { ...balances.annual, available: 10, usableFrom: '2026-08-05' } } });
+  const may = typed({ startDate: '05/05/2026', endDate: '06/05/2026' });
+
+  it('HR records it until the end of 2026', () => {
+    expect(leaveFormProblems(may, ANNUAL, [], { ...early, byHr: true })).toEqual([]);
+  });
+
+  it('an employee’s own request keeps the rule', () => {
+    expect(leaveFormProblems(may, ANNUAL, [], early)).toContain('Annual leave can be used from 05/08/2026, six months after joining.');
+  });
+});

@@ -244,6 +244,23 @@ describe('leaveRequestProblems', () => {
     ]);
   });
 
+  // owner, 11 November 2026, moving leave from the old system: "override it for HR till the end of the year only"
+  it('HR records annual leave before the six months until the end of 2026; the balance holds; an employee never', () => {
+    const early = { available: 5, usableFrom: '2026-12-01' };
+    expect(leaveRequestProblems(input({ byHr: true, today: '2026-11-11' }), law('annual'), early, history())).toEqual([]);
+    expect(leaveRequestProblems(input({ byHr: true, today: '2026-12-31' }), law('annual'), early, history())).toEqual([]);
+    expect(leaveRequestProblems(input({ byHr: true, today: '2026-11-11', endDate: '2026-11-08', days: 6 }), law('annual'), early, history())).toEqual([
+      'Only 5 days left of the annual balance.',
+    ]);
+    // from 2027 the rule is HR's too, and an employee's own request has it now
+    expect(leaveRequestProblems(input({ byHr: true, today: '2027-01-01', startDate: '2027-01-03', endDate: '2027-01-04' }), law('annual'), { available: 5, usableFrom: '2027-02-01' }, history())).toEqual([
+      'Annual leave can be used from 01/02/2027, six months after joining.',
+    ]);
+    expect(leaveRequestProblems(input({ today: '2026-11-11', startDate: '2026-11-15', endDate: '2026-11-16' }), law('annual'), early, history())).toContain(
+      'Annual leave can be used from 01/12/2026, six months after joining.',
+    );
+  });
+
   it('who may take it: gender, service, times in service', () => {
     expect(leaveRequestProblems(input({ documents: 1 }), law('maternity'), balance, history())).toEqual(['Maternity leave is for female employees only.']);
     expect(leaveRequestProblems(input({ documents: 1 }), law('maternity'), balance, history({ gender: null }))).toEqual([
